@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Secrets (genere par scripts/generate-env.js)
+assets/js/env.js
+
+# Data & cache (generes au runtime)
+data/*.json
+
+# Logs
+*.log
+npm-debug.log*

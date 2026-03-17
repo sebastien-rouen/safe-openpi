@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JIRA Dashboard</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230284C7'/%3E%3Cpath d='M8 8h7l9 9-9 9H8l9-9z' fill='white' opacity='.9'/%3E%3C/svg%3E">
+
+<!-- Librairies (locales pour éviter les blocages Tracking Prevention) -->
+<script src="assets/js/vendor/chart.umd.min.js"></script>
+<script src="assets/js/vendor/html2canvas.min.js"></script>
+
+<!-- Styles -->
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/board.css">
+<link rel="stylesheet" href="assets/css/views.css">
+</head>
+<body>
+
+<!-- ===== SIDEBAR ===== -->
+<aside id="sidebar">
+  <div class="sidebar-logo">
+    <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+      <rect width="32" height="32" rx="8" fill="#0284C7"/>
+      <path d="M8 8h7l9 9-9 9H8l9-9z" fill="white" opacity=".9"/>
+      <circle cx="11" cy="16" r="2.5" fill="white"/>
+    </svg>
+    <div>
+      <span>JIRA Dashboard</span>
+      <small>SAFe Agile Board</small>
+    </div>
+  </div>
+
+  <div class="sync-area">
+    <button id="syncBtn" onclick="doSync()">
+      <span class="sync-icon">🔄</span> Synchroniser
+    </button>
+    <div class="sync-meta">
+      <span class="last-sync" id="lastSync">Dernière sync: —</span>
+      <label class="sync-partial-toggle" title="Sync rapide : ne recharge que les tickets du sprint actif (vélocité et backlog conservés)">
+        <input type="checkbox" id="sync-incremental">
+        <span class="sync-partial-icon">⚡</span>
+      </label>
+    </div>
+    <div class="sync-progress" id="syncProgress" style="display:none">
+      <div class="sync-progress-bar"><div class="sync-progress-fill" id="syncProgressFill"></div></div>
+      <div class="sync-progress-label" id="syncProgressLabel"></div>
+    </div>
+  </div>
+
+  <div class="team-selector">
+    <label>Équipe</label>
+    <!-- Rempli dynamiquement par renderTeamBtns() depuis filter.js -->
+    <div class="team-btns" id="team-btns"></div>
+  </div>
+
+  <div class="group-selector" id="group-selector">
+    <label onclick="toggleGroupSelector()">Groupes <span class="collapse-arrow">▼</span></label>
+    <div id="group-btns"></div>
+  </div>
+
+  <nav>
+    <div class="nav-item active" onclick="showView('scrum')"    data-view="scrum">    <span class="nav-icon">📋</span> Vue Scrum<span id="sb-blocked-badge" class="sb-blocked-badge" style="display:none"></span></div>
+    <div class="nav-item"        onclick="showView('kanban')"   data-view="kanban">   <span class="nav-icon">🗂️</span> Vue Kanban</div>
+    <div class="nav-item"        onclick="showView('roadmap')"  data-view="roadmap">  <span class="nav-icon">🗺️</span> Roadmap</div>
+    <div class="nav-item"        onclick="showView('pi')"       data-view="pi">       <span class="nav-icon">🗓️</span> PI Planning</div>
+    <div class="nav-item"        onclick="showView('piprep')"   data-view="piprep">   <span class="nav-icon">📋</span> PI Planning suivant</div>
+    <div class="nav-item"        onclick="showView('reports')"  data-view="reports">  <span class="nav-icon">📊</span> Rapports</div>
+    <div class="nav-item"        onclick="showView('support')"  data-view="support">  <span class="nav-icon">🎫</span> Support</div>
+    <div class="nav-item"        onclick="showView('settings')" data-view="settings"> <span class="nav-icon">⚙️</span> Paramètres</div>
+    <div class="shortcut-hint">⌨️ Raccourcis: 1-8</div>
+  </nav>
+
+  <div class="sidebar-stats">
+    <div id="sb-group-label" style="display:none;margin-bottom:6px;"></div>
+
+    <!-- Contexte sprint / PI -->
+    <div class="sb-sprint-card">
+      <div class="sb-sprint-top">
+        <span class="sb-pi-badge" id="sb-pi-badge" style="display:none"></span>
+      </div>
+      <a class="sb-sprint-name" id="sb-sprint-link" href="#" target="_blank" title="Ouvrir le board JIRA">—</a>
+      <div class="sb-sprint-dates-row">
+        <span class="sb-sprint-dates" id="sb-sprint-dates"></span>
+        <span class="sb-remaining" id="sb-remaining"></span>
+      </div>
+    </div>
+
+    <!-- Avancement sprint -->
+    <div id="sb-progress-wrap"></div>
+  </div>
+</aside>
+<div id="sidebar-resizer" title="Redimensionner la sidebar"></div>
+
+<!-- ===== MAIN ===== -->
+<div id="main">
+  <div class="topbar">
+    <div class="topbar-title" id="topbar-title">📋 Vue Scrum</div>
+    <div class="topbar-right" id="topbar-actions"></div>
+  </div>
+
+  <div id="content">
+
+    <!-- VUE SCRUM -->
+    <div class="view active" id="view-scrum">
+      <div class="sprint-bar">
+        <div class="si"><small>Sprint</small><strong id="sprint-name">—</strong></div>
+        <div class="si"><small>Période</small><strong id="sprint-dates">—</strong></div>
+        <div class="si"><small>Points engagés</small><strong id="sprint-velocity">— pts</strong></div>
+        <div class="si" style="flex:1">
+          <small>Avancement</small>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
+            <div class="progress-bar" style="flex:1;position:relative;">
+              <div class="progress-fill-wip" id="sprint-prog-wip" style="width:0%;left:0%"></div>
+              <div class="progress-fill" id="sprint-prog" style="width:0%"></div>
+              <div class="progress-fill-buffer" id="sprint-prog-buffer" style="width:0%;left:0%"></div>
+              <div class="progress-mark-80" id="sprint-mark-80" style="display:none" title="Seuil 80% — capacité feature"></div>
+            </div>
+            <strong id="sprint-pct">0%</strong>
+          </div>
+        </div>
+        <div class="si"><small>Points done</small><strong id="pts-done">51 / 84</strong></div>
+        <div class="si"><small>Restants</small><strong id="pts-rem">33 pts</strong></div>
+        <div class="sprint-goal" id="sprint-goal"></div>
+        <div id="mood-panel"></div>
+      </div>
+      <div class="sprint-alerts" id="sprint-alerts"></div>
+      <div class="stats-row" id="scrum-stats"></div>
+      <div class="hierarchy" id="hierarchy-view"></div>
+      <div class="section-header">
+        <div class="section-title">📋 Tableau Sprint</div>
+        <div class="board-view-toggle" id="board-view-toggle"></div>
+      </div>
+      <div class="board" id="scrum-board"></div>
+      <div style="margin-top:24px;" class="section-header"><div class="section-title">📈 Métriques Sprint</div></div>
+      <div class="charts-row" id="charts-row">
+        <div class="chart-card"><div class="chart-title">📉 Burndown Chart</div><div class="chart-wrap"><canvas id="burndownChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">⚡ Vélocité (6 sprints)</div><div class="chart-wrap"><canvas id="velocityChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">🍩 Distribution Types</div><div class="chart-wrap"><canvas id="typeChart"></canvas></div></div>
+      </div>
+      <div class="charts-row charts-row-2" id="charts-row-2">
+        <div class="chart-card"><div class="chart-title">📈 Burnup Chart</div><div class="chart-wrap"><canvas id="burnupChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">📊 CFD — Flux Sprint</div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- VUE KANBAN -->
+    <div class="view" id="view-kanban">
+      <div class="kanban-metrics" id="kanban-metrics"></div>
+      <div class="section-header">
+        <div class="section-title">🗂️ Tableau Kanban</div>
+        <span style="font-size:12px;color:var(--text-muted)">WIP Limits activées — Rouge = dépassé</span>
+      </div>
+      <div class="kanban-board" id="kanban-board"></div>
+      <div style="margin-top:20px;" class="section-header"><div class="section-title">📊 Flux Cumulatif & Cycle Time</div></div>
+      <div class="charts-row" style="grid-template-columns:2fr 1fr;">
+        <div class="chart-card"><div class="chart-title">📊 Flux Cumulatif (14 jours)</div><div class="chart-wrap" style="height:200px"><canvas id="cfdChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">⏱️ Cycle Time Moyen</div><div id="cycle-time-display" style="padding:10px"></div></div>
+      </div>
+    </div>
+
+    <!-- VUE PI PLANNING -->
+    <div class="view" id="view-pi">
+      <div class="section-header">
+        <div class="section-title">🗓️ PI Planning — PI 4 (Q1 2025)</div>
+        <span style="font-size:12px;color:var(--text-muted)">4 Sprints × 4 Équipes</span>
+      </div>
+      <div id="pi-table-filters"></div>
+      <div class="card" style="margin-bottom:16px;">
+        <div class="pi-grid"><table class="pi-table" id="pi-table"></table></div>
+      </div>
+      <div class="section-header"><div class="section-title">🎯 Objectifs PI</div></div>
+      <div class="pi-objectives" id="pi-objectives"></div>
+      <div style="margin-top:16px;" class="section-header"><div class="section-title">🛡️ Suivi Buffer</div></div>
+      <div id="pi-buffer"></div>
+      <div style="margin-top:16px;" class="section-header"><div class="section-title">📊 Capacité vs Charge par Équipe</div></div>
+      <div class="chart-card" style="margin-top:0"><div class="chart-wrap" style="height:220px"><canvas id="piCapacityChart"></canvas></div></div>
+      <div style="margin-top:16px;" class="section-header"><div class="section-title">📈 Vélocité historique par équipe</div><span style="font-size:12px;color:var(--text-muted)">3 derniers sprints fermés · chargés à la synchronisation</span></div>
+      <div id="pi-velocity"></div>
+    </div>
+
+    <!-- VUE RAPPORTS -->
+    <div class="view" id="view-reports">
+      <!-- Sélecteur de section + format -->
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+        <div class="report-sections" id="report-sections" style="margin-bottom:0;padding-bottom:0;border-bottom:none;"></div>
+        <div class="format-toggle">
+          <button class="fmt-btn active" id="fmt-slack" onclick="setFormat('slack')">💬 Slack</button>
+          <button class="fmt-btn"        id="fmt-conf"  onclick="setFormat('confluence')">📝 Confluence</button>
+        </div>
+      </div>
+      <!-- Onglets équipes -->
+      <div class="report-tabs" id="report-tabs" style="margin-bottom:10px;"></div>
+      <div class="report-preview" id="report-preview"></div>
+    </div>
+
+    <!-- VUE SUPPORT -->
+    <div class="view" id="view-support">
+      <div class="stats-row" id="support-stats"></div>
+      <div class="support-filters" id="support-filters">
+        <button class="filter-btn active" data-filter="all"      onclick="filterSupport('all')">Tous</button>
+        <button class="filter-btn"        data-filter="critical" onclick="filterSupport('critical')">🔴 Critique</button>
+        <button class="filter-btn"        data-filter="high"     onclick="filterSupport('high')">🟠 Haute</button>
+        <button class="filter-btn"        data-filter="medium"   onclick="filterSupport('medium')">🟡 Moyenne</button>
+        <button class="filter-btn"        data-filter="low"      onclick="filterSupport('low')">🟢 Basse</button>
+        <button class="filter-btn"        data-filter="open"     onclick="filterSupport('open')">📂 Ouverts</button>
+        <button class="filter-btn"        data-filter="done"     onclick="filterSupport('done')">✅ Résolus</button>
+      </div>
+      <div id="support-list"></div>
+    </div>
+
+    <!-- VUE PARAMÈTRES -->
+    <div class="view" id="view-settings">
+      <div class="settings-grid" id="settings-content"></div>
+    </div>
+
+    <!-- VUE ROADMAP -->
+    <div class="view" id="view-roadmap">
+      <div id="roadmap-content"></div>
+    </div>
+
+    <!-- VUE PRÉPARATION PI PLANNING -->
+    <div class="view" id="view-piprep"></div>
+
+  </div><!-- #content -->
+</div><!-- #main -->
+
+<!-- MODAL -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <div class="modal-header">
+      <h3 id="modal-title">Détail du ticket</h3>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="modal-nav-btn" id="modal-prev-btn" onclick="modalNavigate(-1)" title="Ticket précédent (←)">←</button>
+        <span class="modal-nav-counter" id="modal-nav-counter" style="display:none"></span>
+        <button class="modal-nav-btn" id="modal-next-btn" onclick="modalNavigate(1)" title="Ticket suivant (→)">→</button>
+        <button class="modal-close" onclick="closeModalDirect()">✕</button>
+      </div>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast-container"></div>
+
+<!-- SEARCH OVERLAY (Ctrl+K) -->
+<div id="search-overlay" class="search-overlay" onclick="if(event.target===this)closeSearch()" style="display:none">
+  <div class="search-box">
+    <input id="search-input" class="search-input" type="text" placeholder="Rechercher un ticket, epic, membre… (Ctrl+K)" oninput="_onSearchInput(this.value)" autocomplete="off">
+    <div id="search-results" class="search-results"></div>
+  </div>
+</div>
+
+<!-- ===== SCRIPTS (ordre de chargement requis) ===== -->
+<script src="assets/js/env.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/data.js"></script>
+<!-- Données démo — remplacer par demo/demo-autre.js pour un autre scénario -->
+<script src="demo/demo-default.js"></script>
+<script src="assets/js/state.js"></script>
+<script src="assets/js/utils.js"></script>
+<script src="assets/js/filter.js"></script>
+<script src="assets/js/jira.js"></script>
+<script src="assets/js/sync.js"></script>
+<script src="assets/js/modal.js"></script>
+<script src="assets/js/export.js"></script>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/scrum.js"></script>
+<script src="assets/js/kanban.js"></script>
+<script src="assets/js/pi.js"></script>
+<script src="assets/js/reports.js"></script>
+<script src="assets/js/support.js"></script>
+<script src="assets/js/settings.js"></script>
+<script src="assets/js/roadmap.js"></script>
+<script src="assets/js/piprep.js"></script>
+<script src="assets/js/navigation.js"></script>
+
+</body>
+</html>

@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Test JIRA API</title>
+<style>
+  body { font-family: monospace; background:#0f172a; color:#e2e8f0; padding:2rem; }
+  h1   { font-size:1.1rem; color:#f8fafc; margin-bottom:1.5rem; }
+
+  .config { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:1rem 1.25rem; margin-bottom:1.5rem; }
+  .config h2 { font-size:.75rem; color:#64748b; text-transform:uppercase; letter-spacing:.06em; margin-bottom:.75rem; }
+  .row { display:flex; gap:.75rem; padding:.3rem 0; border-bottom:1px solid #0f172a; font-size:.82rem; }
+  .row:last-child { border-bottom:none; }
+  .key { color:#7dd3fc; min-width:140px; }
+  .val { color:#a3e635; }
+  .empty { color:#475569; font-style:italic; }
+
+  .tests { display:flex; flex-direction:column; gap:.75rem; margin-bottom:1.5rem; }
+  .test-card { background:#1e293b; border:1px solid #334155; border-radius:8px; overflow:hidden; }
+  .test-header { display:flex; align-items:center; justify-content:space-between; padding:.5rem 1rem; background:#0f172a; border-bottom:1px solid #334155; }
+  .test-name { font-size:.82rem; color:#e2e8f0; }
+  .test-url  { font-size:.72rem; color:#475569; }
+  .test-body { padding:.65rem .85rem; display:none; }
+  .test-body.visible { display:block; }
+
+  button { cursor:pointer; border:none; border-radius:5px; padding:.35rem .7rem; font-size:.78rem; font-family:monospace; font-weight:600; }
+  button:hover { opacity:.85; }
+  button:disabled { opacity:.4; cursor:not-allowed; }
+  .btn-run   { background:#1d4ed8; color:#fff; }
+  .btn-run-all { background:#0369a1; color:#fff; margin-bottom:1rem; }
+  .btn-clear { background:#1e293b; color:#94a3b8; border:1px solid #334155; margin-left:.5rem; }
+
+  .status-ok  { color:#4ade80; font-weight:700; font-size:.72rem; }
+  .status-err { color:#f87171; font-weight:700; font-size:.72rem; }
+  .status-wait { color:#64748b; font-size:.72rem; }
+  .spinner { display:inline-block; width:9px; height:9px; border:2px solid #334155; border-top-color:#7dd3fc; border-radius:50%; animation:spin .7s linear infinite; vertical-align:middle; margin-right:4px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  pre { background:#0f172a; border:1px solid #1e3a5f; border-radius:5px; padding:.55rem .7rem; font-size:.72rem; color:#bae6fd; white-space:pre-wrap; word-break:break-all; max-height:240px; overflow-y:auto; margin-top:.5rem; }
+  pre.err { border-color:#7f1d1d; color:#fca5a5; }
+
+  #log { background:#1e293b; border:1px solid #334155; border-radius:8px; padding:1rem 1.25rem; }
+  #log h2 { font-size:.75rem; color:#64748b; text-transform:uppercase; letter-spacing:.06em; margin-bottom:.75rem; }
+  #logOut { background:#0f172a; border:1px solid #1e293b; border-radius:5px; padding:.65rem .75rem; font-size:.72rem; min-height:60px; max-height:200px; overflow-y:auto; white-space:pre-wrap; }
+  .log-ok   { color:#4ade80; }
+  .log-err  { color:#f87171; }
+  .log-info { color:#7dd3fc; }
+
+  .note { font-size:.75rem; color:#f59e0b; background:#1c1917; border:1px solid #78350f; border-radius:6px; padding:.5rem .75rem; margin-bottom:1.25rem; }
+</style>
+</head>
+<body>
+
+<h1>🔧 Test JIRA REST API</h1>
+
+<div class="note">
+  ℹ️ Les appels passent par le proxy local (<code>localhost:3001/jira/*</code>) pour contourner le CORS.
+  Lancer d'abord : <code>python scripts/proxy.py</code> puis ouvrir <code>http://localhost:3001/test-jira.html</code>.
+</div>
+
+<!-- Config -->
+<div class="config">
+  <h2>Configuration (window.ENV)</h2>
+  <div class="row"><span class="key">JIRA_URL</span>   <span id="c-url"   class="empty">—</span></div>
+  <div class="row"><span class="key">JIRA_USER</span>  <span id="c-user"  class="empty">—</span></div>
+  <div class="row"><span class="key">JIRA_TOKEN</span> <span id="c-token" class="empty">—</span></div>
+  <div class="row"><span class="key">JIRA_PROJECT</span><span id="c-proj" class="empty">—</span></div>
+  <div class="row"><span class="key">JIRA_BOARD_ID</span><span id="c-board" class="empty">—</span></div>
+</div>
+
+<button class="btn-run-all" onclick="runAll()">▶ Tout tester</button>
+<button class="btn-clear"   onclick="clearAll()">✕ Effacer</button>
+
+<!-- Tests -->
+<div class="tests" id="tests"></div>
+
+<!-- Log -->
+<div id="log"><h2>Log</h2><div id="logOut">En attente…</div></div>
+
+<script src="assets/js/env.js"></script>
+<script>
+const E       = window.ENV || {};
+const PROXY   = 'http://localhost:3001';          // proxy local (proxy.py)
+const BASE    = PROXY + '/jira';                  // /jira/* → JIRA_URL/rest/*
+const PROJECT = E.JIRA_PROJECT  || 'PROJ';
+const BOARD   = E.JIRA_BOARD_ID || '';
+// Auth gérée côté proxy — on n'envoie plus de token depuis le navigateur
+const AUTH    = '';
+
+// Tests définis — les URLs passent par /jira/* (proxy → JIRA_URL/rest/*)
+const TESTS = [
+  {
+    id:    'myself',
+    name:  '1. Auth — Utilisateur courant',
+    url:   () => `${BASE}/api/3/myself`,
+    desc:  'Vérifie les credentials. Retourne le profil Atlassian.',
+  },
+  {
+    id:    'project',
+    name:  '2. Projet',
+    url:   () => `${BASE}/api/2/project/${PROJECT}`,
+    desc:  `Infos du projet ${PROJECT} (nom, clé, type).`,
+  },
+  {
+    id:    'boards',
+    name:  '3. Boards',
+    url:   () => `${BASE}/agile/1.0/board?projectKeyOrId=${PROJECT}&maxResults=10`,
+    desc:  'Liste les boards Scrum/Kanban du projet.',
+  },
+  {
+    id:    'sprint',
+    name:  '4. Sprint actif',
+    url:   () => `${BASE}/agile/1.0/board/${BOARD}/sprint?state=active`,
+    desc:  `Sprint en cours du board ${BOARD}.`,
+  },
+  {
+    id:    'issues',
+    name:  '5. Issues (JQL)',
+    url:   () => `${BASE}/api/3/search/jql?jql=project=${PROJECT}+ORDER+BY+updated+DESC&maxResults=5&fields=summary,status,assignee,priority,issuetype`,
+    desc:  `5 dernières issues du projet ${PROJECT}.`,
+  },
+];
+
+// Init
+window.addEventListener('DOMContentLoaded', () => {
+  const mask = t => t.length > 8 ? t.slice(0,4)+'••••'+t.slice(-4) : (t ? t : '—');
+  const set  = (id, val, ok) => {
+    const el = document.getElementById(id);
+    el.textContent = val || '—';
+    el.className   = ok ? 'val' : 'empty';
+  };
+  const jiraUrl = E.JIRA_URL || '';
+  set('c-url',   jiraUrl ? `${jiraUrl} → via proxy` : PROXY + '/jira/*', !!jiraUrl);
+  set('c-user',  E.JIRA_USER  || '', !!E.JIRA_USER);
+  set('c-token', mask(E.JIRA_TOKEN || ''), !!E.JIRA_TOKEN);
+  set('c-proj',  PROJECT,  !!PROJECT);
+  set('c-board', BOARD,    !!BOARD);
+
+  // Render cards
+  document.getElementById('tests').innerHTML = TESTS.map(t => `
+    <div class="test-card" id="card-${t.id}">
+      <div class="test-header">
+        <div>
+          <div class="test-name">${t.name}</div>
+          <div class="test-url" id="url-${t.id}">${t.url()}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:.5rem">
+          <span class="status-wait" id="st-${t.id}">—</span>
+          <button class="btn-run" id="btn-${t.id}" onclick="runTest('${t.id}')">▶ Lancer</button>
+        </div>
+      </div>
+      <div class="test-body" id="body-${t.id}"></div>
+    </div>
+  `).join('');
+
+  log('info', `Config chargée — JIRA: ${BASE || 'non configuré'}`);
+});
+
+// Lancer un test
+async function runTest(id) {
+  const t   = TESTS.find(x => x.id === id);
+  const url = t.url();
+  const btn = document.getElementById(`btn-${id}`);
+  const st  = document.getElementById(`st-${id}`);
+  const body = document.getElementById(`body-${id}`);
+
+  btn.disabled = true;
+  st.innerHTML = '<span class="spinner"></span>';
+  body.className = 'test-body';
+
+  log('info', `[${id}] GET ${url}`);
+  const t0 = Date.now();
+  try {
+    const r = await fetch(url, {
+      headers: { 'Accept': 'application/json' },
+    });
+    const elapsed = Date.now() - t0;
+    const text = await r.text();
+    let data;
+    try { data = JSON.parse(text); } catch { data = text; }
+
+    if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { body: data });
+
+    st.innerHTML = `<span class="status-ok">✅ ${r.status}</span>`;
+    body.className = 'test-body visible';
+    body.innerHTML = `<div style="font-size:.72rem;color:#64748b;margin-bottom:.35rem">${elapsed}ms</div><pre>${JSON.stringify(data, null, 2)}</pre>`;
+    log('ok', `[${id}] ${r.status} — ${elapsed}ms`);
+  } catch (err) {
+    const elapsed = Date.now() - t0;
+    const detail  = err.body ? '\n' + JSON.stringify(err.body, null, 2) : '';
+    st.innerHTML = `<span class="status-err">❌ ${err.message}</span>`;
+    body.className = 'test-body visible';
+    body.innerHTML = `<pre class="err">${err.message}${detail}</pre>`;
+    log('err', `[${id}] ${err.message} (${elapsed}ms)`);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function runAll() {
+  log('info', '--- Lancement de tous les tests ---');
+  TESTS.forEach(t => runTest(t.id));
+}
+
+function clearAll() {
+  TESTS.forEach(t => {
+    document.getElementById(`st-${t.id}`).innerHTML = '<span class="status-wait">—</span>';
+    const b = document.getElementById(`body-${t.id}`);
+    b.className = 'test-body';
+    b.innerHTML = '';
+  });
+  document.getElementById('logOut').innerHTML = 'Log effacé.';
+}
+
+function log(level, msg) {
+  const out  = document.getElementById('logOut');
+  const time = new Date().toLocaleTimeString('fr-FR');
+  const line = document.createElement('div');
+  line.className = `log-${level}`;
+  line.textContent = `[${time}] ${msg}`;
+  if (out.textContent === 'En attente…') out.innerHTML = '';
+  out.appendChild(line);
+  out.scrollTop = out.scrollHeight;
+}
+</script>
+</body>
+</html>
