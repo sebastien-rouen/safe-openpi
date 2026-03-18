@@ -429,6 +429,7 @@ async function renderPIPrep() {
     ${_ppROAMSection(activeTeams)}
     ${_ppDepsSection(activeTeams)}
     ${_ppFistSection(activeTeams)}
+    ${_ppMultiPICapacity(activeTeams, sprintsPerPI)}
   `;
 }
 
@@ -937,6 +938,65 @@ function _ppDepsSection(activeTeams) {
               <tbody>${rows}</tbody>
             </table>
           </div>`}
+      ${deps.length >= 2 ? _ppDepsHeatmap(deps, allTeams) : ''}
+    </div>`;
+}
+
+// Dependency heatmap matrix + timeline
+function _ppDepsHeatmap(deps, allTeams) {
+  // Build team-pair counts
+  const pairs = {};
+  const teamsInDeps = new Set();
+  deps.forEach(d => {
+    if (!d.fromTeam || !d.toTeam) return;
+    teamsInDeps.add(d.fromTeam);
+    teamsInDeps.add(d.toTeam);
+    const k = `${d.fromTeam}→${d.toTeam}`;
+    pairs[k] = (pairs[k] || 0) + 1;
+  });
+  const dTeams = [...teamsInDeps].sort();
+  if (dTeams.length < 2) return '';
+
+  const maxCount = Math.max(...Object.values(pairs), 1);
+
+  const headerCells = dTeams.map(t => {
+    const c = CONFIG.teams[t]?.color || '#475569';
+    const n = CONFIG.teams[t]?.name || t;
+    return `<th style="padding:4px 6px;font-size:10px;font-weight:700;color:${c};text-align:center;writing-mode:vertical-lr;transform:rotate(180deg);height:60px;border-bottom:1px solid var(--border);">${n}</th>`;
+  }).join('');
+
+  const matrixRows = dTeams.map(from => {
+    const fc = CONFIG.teams[from]?.color || '#475569';
+    const fn = CONFIG.teams[from]?.name || from;
+    const cells = dTeams.map(to => {
+      if (from === to) return '<td style="padding:4px;text-align:center;background:var(--surface);"><span style="color:var(--text-muted);font-size:10px;">—</span></td>';
+      const k = `${from}→${to}`;
+      const cnt = pairs[k] || 0;
+      if (!cnt) return '<td style="padding:4px;text-align:center;"></td>';
+      const intensity = Math.round((cnt / maxCount) * 100);
+      const bg = `rgba(239,68,68,${(intensity / 100 * 0.6 + 0.1).toFixed(2)})`;
+      return `<td style="padding:4px;text-align:center;background:${bg};border-radius:4px;" title="${fn} → ${CONFIG.teams[to]?.name || to}: ${cnt} dép.">
+        <span style="font-size:12px;font-weight:700;color:#7F1D1D;">${cnt}</span>
+      </td>`;
+    }).join('');
+    return `<tr>
+      <td style="padding:4px 8px;font-size:11px;font-weight:700;color:${fc};white-space:nowrap;border-right:1px solid var(--border);">${fn}</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-top:14px;display:flex;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:6px;text-transform:uppercase;letter-spacing:.4px;">🗺️ Matrice des dépendances</div>
+        <div class="card" style="padding:8px;overflow-x:auto;">
+          <table style="border-collapse:collapse;">
+            <thead><tr><th style="border-bottom:1px solid var(--border);border-right:1px solid var(--border);"></th>${headerCells}</tr></thead>
+            <tbody>${matrixRows}</tbody>
+          </table>
+        </div>
+        <div style="font-size:9px;color:var(--text-muted);margin-top:4px;">Ligne = équipe source · Colonne = équipe cible · Intensité = nombre de dépendances</div>
+      </div>
     </div>`;
 }
 
@@ -1033,5 +1093,110 @@ function _ppFistSection(activeTeams) {
         ${avgBadge}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
+    </div>`;
+}
+
+// ============================================================
+// Multi-PI Capacity Planning — simulation what-if sur 2-3 PIs
+// ============================================================
+function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
+  if (!activeTeams.length) return '';
+
+  const piCount = 3; // Number of PIs to show
+
+  // Build team data
+  const teamData = activeTeams.map(tid => {
+    const tc = CONFIG.teams[tid] || {};
+    const vel = tc.velocity || 0;
+    const vh = tc.velocityHistory || [];
+    const nonZero = vh.map(v => v.velocity || 0).filter(v => v > 0);
+    const avgVel = nonZero.length ? Math.round(nonZero.reduce((a, b) => a + b, 0) / nonZero.length) : vel;
+
+    // Estimate team size from MEMBERS
+    const members = typeof MEMBERS !== 'undefined' ? Object.values(MEMBERS).filter(m => m.team === tid || m.teams?.includes(tid)) : [];
+    const teamSize = members.length || Math.round(avgVel / 15); // fallback: ~15 pts/dev
+
+    return {
+      tid, name: tc.name || tid, color: tc.color || '#475569',
+      velocity: avgVel, teamSize,
+      velPerDev: teamSize > 0 ? Math.round(avgVel / teamSize) : 0,
+    };
+  });
+
+  // What-if simulation
+  const scenarios = [
+    { label: 'Actuel', delta: 0 },
+    { label: '−1 dev/équipe', delta: -1 },
+    { label: '+1 dev/équipe', delta: +1 },
+  ];
+
+  const thStyle = 'padding:6px 10px;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.3px;border-bottom:1px solid var(--border);text-align:center;';
+
+  const piLabels = Array.from({ length: piCount }, (_, i) => `PI+${i}`);
+
+  const headerCols = scenarios.map(s =>
+    `<th colspan="${piCount}" style="${thStyle}background:${s.delta === 0 ? '#F0F9FF' : s.delta < 0 ? '#FEF2F2' : '#F0FDF4'};">${s.label}</th>`
+  ).join('');
+
+  const subHeaderCols = scenarios.flatMap(() =>
+    piLabels.map(l => `<th style="${thStyle}font-size:9px;">${l}</th>`)
+  ).join('');
+
+  const rows = teamData.map(t => {
+    const cells = scenarios.flatMap(s => {
+      const newSize = Math.max(0, t.teamSize + s.delta);
+      const newVel = newSize * t.velPerDev;
+      const totalCap = newVel * sprintsPerPI;
+      return piLabels.map(() => {
+        const cap = totalCap; // same capacity per PI (simplified)
+        const color = s.delta === 0 ? t.color : s.delta < 0 ? '#DC2626' : '#16A34A';
+        const diff = cap - (t.velocity * sprintsPerPI);
+        const diffStr = s.delta !== 0 ? `<div style="font-size:9px;color:${diff >= 0 ? '#16A34A' : '#DC2626'}">${diff >= 0 ? '+' : ''}${diff} pts</div>` : '';
+        return `<td style="padding:6px 8px;text-align:center;border-right:1px solid var(--border);">
+          <div style="font-size:13px;font-weight:700;color:${color}">${cap}</div>
+          <div style="font-size:9px;color:var(--text-muted)">${newSize} dev · ${newVel}/sprint</div>
+          ${diffStr}
+        </td>`;
+      });
+    }).join('');
+
+    return `<tr style="border-bottom:1px solid var(--border);">
+      <td style="padding:6px 10px;font-size:12px;font-weight:700;color:${t.color};white-space:nowrap;border-right:1px solid var(--border);">
+        <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${t.color};margin-right:4px;"></span>
+        ${t.name}
+        <div style="font-size:9px;color:var(--text-muted);font-weight:400;">${t.teamSize} dev · ${t.velocity} pts/sprint</div>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  // Totals row
+  const totalCells = scenarios.flatMap(s => {
+    return piLabels.map(() => {
+      const total = teamData.reduce((sum, t) => {
+        const newSize = Math.max(0, t.teamSize + s.delta);
+        return sum + newSize * t.velPerDev * sprintsPerPI;
+      }, 0);
+      return `<td style="padding:6px 8px;text-align:center;font-size:13px;font-weight:800;color:var(--text);border-right:1px solid var(--border);">${total}</td>`;
+    });
+  }).join('');
+
+  return `
+    <div style="margin-bottom:20px;">
+      <div class="section-header">
+        <div class="section-title">📊 Capacité multi-PI — Simulation what-if</div>
+        <span style="font-size:11px;color:var(--text-muted);">Impact sur ${piCount} PIs · ${sprintsPerPI} sprints/PI</span>
+      </div>
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr><th style="${thStyle}border-right:1px solid var(--border);">Équipe</th>${headerCols}</tr>
+            <tr><th style="${thStyle}border-right:1px solid var(--border);"></th>${subHeaderCols}</tr>
+          </thead>
+          <tbody>${rows}
+            <tr style="background:#F8FAFC;"><td style="padding:6px 10px;font-size:12px;font-weight:800;border-right:1px solid var(--border);">Total</td>${totalCells}</tr>
+          </tbody>
+        </table>
+      </div>
     </div>`;
 }

@@ -221,7 +221,13 @@ function renderPI() {
     });
   });
 
-  // Objectifs PI — epics par équipe, groupés par sprint
+  // Objectifs PI — epics par équipe, groupés par sprint, avec progress live
+  // Cross-reference piprep objectives if available
+  const ppObjs = (typeof _ppGet === 'function') ? (_ppGet('objectives') || []) : [];
+
+  // Aggregate stats for global summary
+  let _piObjStats = { totalEpics: 0, doneEpics: 0, totalTk: 0, doneTk: 0, atRisk: [] };
+
   document.getElementById('pi-objectives').innerHTML = allTeams.map(team => {
     const teamCfg     = CONFIG.teams[team] || {};
     const color       = teamCfg.color || '#94A3B8';
@@ -244,6 +250,14 @@ function renderPI() {
       </div>`;
     }
 
+    // Team-level aggregate
+    const teamDone  = teamTickets.filter(t => t.status === 'done').length;
+    const teamTotal = teamTickets.length;
+    const teamPct   = teamTotal ? Math.round(teamDone / teamTotal * 100) : 0;
+    const teamPts   = teamTickets.reduce((a, t) => a + (t.points || 0), 0);
+    const teamPtsDone = teamTickets.filter(t => t.status === 'done').reduce((a, t) => a + (t.points || 0), 0);
+    const teamPctClr = teamPct < 30 ? '#EF4444' : teamPct < 70 ? '#F59E0B' : '#22C55E';
+
     const sprintGroupsHtml = sprintKeys.map(sp => {
       const epicIds = [...sprintMap[sp]];
       const rows = epicIds.map(eid => {
@@ -255,8 +269,22 @@ function renderPI() {
         const total    = eTickets.length;
         const pct      = total ? Math.round(done / total * 100) : 0;
         const pts      = eTickets.reduce((a, t) => a + (t.points || 0), 0);
+        const blocked  = eTickets.filter(t => t.status === 'blocked').length;
         const url      = typeof _jiraBrowseUrl === 'function' ? _jiraBrowseUrl(eid) : '#';
         const isDone   = pct === 100 && total > 0;
+
+        // Track stats
+        _piObjStats.totalEpics++;
+        _piObjStats.totalTk += total;
+        _piObjStats.doneTk += done;
+        if (isDone) _piObjStats.doneEpics++;
+
+        // Risk detection: epic < 50% done with blocked tickets
+        const remaining = total - done;
+        if (pct < 50 && remaining > 2 && blocked > 0) {
+          _piObjStats.atRisk.push({ eid, title: etitle, team: name, pct, blocked, remaining });
+        }
+
         return `<div class="pi-epic-row">
           <span class="pi-epic-dot" style="background:${ec}"></span>
           <div class="pi-epic-info">
@@ -276,11 +304,24 @@ function renderPI() {
       </div>`;
     }).join('');
 
+    // Team progress summary bar
+    const teamSummary = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
+      <div style="flex:1;height:6px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;">
+        <div style="height:100%;width:${teamPct}%;background:${teamPctClr};border-radius:3px;transition:width .3s;"></div>
+      </div>
+      <span style="font-size:11px;font-weight:700;color:${teamPctClr};white-space:nowrap;">${teamPct}%</span>
+      <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">${teamPtsDone}/${teamPts} pts</span>
+    </div>`;
+
     return `<div class="pi-obj" style="border-left-color:${color}">
       <div class="pi-obj-header"><span class="pi-obj-team" style="color:${color}">${name}</span></div>
+      ${teamSummary}
       ${sprintGroupsHtml}
     </div>`;
   }).join('');
+
+  // ---- PI Objective Risk Alerts ----
+  _renderPIObjRiskAlerts(_piObjStats, tickets, allTeams);
 
   // Buffer tracking
   _renderPIBuffer(tickets, allTeams);
@@ -319,13 +360,31 @@ function renderPI() {
       },
       options: {
         responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { labels: { font: { size: 11 } } } },
+        plugins: {
+          legend: { labels: { font: { size: 11 } } },
+          tooltip: {
+            callbacks: {
+              afterBody: function(items) {
+                const idx = items[0]?.dataIndex;
+                if (idx == null) return '';
+                const cap = capacity[idx] || 0;
+                const plan = planned[idx] || 0;
+                const delta = plan - cap;
+                const sign = delta > 0 ? '+' : '';
+                return `\nÉcart : ${sign}${delta} pts (${cap ? Math.round(delta / cap * 100) : 0}%)`;
+              }
+            }
+          },
+        },
         scales: {
           y: { beginAtZero: true, title: { display: true, text: 'Story Points' } },
         },
       },
     });
   }, 100);
+
+  // Dependency deadline alerts
+  _renderPIDepAlerts();
 
   // Vélocité historique — sprints fermés récents (stockés dans CONFIG.teams après sync)
   _renderVelocityHistory(allTeams);
@@ -724,6 +783,142 @@ function _renderVelocityHistory(allTeams) {
       },
     });
   }, 150);
+}
+
+// ============================================================
+// DEPENDENCY DEADLINE ALERTS — dépendances non résolues à D-N
+// ============================================================
+
+function _renderPIDepAlerts() {
+  // Get deps from piprep if available
+  const deps = (typeof _ppDepList === 'function') ? _ppDepList() : [];
+  if (!deps.length) return;
+
+  const alertDays = CONFIG.alerts?.depAlertDays ?? 5;
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+
+  // Check sprint end as the implicit deadline for deps without explicit targetDate
+  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  const sprintEnd = s.endDate ? new Date(s.endDate) : null;
+  if (sprintEnd) sprintEnd.setHours(0, 0, 0, 0);
+
+  const alerts = [];
+  deps.forEach(d => {
+    // Skip resolved deps (if they have a resolved flag)
+    if (d.resolved) return;
+    if (!d.fromTeam || !d.toTeam) return;
+
+    // Use targetDate if set, otherwise use sprint end
+    const target = d.targetDate ? new Date(d.targetDate) : sprintEnd;
+    if (!target) return;
+
+    const daysLeft = Math.round((target - now) / 86400000);
+    if (daysLeft <= alertDays && daysLeft >= -7) { // Alert from D-N to D+7 (overdue)
+      const fromName = CONFIG.teams[d.fromTeam]?.name || d.fromTeam;
+      const toName   = CONFIG.teams[d.toTeam]?.name || d.toTeam;
+      const title    = d.fromTitle || d.toTitle || 'Dépendance';
+      const overdue  = daysLeft < 0;
+      alerts.push({
+        icon: overdue ? '🔴' : '🟡',
+        text: `<strong>${title}</strong> — ${fromName} → ${toName}${overdue ? ` · <span style="color:#DC2626">en retard de ${Math.abs(daysLeft)}j</span>` : ` · ${daysLeft}j restant${daysLeft > 1 ? 's' : ''}`}`,
+      });
+    }
+  });
+
+  if (!alerts.length) return;
+
+  // Insert after pi-velocity or append to pi view
+  let container = document.getElementById('pi-dep-alerts');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'pi-dep-alerts';
+    const piVel = document.getElementById('pi-velocity');
+    if (piVel) piVel.parentElement.insertBefore(container, piVel);
+    else {
+      const piView = document.getElementById('view-pi');
+      if (piView) piView.appendChild(container);
+      else return;
+    }
+  }
+
+  container.innerHTML = `
+    <div style="margin-bottom:16px;">
+      <div class="section-header"><div class="section-title">🔗 Alertes dépendances</div></div>
+      <div style="padding:10px 14px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;">
+        ${alerts.map(a => `<div style="font-size:12px;color:#78350F;padding:3px 0;display:flex;align-items:flex-start;gap:6px;">
+          <span style="flex-shrink:0;">${a.icon}</span><span>${a.text}</span>
+        </div>`).join('')}
+      </div>
+    </div>`;
+}
+
+// ============================================================
+// PI OBJECTIVE RISK ALERTS — objectifs en danger
+// ============================================================
+
+function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
+  const el = document.getElementById('pi-obj-risk-alerts');
+  if (!el) { // Create the container dynamically if not in HTML
+    const objEl = document.getElementById('pi-objectives');
+    if (!objEl) return;
+    const div = document.createElement('div');
+    div.id = 'pi-obj-risk-alerts';
+    objEl.parentElement.insertBefore(div, objEl.nextSibling);
+    return _renderPIObjRiskAlerts(stats, tickets, allTeams);
+  }
+
+  const alerts = [];
+
+  // 1. Epics at risk (< 50% done with blockers)
+  stats.atRisk.forEach(r => {
+    alerts.push({
+      icon: '🔴',
+      text: `<strong>${r.eid}</strong> (${r.team}) — ${r.pct}% terminé, ${r.blocked} bloqué${r.blocked > 1 ? 's' : ''}, ${r.remaining} restant${r.remaining > 1 ? 's' : ''}`,
+    });
+  });
+
+  // 2. Capacity gap — overloaded teams
+  allTeams.forEach(team => {
+    const tc = CONFIG.teams[team];
+    if (!tc) return;
+    const vel = tc.velocity || 0;
+    const planned = tickets.filter(t => t.team === team).reduce((a, t) => a + (t.points || 0), 0);
+    if (vel > 0 && planned > vel * 1.2) {
+      const overPct = Math.round((planned / vel - 1) * 100);
+      alerts.push({
+        icon: '⚠️',
+        text: `<strong>${tc.name || team}</strong> — surcharge +${overPct}% (${planned} pts planifiés vs ${vel} pts capacité)`,
+      });
+    }
+  });
+
+  // 3. Sprint end approaching with low completion
+  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  if (s.endDate) {
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((end - now) / 86400000);
+    const globalPct = stats.totalTk ? Math.round(stats.doneTk / stats.totalTk * 100) : 0;
+    if (daysLeft <= 3 && globalPct < 60) {
+      alerts.push({
+        icon: '⏰',
+        text: `Fin de sprint dans ${daysLeft}j — seulement ${globalPct}% terminé (${stats.doneTk}/${stats.totalTk} tickets)`,
+      });
+    }
+  }
+
+  if (!alerts.length) {
+    el.innerHTML = '';
+    return;
+  }
+
+  el.innerHTML = `
+    <div style="margin-top:12px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;">
+      <div style="font-size:12px;font-weight:700;color:#991B1B;margin-bottom:6px;">🚨 Alertes objectifs PI</div>
+      ${alerts.map(a => `<div style="font-size:12px;color:#7F1D1D;padding:3px 0;display:flex;align-items:flex-start;gap:6px;">
+        <span style="flex-shrink:0;">${a.icon}</span><span>${a.text}</span>
+      </div>`).join('')}
+    </div>`;
 }
 
 // ============================================================
