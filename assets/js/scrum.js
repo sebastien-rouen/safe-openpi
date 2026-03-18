@@ -114,6 +114,58 @@ function _renderSprintAlerts() {
     });
   }
 
+  // ---- Health alerts (scope creep, blocked ratio, velocity trend) ----
+  const tickets = (typeof getTickets === 'function') ? getTickets() : [];
+
+  // Scope creep — stories added mid-sprint (detected via todayChanges or changelog)
+  const scopeThreshold = ac.scopeCreepThreshold ?? 2;
+  if (daysFromStart > 1 && tickets.length) {
+    // Count tickets that were added after sprint start (sprint field change to current sprint)
+    const addedMidSprint = tickets.filter(t => {
+      if (!Array.isArray(t.todayChanges)) return false;
+      return t.todayChanges.some(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(s.label));
+    }).length;
+    if (addedMidSprint >= scopeThreshold) {
+      alerts.push({
+        type: 'health',
+        icon: '📈',
+        label: `Scope creep : ${addedMidSprint} ticket${addedMidSprint > 1 ? 's' : ''} ajouté${addedMidSprint > 1 ? 's' : ''} aujourd'hui`,
+      });
+    }
+  }
+
+  // Blocked ratio — blocked / in-progress too high
+  const blockedThreshold = ac.blockedRatioThreshold ?? 0.3;
+  const inProg  = tickets.filter(t => t.status === 'inprog' || t.status === 'review').length;
+  const blocked = tickets.filter(t => t.status === 'blocked').length;
+  if (inProg > 0 && blocked / inProg >= blockedThreshold) {
+    const pct = Math.round(blocked / inProg * 100);
+    alerts.push({
+      type: 'health',
+      icon: '🚧',
+      label: `${blocked} bloqué${blocked > 1 ? 's' : ''} / ${inProg} en cours (${pct}%)`,
+    });
+  }
+
+  // Velocity dropping trend — compare last 3 sprints
+  const velDropPct = ac.velocityDropPct ?? 15;
+  const activeTeams = _moodTeams();
+  const allVH = activeTeams.flatMap(t => CONFIG.teams[t]?.velocityHistory || []);
+  if (allVH.length >= 3) {
+    // Sum velocities per sprint position across teams
+    const recent = allVH.slice(-3).map(v => v.velocity || 0);
+    const firstV = recent[0];
+    const lastV  = recent[recent.length - 1];
+    if (firstV > 0 && lastV < firstV * (1 - velDropPct / 100)) {
+      const drop = Math.round((1 - lastV / firstV) * 100);
+      alerts.push({
+        type: 'health',
+        icon: '📉',
+        label: `Vélocité en baisse : −${drop}% sur 3 sprints`,
+      });
+    }
+  }
+
   el.innerHTML = alerts.map(a => {
     const statusHtml = a.done != null
       ? `<span class="sa-status">${a.done ? '✓ fait' : '⏳ à faire'}</span>`
@@ -195,6 +247,73 @@ window._moodNote = function(teamId, val) {
   _moodSave();
 };
 
+// Build mood trend sparkline — shows average mood per sprint across teams
+function _moodTrendSparkline(teams) {
+  const md = _moodData();
+  if (!md.votes) return '';
+
+  // Collect all sprint keys that have votes for any of the given teams
+  const sprintSet = new Map(); // sprintLabel → [votes...]
+  Object.entries(md.votes).forEach(([k, votes]) => {
+    if (!Array.isArray(votes) || !votes.length) return;
+    const [tid, spLabel] = k.split('__');
+    if (!spLabel || !teams.includes(tid)) return;
+    if (!sprintSet.has(spLabel)) sprintSet.set(spLabel, []);
+    sprintSet.get(spLabel).push(...votes);
+  });
+
+  if (sprintSet.size < 2) return ''; // need at least 2 sprints for a trend
+
+  // Sort sprints (basic: by key string which includes iteration number)
+  const sorted = [...sprintSet.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  const last8 = sorted.slice(-8);
+  const points = last8.map(([label, votes]) => ({
+    label,
+    avg: Math.round(votes.reduce((s, v) => s + v, 0) / votes.length * 10) / 10,
+    count: votes.length,
+  }));
+
+  const maxV = 5, minV = 1;
+  const w = 220, h = 40, pad = 4;
+  const stepX = (w - pad * 2) / Math.max(points.length - 1, 1);
+
+  const pathPoints = points.map((p, i) => {
+    const x = pad + i * stepX;
+    const y = h - pad - ((p.avg - minV) / (maxV - minV)) * (h - pad * 2);
+    return { x, y, ...p };
+  });
+
+  const line = pathPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const dots = pathPoints.map(p => {
+    const c = p.avg < 2.5 ? '#DC2626' : p.avg < 3.5 ? '#F59E0B' : '#16A34A';
+    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${c}" stroke="white" stroke-width="1">
+      <title>${p.label}: ${p.avg}/5 (${p.count} votes)</title>
+    </circle>`;
+  }).join('');
+
+  const labels = pathPoints.map(p => {
+    const short = p.label.replace(/.*Ité\.?\s*/, '').replace(/Sprint\s*/i, 'S');
+    return `<text x="${p.x.toFixed(1)}" y="${h + 10}" text-anchor="middle" fill="var(--text-muted)" font-size="7">${short}</text>`;
+  }).join('');
+
+  const lastP = points[points.length - 1];
+  const prevP = points[points.length - 2];
+  const delta = lastP.avg - prevP.avg;
+  const arrow = delta > 0.2 ? '↗' : delta < -0.2 ? '↘' : '→';
+  const trendColor = delta > 0.2 ? '#16A34A' : delta < -0.2 ? '#DC2626' : '#F59E0B';
+
+  return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
+    <span style="font-size:11px;color:var(--text-muted);font-weight:600;white-space:nowrap;">Tendance</span>
+    <svg width="${w}" height="${h + 14}" style="flex-shrink:0;">
+      <line x1="${pad}" y1="${h - pad - ((3 - minV) / (maxV - minV)) * (h - pad * 2)}" x2="${w - pad}" y2="${h - pad - ((3 - minV) / (maxV - minV)) * (h - pad * 2)}" stroke="var(--border)" stroke-dasharray="3,3"/>
+      <path d="${line}" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}${labels}
+    </svg>
+    <span style="font-size:18px;font-weight:800;color:${trendColor};">${arrow}</span>
+    <span style="font-size:11px;color:${trendColor};font-weight:600;">${delta > 0 ? '+' : ''}${delta.toFixed(1)}</span>
+  </div>`;
+}
+
 function _renderMoodPanel() {
   const el = document.getElementById('mood-panel');
   if (!el) return;
@@ -272,12 +391,16 @@ function _renderMoodPanel() {
       </div>`
     : '';
 
+  // Mood trend sparkline — historical mood averages across sprints
+  const trendHtml = _moodTrendSparkline(teams);
+
   el.innerHTML = `<div class="mood-panel">
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:14px;font-weight:700;">😊 Mood Meter (ROTI)</span>
+      <span style="font-size:14px;font-weight:700;color:var(--text);">😊 Mood Meter (ROTI)</span>
       ${avgBadge}
       <button onclick="_toggleMoodPanel()" style="margin-left:${gAvg !== null ? '8px' : 'auto'};border:none;background:none;font-size:16px;cursor:pointer;color:var(--text-muted);">✕</button>
     </div>
+    ${trendHtml}
     <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
   </div>`;
 }
@@ -1211,10 +1334,27 @@ function ticketCard(t) {
     : isFlagged ? '<span style="color:#DC2626;font-size:11px;font-weight:700;">🚩 Flaggé</span>' : '';
   const bufferBadge = isBuffer ? '<span class="buffer-badge">🛡️ Buffer</span>' : '';
   const extraCls    = isBlocked ? ' blocked' : isFlagged ? ' flagged' : isBuffer ? ' buffer' : '';
-  return `<div class="ticket-card type-${t.type}${extraCls}" onclick="openModal('${t.id}')">
+  // Daily mode: dimmed if not focused, "discussed" badge
+  let dailyDim = '';
+  let dailyFocus = '';
+  if (_dailyActive) {
+    if (_dailyMode === 'person') {
+      const _pList = _dailyPersonList();
+      const _curPerson = _pList[_dailyPersonIdx];
+      const isPersonTicket = _curPerson && _curPerson.tickets.some(pt => pt.id === t.id);
+      dailyFocus = isPersonTicket ? ' daily-focus-person' : '';
+      dailyDim = !isPersonTicket && t.status !== 'done' ? ' daily-dimmed' : '';
+    } else {
+      dailyDim = _dailyFocusId && _dailyFocusId !== t.id ? ' daily-dimmed' : '';
+      dailyFocus = _dailyFocusId === t.id ? ' daily-focus' : '';
+    }
+  }
+  const dailyDone = _dailyActive && _dailyDiscussed.has(t.id) && _dailyFocusId !== t.id ? '<span class="daily-done-badge">✓</span>' : '';
+  return `<div class="ticket-card type-${t.type}${extraCls}${dailyDim}${dailyFocus}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
     <div class="ticket-top">
       <span class="ticket-key">${_jiraBrowse(t.id)}</span>
       ${ptsBadge(t.points, {size:'small'})}
+      ${dailyDone}
     </div>
     <div class="ticket-title">${t.title}</div>
     <div class="ticket-meta">
@@ -1226,4 +1366,501 @@ function ticketCard(t) {
       ${bufferBadge}
     </div>
   </div>`;
+}
+
+// ============================================================
+// DAILY MODE — Système complet pour faciliter le daily standup
+// 3 modes : Walk the Board, Vue par Personne, + Parking Lot
+// ============================================================
+
+let _dailyActive   = false;
+let _dailyMode     = 'board';        // 'board' | 'person'
+let _dailyFocusId  = null;           // ticket id currently focused
+let _dailyFocusIdx = -1;             // index in ordered list
+let _dailyDiscussed = new Set();     // tickets already discussed
+let _dailyTimer    = null;           // interval id
+let _dailyStartMs  = 0;             // global timer start
+let _dailyTicketMs = 0;             // per-ticket timer start
+let _dailyPersonIdx = 0;            // current person index (person mode)
+let _dailyPersonStartMs = 0;        // per-person timer start
+let _dailyParkingLot = [];          // parking lot items
+
+// Ordered ticket list for walk-the-board (right to left: blocked → review → inprog → todo)
+function _dailyBoardOrder() {
+  const tickets = getTickets().filter(t => t.status !== 'done');
+  const order = ['blocked', 'review', 'inprog', 'todo'];
+  return tickets.sort((a, b) => {
+    const ai = order.indexOf(a.status); const bi = order.indexOf(b.status);
+    if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    // Within same status: high priority first
+    const prio = { critical: 0, high: 1, medium: 2, low: 3 };
+    return (prio[a.priority] ?? 2) - (prio[b.priority] ?? 2);
+  });
+}
+
+// Ordered person list for person mode
+// Seeded shuffle — deterministic per day, different each day
+function _dailyShuffle(arr) {
+  const d = new Date();
+  let seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  const shuffled = arr.slice();
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    seed = (seed * 16807 + 11) % 2147483647; // LCG
+    const j = seed % (i + 1);
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+function _dailyPersonList() {
+  const tickets = getTickets().filter(t => t.status !== 'done');
+  const members = [...new Set(tickets.map(t => t.assignee).filter(Boolean))].sort();
+  // Shuffle based on today's date — stable within a day, different each day
+  const shuffled = _dailyShuffle(members);
+  // Add "Non assigné" at the end if any
+  if (tickets.some(t => !t.assignee)) shuffled.push(null);
+  return shuffled.map(m => ({
+    name: m || 'Non assigné',
+    tickets: tickets.filter(t => (t.assignee || null) === m)
+      .sort((a, b) => {
+        const order = ['blocked', 'review', 'inprog', 'todo'];
+        return (order.indexOf(a.status) ?? 99) - (order.indexOf(b.status) ?? 99);
+      }),
+  }));
+}
+
+// ---- Toggle daily mode ON/OFF ----
+window._dailyToggle = function() {
+  _dailyActive = !_dailyActive;
+  if (_dailyActive) {
+    document.body.classList.add('daily-active');
+    _dailyDiscussed = new Set();
+    _dailyFocusId = null;
+    _dailyFocusIdx = -1;
+    _dailyStartMs = Date.now();
+    _dailyTicketMs = 0;
+    _dailyPersonIdx = 0;
+    _dailyPersonStartMs = Date.now();
+    _dailyParkingLot = JSON.parse(localStorage.getItem('daily_parking') || '[]');
+    _dailyFinishShown = false;
+    _dailyTimer = setInterval(_dailyUpdateTimers, 1000);
+    // Auto-focus first ticket in board mode
+    if (_dailyMode === 'board') {
+      const ordered = _dailyBoardOrder();
+      if (ordered.length) { _dailyFocusIdx = 0; _dailyFocusId = ordered[0].id; _dailyTicketMs = Date.now(); }
+    }
+  } else {
+    document.body.classList.remove('daily-active');
+    clearInterval(_dailyTimer);
+    _dailyTimer = null;
+    _dailyFocusId = null;
+  }
+  renderBoard(getTickets());
+  _dailyRenderPanel();
+};
+
+// ---- Switch daily sub-mode ----
+window._dailySetMode = function(mode) {
+  _dailyMode = mode;
+  if (mode === 'person') { _dailyPersonIdx = 0; _dailyPersonStartMs = Date.now(); _dailyFocusId = null; }
+  if (mode === 'board') {
+    const ordered = _dailyBoardOrder();
+    _dailyFocusIdx = _dailyDiscussed.size < ordered.length ? 0 : -1;
+    _dailyFocusId = ordered[_dailyFocusIdx]?.id || null;
+    _dailyTicketMs = Date.now();
+  }
+  renderBoard(getTickets());
+  _dailyRenderPanel();
+};
+
+// ---- Navigate tickets (board mode) ----
+window._dailyNext = function() {
+  if (_dailyMode === 'person') { _dailyNextPerson(); return; }
+  const ordered = _dailyBoardOrder();
+  if (!ordered.length) return;
+  // Mark current as discussed
+  if (_dailyFocusId) _dailyDiscussed.add(_dailyFocusId);
+  _dailyFocusIdx++;
+  if (_dailyFocusIdx >= ordered.length) {
+    _dailyFocusId = null; _dailyFocusIdx = ordered.length;
+    _dailyRenderPanel(); renderBoard(getTickets()); _dailyShowFinish(); return;
+  }
+  _dailyFocusId = ordered[_dailyFocusIdx].id;
+  _dailyTicketMs = Date.now();
+  renderBoard(getTickets());
+  _dailyRenderPanel();
+  _dailyScrollToFocus();
+};
+
+window._dailyPrev = function() {
+  if (_dailyMode === 'person') { _dailyPrevPerson(); return; }
+  const ordered = _dailyBoardOrder();
+  if (_dailyFocusIdx > 0) {
+    _dailyFocusIdx--;
+    _dailyFocusId = ordered[_dailyFocusIdx].id;
+    _dailyTicketMs = Date.now();
+  }
+  renderBoard(getTickets());
+  _dailyRenderPanel();
+  _dailyScrollToFocus();
+};
+
+// ---- Navigate persons (person mode) ----
+let _dailyFinishShown = false;
+
+function _dailyNextPerson() {
+  const persons = _dailyPersonList();
+  if (_dailyPersonIdx < persons.length - 1) {
+    persons[_dailyPersonIdx].tickets.forEach(t => _dailyDiscussed.add(t.id));
+    _dailyPersonIdx++;
+    _dailyPersonStartMs = Date.now();
+  } else if (_dailyPersonIdx === persons.length - 1 && !_dailyFinishShown) {
+    // Last person done
+    persons[_dailyPersonIdx].tickets.forEach(t => _dailyDiscussed.add(t.id));
+    renderBoard(getTickets());
+    _dailyRenderPanel();
+    _dailyShowFinish();
+    return;
+  }
+  renderBoard(getTickets());
+  _dailyRenderPanel();
+}
+
+function _dailyPrevPerson() {
+  if (_dailyPersonIdx > 0) { _dailyPersonIdx--; _dailyPersonStartMs = Date.now(); }
+  renderBoard(getTickets());
+  _dailyRenderPanel();
+}
+
+// ---- Parking lot ----
+let _dailyParkingOpen = false;
+
+window._dailyToggleParking = function() {
+  _dailyParkingOpen = !_dailyParkingOpen;
+  _dailyRenderPanel();
+};
+
+window._dailyAddParking = function() {
+  const input = document.getElementById('daily-parking-input');
+  if (!input) return;
+  const text = input.value.trim();
+  if (!text) return;
+  // Resolve assignee from focused ticket
+  const focusTicket = _dailyFocusId ? getTickets().find(t => t.id === _dailyFocusId) : null;
+  const assignee = focusTicket?.assignee || null;
+  // In person mode, use current person
+  let person = assignee;
+  if (_dailyMode === 'person') {
+    const persons = _dailyPersonList();
+    person = persons[_dailyPersonIdx]?.name || assignee;
+  }
+  _dailyParkingLot.push({ text, time: _dailyElapsed(_dailyStartMs), ticket: _dailyFocusId || null, assignee: person });
+  input.value = '';
+  localStorage.setItem('daily_parking', JSON.stringify(_dailyParkingLot));
+  _dailyRenderPanel();
+};
+
+window._dailyRemoveParking = function(i) {
+  _dailyParkingLot.splice(i, 1);
+  localStorage.setItem('daily_parking', JSON.stringify(_dailyParkingLot));
+  _dailyRenderPanel();
+};
+
+window._dailyCopyParking = function() {
+  if (!_dailyParkingLot.length) return;
+  const allTickets = getTickets();
+  let slack = `🅿️ *Parking Lot — Daily ${new Date().toLocaleDateString('fr-FR')}*\n`;
+  _dailyParkingLot.forEach((p, i) => {
+    slack += `> ${i + 1}. ${p.text}`;
+    if (p.assignee) slack += ` — @${p.assignee.split(' ')[0]}`;
+    if (p.ticket) {
+      const t = allTickets.find(x => x.id === p.ticket);
+      const url = typeof _jiraBrowseUrl === 'function' ? _jiraBrowseUrl(p.ticket) : null;
+      const title = t?.title || '';
+      if (url) {
+        slack += ` (<${url}|${p.ticket}>${title ? ' — ' + title : ''})`;
+      } else {
+        slack += ` (${p.ticket}${title ? ' — ' + title : ''})`;
+      }
+    }
+    slack += `\n`;
+  });
+  navigator.clipboard.writeText(slack).then(() => showToast('📋 Parking lot copié pour Slack !', 'success'));
+};
+
+// Is the tour done? (all tickets discussed or past last person)
+function _dailyIsTourDone() {
+  if (_dailyMode === 'board') {
+    const ordered = _dailyBoardOrder();
+    return ordered.length > 0 && _dailyFocusIdx >= ordered.length;
+  }
+  if (_dailyMode === 'person') {
+    const persons = _dailyPersonList();
+    return persons.length > 0 && _dailyPersonIdx >= persons.length - 1 && _dailyDiscussed.size > 0;
+  }
+  return false;
+};
+
+// ---- Timers ----
+function _dailyElapsed(startMs) {
+  const s = Math.floor((Date.now() - startMs) / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+
+function _dailyUpdateTimers() {
+  const globalEl = document.getElementById('daily-timer-global');
+  if (globalEl) globalEl.textContent = _dailyElapsed(_dailyStartMs);
+  const ticketEl = document.getElementById('daily-timer-ticket');
+  if (ticketEl && _dailyTicketMs) {
+    const s = Math.floor((Date.now() - _dailyTicketMs) / 1000);
+    ticketEl.textContent = _dailyElapsed(_dailyTicketMs);
+    ticketEl.className = 'daily-timer-ticket' + (s > 120 ? ' daily-timer-warn' : '');
+  }
+  const personEl = document.getElementById('daily-timer-person');
+  if (personEl && _dailyPersonStartMs) {
+    const s = Math.floor((Date.now() - _dailyPersonStartMs) / 1000);
+    personEl.textContent = _dailyElapsed(_dailyPersonStartMs);
+    personEl.className = 'daily-timer-person' + (s > 120 ? ' daily-timer-warn' : '');
+  }
+}
+
+// ---- Scroll to focused ticket ----
+function _dailyScrollToFocus() {
+  if (!_dailyFocusId) return;
+  // If the focused ticket is in the collapsed task swimlane, unfold it
+  const t = getTickets().find(x => x.id === _dailyFocusId);
+  if (t && _taskLaneCollapsed && t.type === 'tache' && Array.isArray(t.labels) &&
+      t.labels.some(l => l.includes('onboarding') || l.includes('actionretro'))) {
+    _taskLaneCollapsed = false;
+    localStorage.setItem('task_lane_collapsed', 'false');
+    renderBoard(getTickets());
+  }
+  setTimeout(() => {
+    const card = document.querySelector(`[data-ticket-id="${_dailyFocusId}"]`);
+    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 100);
+}
+
+// ---- Render the daily control panel ----
+function _dailyRenderPanel() {
+  let panel = document.getElementById('daily-panel');
+  if (!_dailyActive) { if (panel) panel.remove(); return; }
+
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'daily-panel';
+    const alerts = document.getElementById('sprint-alerts');
+    if (alerts) alerts.parentNode.insertBefore(panel, alerts.nextSibling);
+    else document.getElementById('view-scrum')?.prepend(panel);
+  }
+
+  const ordered = _dailyMode === 'board' ? _dailyBoardOrder() : [];
+  const persons = _dailyMode === 'person' ? _dailyPersonList() : [];
+
+  // Progress counter: tickets in board mode, persons in person mode
+  let progressLabel = '';
+  if (_dailyMode === 'board') {
+    progressLabel = `${_dailyDiscussed.size} / ${ordered.length}`;
+  } else {
+    progressLabel = `${_dailyPersonIdx + 1} / ${persons.length}`;
+  }
+
+  // Current focus info
+  let focusInfo = '';
+  if (_dailyMode === 'board' && _dailyFocusId) {
+    const t = getTickets().find(x => x.id === _dailyFocusId);
+    if (t) {
+      const sc = { blocked: '#DC2626', review: '#7C3AED', inprog: '#2563EB', todo: '#94A3B8' };
+      focusInfo = `<div class="daily-focus-info">
+        <span class="daily-focus-status" style="background:${(sc[t.status] || '#94A3B8')}18;color:${sc[t.status] || '#94A3B8'};border:1px solid ${(sc[t.status] || '#94A3B8')}33;">${statusLabel(t.status)}</span>
+        <strong>${t.id}</strong> — ${(t.title || '').slice(0, 60)}
+        ${t.assignee ? `<span class="daily-focus-assignee">@${t.assignee.split(' ')[0]}</span>` : ''}
+        <span id="daily-timer-ticket" class="daily-timer-ticket">${_dailyTicketMs ? _dailyElapsed(_dailyTicketMs) : ''}</span>
+      </div>`;
+    }
+  }
+
+  // Person mode info
+  let personInfo = '';
+  if (_dailyMode === 'person' && persons.length) {
+    const p = persons[_dailyPersonIdx];
+    const avatarColor = MEMBER_COLORS[p.name] || '#64748B';
+    const blocked = p.tickets.filter(t => t.status === 'blocked');
+    const inprog = p.tickets.filter(t => t.status === 'inprog' || t.status === 'review');
+    const todo = p.tickets.filter(t => t.status === 'todo');
+
+    personInfo = `<div class="daily-person-card">
+      <div class="daily-person-header">
+        <span class="avatar" style="background:${avatarColor};width:28px;height:28px;font-size:11px;">${initials(p.name)}</span>
+        <strong style="font-size:14px;">${p.name}</strong>
+        <span style="font-size:11px;color:var(--text-muted);">${p.tickets.length} ticket${p.tickets.length > 1 ? 's' : ''}</span>
+        <span id="daily-timer-person" class="daily-timer-person">${_dailyElapsed(_dailyPersonStartMs)}</span>
+      </div>
+      <div class="daily-person-tickets">
+        ${blocked.length ? `<div class="daily-person-group"><span class="daily-pg-label" style="color:#DC2626">🚧 Bloqué (${blocked.length})</span>${blocked.map(t => _dailyTicketMini(t)).join('')}</div>` : ''}
+        ${inprog.length ? `<div class="daily-person-group"><span class="daily-pg-label" style="color:#2563EB">🔄 En cours (${inprog.length})</span>${inprog.map(t => _dailyTicketMini(t)).join('')}</div>` : ''}
+        ${todo.length ? `<div class="daily-person-group"><span class="daily-pg-label" style="color:#94A3B8">📋 À faire (${todo.length})</span>${todo.map(t => _dailyTicketMini(t)).join('')}</div>` : ''}
+        ${!p.tickets.length ? '<div style="font-size:11px;color:var(--text-muted);padding:4px 0;">Aucun ticket en cours</div>' : ''}
+      </div>
+    </div>`;
+  }
+
+  // Person progress dots
+  let personDots = '';
+  if (_dailyMode === 'person' && persons.length) {
+    personDots = `<div class="daily-person-dots">${persons.map((p, i) => {
+      const cls = i < _dailyPersonIdx ? 'done' : i === _dailyPersonIdx ? 'current' : '';
+      return `<span class="daily-dot ${cls}" title="${p.name}" onclick="_dailyPersonIdx=${i};_dailyPersonStartMs=Date.now();renderBoard(getTickets());_dailyRenderPanel();">${initials(p.name)}</span>`;
+    }).join('')}</div>`;
+  }
+
+  // Parking lot
+  const tourDone = _dailyIsTourDone();
+  // Auto-open when tour ends
+  const parkingVisible = _dailyParkingOpen || tourDone;
+  const parkingCount = _dailyParkingLot.length;
+  const parkingArrow = parkingVisible ? '▼' : '▶';
+
+  const parkingHtml = `<div class="daily-parking${tourDone ? ' daily-parking-highlight' : ''}">
+    <div class="daily-parking-header" onclick="_dailyToggleParking()" style="cursor:pointer;">
+      <span style="font-size:10px;color:var(--text-muted);">${parkingArrow}</span>
+      <span style="font-size:13px;">🅿️</span>
+      <strong style="font-size:12px;">Parking Lot</strong>
+      <span style="font-size:11px;color:var(--text-muted);">${parkingCount} sujet${parkingCount > 1 ? 's' : ''}</span>
+      ${tourDone && parkingCount ? `<button class="daily-parking-copy" onclick="event.stopPropagation();_dailyCopyParking()" title="Copier pour Slack">📋 Copier Slack</button>` : ''}
+    </div>
+    ${parkingVisible ? `
+      <div class="daily-parking-input-wrap">
+        <input id="daily-parking-input" type="text" placeholder="Sujet à creuser après le daily…" onkeydown="if(event.key==='Enter')_dailyAddParking()">
+        <button onclick="_dailyAddParking()">+</button>
+      </div>
+      ${parkingCount ? `<div class="daily-parking-items">${_dailyParkingLot.map((p, i) =>
+        `<div class="daily-parking-item">
+          <span class="daily-parking-text">${p.text}</span>
+          ${p.assignee ? `<span class="daily-parking-assignee">@${p.assignee.split(' ')[0]}</span>` : ''}
+          ${p.ticket ? `<span class="daily-parking-ref">${p.ticket}</span>` : ''}
+          <span class="daily-parking-time">${p.time}</span>
+          <button class="daily-parking-del" onclick="_dailyRemoveParking(${i})">✕</button>
+        </div>`
+      ).join('')}</div>` : ''}
+    ` : ''}
+  </div>`;
+
+  panel.innerHTML = `
+    <div class="daily-toolbar">
+      <div class="daily-toolbar-left">
+        <span style="font-size:16px;">☀️</span>
+        <strong style="font-size:13px;">Daily Mode</strong>
+        <div class="daily-mode-btns">
+          <button class="${_dailyMode === 'board' ? 'active' : ''}" onclick="_dailySetMode('board')" title="Walk the board">▤ Board</button>
+          <button class="${_dailyMode === 'person' ? 'active' : ''}" onclick="_dailySetMode('person')" title="Par personne">👤 Personne</button>
+        </div>
+      </div>
+      <div class="daily-toolbar-center">
+        <button class="daily-nav-btn" onclick="_dailyPrev()" title="Précédent">◀</button>
+        <span class="daily-progress">${progressLabel}</span>
+        <button class="daily-nav-btn daily-nav-next" onclick="_dailyNext()" title="Suivant">▶</button>
+      </div>
+      <div class="daily-toolbar-right">
+        <span class="daily-timer-global" id="daily-timer-global">${_dailyElapsed(_dailyStartMs)}</span>
+        <button class="daily-end-btn" onclick="_dailyToggle()" title="Terminer le daily">✕ Fin</button>
+      </div>
+    </div>
+    ${focusInfo}
+    ${personInfo}
+    ${personDots}
+    ${parkingHtml}
+  `;
+}
+
+function _dailyTicketMini(t) {
+  const sc = { blocked: '#DC2626', review: '#7C3AED', inprog: '#2563EB', todo: '#94A3B8' };
+  const color = sc[t.status] || '#94A3B8';
+  return `<div class="daily-ticket-mini" onclick="openModal('${t.id}')">
+    <span style="font-weight:700;color:${color};font-size:11px;">${t.id}</span>
+    <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title || ''}</span>
+    ${t.points ? `<span style="font-size:10px;color:var(--text-muted);font-weight:700;">${t.points}pts</span>` : ''}
+  </div>`;
+}
+
+// ============================================================
+// Daily finish — celebration or encouragement
+// ============================================================
+function _dailyShowFinish() {
+  _dailyFinishShown = true;
+  const elapsedSec = Math.floor((Date.now() - _dailyStartMs) / 1000);
+  const elapsedMin = Math.floor(elapsedSec / 60);
+  const elapsedStr = `${elapsedMin}:${String(elapsedSec % 60).padStart(2, '0')}`;
+  const underTime = elapsedSec <= 15 * 60;
+
+  // Create overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'daily-finish-overlay';
+  overlay.onclick = () => overlay.remove();
+
+  if (underTime) {
+    // Confetti animation + celebration
+    overlay.innerHTML = `
+      <div class="daily-finish-card daily-finish-success">
+        <div class="daily-finish-confetti" id="daily-confetti"></div>
+        <div class="daily-finish-emoji">🎉</div>
+        <div class="daily-finish-title">Daily en ${elapsedStr} !</div>
+        <div class="daily-finish-sub">${elapsedMin <= 10 ? 'Impressionnant, ultra-efficace !' : 'Bien joué, dans les temps !'}</div>
+        <div class="daily-finish-stats">
+          <span>✅ ${_dailyDiscussed.size} tickets</span>
+          <span>🅿️ ${_dailyParkingLot.length} parking</span>
+        </div>
+        <button class="daily-finish-btn" onclick="this.parentElement.parentElement.remove()">Fermer</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    _dailySpawnConfetti(document.getElementById('daily-confetti'));
+  } else {
+    // Encouragement
+    const overMin = elapsedMin - 15;
+    const tips = [
+      'Essayez le mode "Walk the Board" pour rester focalisé sur les tickets.',
+      'Utilisez le Parking Lot pour reporter les discussions longues.',
+      'Limitez-vous à 30 secondes par ticket max.',
+      'Commencez par les bloquants, ils sont souvent les plus urgents.',
+      'Si un sujet dépasse 1 min, direction le Parking Lot !',
+    ];
+    const tip = tips[Math.floor(Math.random() * tips.length)];
+    overlay.innerHTML = `
+      <div class="daily-finish-card daily-finish-overtime">
+        <div class="daily-finish-emoji">⏱️</div>
+        <div class="daily-finish-title">Daily en ${elapsedStr}</div>
+        <div class="daily-finish-sub">${overMin} min au-delà des 15 min — on fera mieux demain !</div>
+        <div class="daily-finish-tip">💡 ${tip}</div>
+        <div class="daily-finish-stats">
+          <span>✅ ${_dailyDiscussed.size} tickets</span>
+          <span>🅿️ ${_dailyParkingLot.length} parking</span>
+        </div>
+        <button class="daily-finish-btn" onclick="this.parentElement.parentElement.remove()">Fermer</button>
+      </div>`;
+    document.body.appendChild(overlay);
+  }
+}
+
+// Mini confetti burst (pure CSS + JS, no lib)
+function _dailySpawnConfetti(container) {
+  if (!container) return;
+  const colors = ['#F59E0B', '#10B981', '#3B82F6', '#EC4899', '#8B5CF6', '#EF4444', '#06B6D4'];
+  for (let i = 0; i < 60; i++) {
+    const dot = document.createElement('span');
+    dot.className = 'daily-confetti-dot';
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    const left = 50 + (Math.random() - 0.5) * 80;
+    const angle = (Math.random() - 0.5) * 120;
+    const dist = 80 + Math.random() * 180;
+    const size = 5 + Math.random() * 6;
+    const dur = 0.8 + Math.random() * 0.8;
+    const delay = Math.random() * 0.3;
+    dot.style.cssText = `
+      left:${left}%;top:40%;width:${size}px;height:${size}px;background:${color};
+      --tx:${angle}px;--ty:${-dist}px;--rot:${Math.random() * 720}deg;
+      animation-duration:${dur}s;animation-delay:${delay}s;
+      border-radius:${Math.random() > 0.5 ? '50%' : '2px'};
+    `;
+    container.appendChild(dot);
+  }
 }

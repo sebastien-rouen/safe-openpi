@@ -33,6 +33,8 @@ function showView(view) {
     settings: '⚙️ Paramètres',
     roadmap:  '🗺️ Roadmap & Planification',
     piprep:   '📋 Préparation PI Planning',
+    standup:  '☀️ Daily Standup',
+    releases: '🚀 Releases & Projection',
   };
   // La vue Scrum met à jour son propre titre via renderScrum() — inutile de l'écraser ici
   if (view !== 'scrum') document.getElementById('topbar-title').textContent = titles[view] || '';
@@ -47,6 +49,8 @@ function showView(view) {
   if (view === 'settings') renderSettings();
   if (view === 'roadmap')  renderRoadmap();
   if (view === 'piprep')   renderPIPrep();
+  if (view === 'standup')  renderStandup();
+  if (view === 'releases') renderReleases();
 
   // Sidebar progress is only built inside renderScrum — refresh it for other views too
   if (view !== 'scrum') { _renderSidebarProgress(); _updateSidebarStats(); }
@@ -86,7 +90,9 @@ function _updateTopbarActions(view) {
     reports: 'Rapports',
     support: 'Support',
     roadmap: 'Roadmap',
-    piprep:  'Prépa PI',
+    piprep:   'Prépa PI',
+    standup:  'Standup',
+    releases: 'Releases',
   };
   // Mapping vue → section rapport
   const viewToSection = { scrum:'sprint', kanban:'kanban', pi:'pi', support:'support', roadmap:'roadmap', piprep:'piprep' };
@@ -105,6 +111,8 @@ function _updateTopbarActions(view) {
     support:  `${png}${rpt}`,
     roadmap:  `${png}${rpt}`,
     piprep:   `<button class="btn btn-secondary" onclick="_ppExportJSON()">💾 Exporter JSON</button>${png}${rpt}`,
+    standup:  png,
+    releases: png,
     settings: '',
   };
 
@@ -181,7 +189,7 @@ function _applyHash() {
 
   const parts = hash.split('/');
   const view  = parts[0];
-  const views = ['scrum', 'kanban', 'pi', 'reports', 'support', 'settings', 'roadmap', 'piprep'];
+  const views = ['scrum', 'kanban', 'pi', 'reports', 'support', 'settings', 'roadmap', 'piprep', 'standup', 'releases'];
   if (!views.includes(view)) return false;
 
   // Contexte équipe / groupe
@@ -238,8 +246,13 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft')  { e.preventDefault(); modalNavigate(-1); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); modalNavigate(1);  return; }
   }
+  // Arrow navigation in daily mode
+  if (typeof _dailyActive !== 'undefined' && _dailyActive) {
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); _dailyPrev(); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); _dailyNext(); return; }
+  }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  const map = { '1': 'scrum', '2': 'kanban', '3': 'pi', '4': 'reports', '5': 'support', '6': 'settings', '7': 'roadmap', '8': 'piprep' };
+  const map = { '1': 'scrum', '2': 'kanban', '3': 'roadmap', '4': 'piprep', '5': 'pi', '6': 'standup', '7': 'releases', '8': 'reports', '9': 'support', '0': 'settings' };
   if (map[e.key]) showView(map[e.key]);
 });
 

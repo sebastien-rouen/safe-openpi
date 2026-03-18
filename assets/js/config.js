@@ -75,6 +75,11 @@ const CONFIG = {
     demoDays:  1,  // J-N avant fin de sprint → "Préparation démo"
     moodDays:  2,  // J-N avant fin de sprint → "Mood meter (ROTI)"
     voteDays:  1,  // J+N après début de sprint → "Vote de confiance PI Objectives"
+    scopeCreepThreshold:   2,    // Stories ajoutées mid-sprint pour déclencher l'alerte scope creep
+    blockedRatioThreshold: 0.3,  // Ratio bloquants / en cours pour déclencher l'alerte
+    velocityDropPct:       15,   // % de chute sur 3 sprints pour alerter
+    depAlertDays:          5,    // Jours avant cible pour signaler dépendance non résolue
+    backlogAgingSprints:   3,    // Sprints sans mouvement → ticket "vieillissant"
   },
 
   // --- Couleurs par type de ticket (doit rester cohérent avec base.css :root) ---

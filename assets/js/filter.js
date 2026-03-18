@@ -83,8 +83,10 @@ function selectTeam(team) {
     renderReport();
   }
   if (currentView === 'support') renderSupport();
-  if (currentView === 'roadmap') renderRoadmap();
-  if (currentView === 'piprep')  renderPIPrep();
+  if (currentView === 'roadmap')  renderRoadmap();
+  if (currentView === 'piprep')   renderPIPrep();
+  if (currentView === 'standup')  renderStandup();
+  if (currentView === 'releases') renderReleases();
   _pushHash();
 }
 
@@ -109,8 +111,10 @@ function selectGroup(gid) {
     renderReport();
   }
   if (currentView === 'support') renderSupport();
-  if (currentView === 'roadmap') renderRoadmap();
-  if (currentView === 'piprep')  renderPIPrep();
+  if (currentView === 'roadmap')  renderRoadmap();
+  if (currentView === 'piprep')   renderPIPrep();
+  if (currentView === 'standup')  renderStandup();
+  if (currentView === 'releases') renderReleases();
   _pushHash();
 }
 

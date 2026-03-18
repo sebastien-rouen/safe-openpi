@@ -65,10 +65,12 @@
     <div class="nav-item"        onclick="showView('roadmap')"  data-view="roadmap">  <span class="nav-icon">🗺️</span> Roadmap</div>
     <div class="nav-item"        onclick="showView('pi')"       data-view="pi">       <span class="nav-icon">🗓️</span> PI Planning</div>
     <div class="nav-item"        onclick="showView('piprep')"   data-view="piprep">   <span class="nav-icon">📋</span> PI Planning suivant</div>
+    <div class="nav-item"        onclick="showView('standup')"   data-view="standup">   <span class="nav-icon">☀️</span> Standup</div>
+    <div class="nav-item"        onclick="showView('releases')"  data-view="releases">  <span class="nav-icon">🚀</span> Releases</div>
     <div class="nav-item"        onclick="showView('reports')"  data-view="reports">  <span class="nav-icon">📊</span> Rapports</div>
     <div class="nav-item"        onclick="showView('support')"  data-view="support">  <span class="nav-icon">🎫</span> Support</div>
     <div class="nav-item"        onclick="showView('settings')" data-view="settings"> <span class="nav-icon">⚙️</span> Paramètres</div>
-    <div class="shortcut-hint">⌨️ Raccourcis: 1-8</div>
+    <div class="shortcut-hint">⌨️ Raccourcis: 1-0</div>
   </nav>
 
   <div class="sidebar-stats">
@@ -129,7 +131,10 @@
       <div class="hierarchy" id="hierarchy-view"></div>
       <div class="section-header">
         <div class="section-title">📋 Tableau Sprint</div>
-        <div class="board-view-toggle" id="board-view-toggle"></div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <button class="daily-toggle-btn" id="daily-toggle-btn" onclick="_dailyToggle()" title="Activer le Daily Mode">☀️ Daily</button>
+          <div class="board-view-toggle" id="board-view-toggle"></div>
+        </div>
       </div>
       <div class="board" id="scrum-board"></div>
       <div style="margin-top:24px;" class="section-header"><div class="section-title">📈 Métriques Sprint</div></div>
@@ -222,6 +227,16 @@
     <!-- VUE PRÉPARATION PI PLANNING -->
     <div class="view" id="view-piprep"></div>
 
+    <!-- VUE STANDUP -->
+    <div class="view" id="view-standup">
+      <div id="standup-content"></div>
+    </div>
+
+    <!-- VUE RELEASES -->
+    <div class="view" id="view-releases">
+      <div id="releases-content"></div>
+    </div>
+
   </div><!-- #content -->
 </div><!-- #main -->
 
@@ -274,6 +289,8 @@
 <script src="assets/js/settings.js"></script>
 <script src="assets/js/roadmap.js"></script>
 <script src="assets/js/piprep.js"></script>
+<script src="assets/js/standup.js"></script>
+<script src="assets/js/releases.js"></script>
 <script src="assets/js/navigation.js"></script>
 
 </body>
