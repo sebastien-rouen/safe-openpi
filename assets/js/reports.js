@@ -9,6 +9,7 @@ const _RPT_SECTIONS = [
   { id: 'support', icon: '🎫', label: 'Support' },
   { id: 'roadmap', icon: '🗺️', label: 'Roadmap' },
   { id: 'piprep',  icon: '📋', label: 'Prépa PI' },
+  { id: 'mood',    icon: '😊', label: 'Mood / Vélocité' },
   { id: 'sondage', icon: '🎲', label: 'Sondage' },
 ];
 
@@ -38,7 +39,7 @@ function renderReportTabs() {
   if (!tabsEl) return;
 
   // Sections sans onglets équipes
-  if (['support', 'piprep'].includes(reportSection)) {
+  if (['support', 'piprep', 'mood'].includes(reportSection)) {
     tabsEl.innerHTML = '';
     return;
   }
@@ -99,6 +100,7 @@ function renderReport() {
     support: () => _rptSupport(el, isSlack),
     roadmap: () => _rptRoadmap(el, isSlack),
     piprep:  () => _rptPIPrep(el, isSlack),
+    mood:    () => _rptMoodVelocity(el, isSlack),
     sondage: () => _rptSondage(el, isSlack),
   };
 
@@ -1033,6 +1035,190 @@ function _rptAppendKanbanCharts(container, tickets) {
       },
     });
   }
+}
+
+// ============================================================
+// 8. MOOD / VÉLOCITÉ — Corrélation satisfaction × performance
+// ============================================================
+
+function _rptMoodVelocity(el, isSlack) {
+  const allTeams = _allTeams();
+  const moodVotes = (typeof _moodData === 'function') ? (_moodData().votes || {}) : {};
+
+  // Collect mood + velocity data per team per sprint
+  const rows = [];
+  allTeams.forEach(team => {
+    const hist = CONFIG.teams[team]?.velocityHistory || [];
+    hist.forEach(h => {
+      const key = `${team}__${h.name}`;
+      const votes = moodVotes[key];
+      const avg = Array.isArray(votes) && votes.length ? Math.round(votes.reduce((a, v) => a + v, 0) / votes.length * 10) / 10 : null;
+      rows.push({ team, sprint: h.name, velocity: h.velocity || 0, mood: avg });
+    });
+  });
+
+  // Filter rows with mood data
+  const withMood = rows.filter(r => r.mood !== null);
+
+  // Compute correlation if enough data
+  let correlation = null;
+  let trend = '';
+  if (withMood.length >= 3) {
+    const n = withMood.length;
+    const sumX = withMood.reduce((a, r) => a + r.mood, 0);
+    const sumY = withMood.reduce((a, r) => a + r.velocity, 0);
+    const sumXY = withMood.reduce((a, r) => a + r.mood * r.velocity, 0);
+    const sumX2 = withMood.reduce((a, r) => a + r.mood * r.mood, 0);
+    const sumY2 = withMood.reduce((a, r) => a + r.velocity * r.velocity, 0);
+    const denom = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+    correlation = denom ? Math.round((n * sumXY - sumX * sumY) / denom * 100) / 100 : 0;
+    trend = correlation > 0.5 ? '📈 Forte corrélation positive' :
+            correlation > 0.2 ? '📊 Corrélation modérée' :
+            correlation > -0.2 ? '➡️ Pas de corrélation claire' :
+            correlation > -0.5 ? '📉 Corrélation négative modérée' : '⚠️ Forte corrélation négative';
+  }
+
+  // Per-team summary
+  const teamSummary = allTeams.map(team => {
+    const teamRows = rows.filter(r => r.team === team);
+    const moods = teamRows.filter(r => r.mood !== null);
+    const avgMood = moods.length ? Math.round(moods.reduce((a, r) => a + r.mood, 0) / moods.length * 10) / 10 : null;
+    const avgVel = teamRows.length ? Math.round(teamRows.reduce((a, r) => a + r.velocity, 0) / teamRows.length) : 0;
+    const velTarget = CONFIG.teams[team]?.velocity || CONFIG.sprint.velocityTarget || 80;
+    return { team, avgMood, avgVel, velTarget, dataPoints: moods.length };
+  });
+
+  if (isSlack) {
+    let t = `😊 *Rapport Mood / Vélocité*\n`;
+    t += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+
+    if (correlation !== null) {
+      t += `📊 *Corrélation globale :* r = ${correlation} — ${trend}\n\n`;
+    }
+
+    t += `*Synthèse par équipe :*\n`;
+    teamSummary.forEach(ts => {
+      const moodStr = ts.avgMood !== null ? `${ts.avgMood}/5` : 'N/A';
+      const emoji = ts.avgMood >= 4 ? '😊' : ts.avgMood >= 3 ? '😐' : ts.avgMood !== null ? '😟' : '❓';
+      const velDelta = ts.avgVel - ts.velTarget;
+      const velEmoji = velDelta >= 0 ? '📈' : '📉';
+      t += `> ${emoji} *${ts.team}* — Mood: ${moodStr} | Vélocité: ${ts.avgVel} pts (cible ${ts.velTarget}) ${velEmoji} ${velDelta >= 0 ? '+' : ''}${velDelta}\n`;
+    });
+
+    if (withMood.length) {
+      t += `\n*Détail par sprint :*\n`;
+      withMood.slice(-10).forEach(r => {
+        const moodBar = '█'.repeat(Math.round(r.mood)) + '░'.repeat(5 - Math.round(r.mood));
+        t += `> • *${r.team}* ${r.sprint} — Mood: ${moodBar} ${r.mood}/5 | Vélo: ${r.velocity} pts\n`;
+      });
+    } else {
+      t += `\n> _Aucune donnée mood disponible. Utilisez le mood meter (ROTI) en fin de sprint._\n`;
+    }
+
+    t += `\n_Rapport généré le ${_rptDate()} — JIRA Dashboard_`;
+    _rptSetSlack(el, t);
+  } else {
+    let h = `<h1>😊 Rapport Mood / Vélocité</h1>`;
+
+    if (correlation !== null) {
+      const corrColor = correlation > 0.3 ? '#16A34A' : correlation > -0.3 ? '#F59E0B' : '#DC2626';
+      h += `<div style="margin:12px 0;padding:12px 16px;background:${corrColor}12;border:1px solid ${corrColor}33;border-radius:8px;">
+        <strong style="color:${corrColor}">Corrélation : r = ${correlation}</strong> — ${trend}
+      </div>`;
+    }
+
+    h += `<h2>Synthèse par équipe</h2>`;
+    h += `<table><thead><tr><th>Équipe</th><th>Mood moy.</th><th>Vélocité moy.</th><th>Cible</th><th>Écart</th><th>Données</th></tr></thead><tbody>`;
+    teamSummary.forEach(ts => {
+      const moodStr = ts.avgMood !== null ? `${ts.avgMood}/5` : '—';
+      const delta = ts.avgVel - ts.velTarget;
+      const deltaColor = delta >= 0 ? '#16A34A' : '#DC2626';
+      h += `<tr><td><strong>${ts.team}</strong></td><td>${moodStr}</td><td>${ts.avgVel} pts</td><td>${ts.velTarget} pts</td><td style="color:${deltaColor};font-weight:700">${delta >= 0 ? '+' : ''}${delta}</td><td>${ts.dataPoints} sprints</td></tr>`;
+    });
+    h += `</tbody></table>`;
+
+    if (withMood.length) {
+      h += `<h2>Détail sprints avec données mood</h2>`;
+      h += `<table><thead><tr><th>Équipe</th><th>Sprint</th><th>Mood</th><th>Vélocité</th></tr></thead><tbody>`;
+      withMood.slice(-15).forEach(r => {
+        const moodColor = r.mood >= 4 ? '#16A34A' : r.mood >= 3 ? '#F59E0B' : '#DC2626';
+        h += `<tr><td>${r.team}</td><td>${r.sprint}</td><td style="color:${moodColor};font-weight:700">${r.mood}/5</td><td>${r.velocity} pts</td></tr>`;
+      });
+      h += `</tbody></table>`;
+    }
+
+    _rptSetConf(el, h);
+  }
+
+  // Render scatter chart after DOM
+  setTimeout(() => _rptMoodVelocityChart(el, withMood, correlation), 50);
+}
+
+function _rptMoodVelocityChart(container, data, correlation) {
+  if (data.length < 2) return;
+
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'margin-top:20px;background:var(--card,#fff);border:1.5px solid var(--border);border-radius:10px;padding:16px;';
+  wrap.innerHTML = `
+    <div style="font-weight:700;font-size:13px;margin-bottom:4px;">📊 Corrélation Mood × Vélocité${correlation !== null ? ` (r=${correlation})` : ''}</div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:10px;">Chaque point = 1 équipe × 1 sprint</div>
+    <div style="position:relative;height:250px;"><canvas id="rpt-mood-vel-scatter"></canvas></div>`;
+  container.appendChild(wrap);
+
+  const ctx = document.getElementById('rpt-mood-vel-scatter');
+  if (!ctx) return;
+
+  const colors = {};
+  const allTeams = _allTeams();
+  allTeams.forEach(t => { colors[t] = _teamColor(t); });
+
+  const datasets = allTeams.map(team => {
+    const teamData = data.filter(d => d.team === team);
+    if (!teamData.length) return null;
+    return {
+      label: team,
+      data: teamData.map(d => ({ x: d.mood, y: d.velocity })),
+      backgroundColor: colors[team] || '#475569',
+      borderColor: colors[team] || '#475569',
+      pointRadius: 6,
+      pointHoverRadius: 8,
+    };
+  }).filter(Boolean);
+
+  new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { font: { size: 11 }, usePointStyle: true, pointStyle: 'circle' } },
+        tooltip: {
+          backgroundColor: 'rgba(15,23,42,.94)',
+          titleFont: { size: 11 },
+          bodyFont: { size: 11 },
+          padding: 8,
+          cornerRadius: 6,
+          callbacks: {
+            label: ctx => `${ctx.dataset.label}: Mood ${ctx.parsed.x}/5 → ${ctx.parsed.y} pts`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Mood (1-5)', font: { size: 11, weight: 'bold' } },
+          min: 0.5, max: 5.5,
+          grid: { color: 'rgba(0,0,0,.06)' },
+          ticks: { font: { size: 11 } },
+        },
+        y: {
+          title: { display: true, text: 'Vélocité (pts)', font: { size: 11, weight: 'bold' } },
+          grid: { color: 'rgba(0,0,0,.06)' },
+          ticks: { font: { size: 11 } },
+        },
+      },
+    },
+  });
 }
 
 // ============================================================

@@ -20,8 +20,6 @@ Ouvrir `index.html` dans un navigateur — les données démo se chargent automa
    JIRA_USER=prenom.nom@email.com
    JIRA_TOKEN=votre-token-api-atlassian
    JIRA_PROJECT=PROJ
-   JIRA_BOARD_ID=42
-   SPRINT_CURRENT=1234
    ```
 2. Générer `assets/js/env.js` (si Node.js disponible) :
    ```bash

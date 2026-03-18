@@ -13,7 +13,7 @@ JIRA-Dashboard/
 │   ├── css/
 │   │   ├── base.css        # Variables CSS :root, reset, sidebar (resizable), topbar, boutons, badges, modal, toast
 │   │   ├── board.css       # Boards scrum/kanban, cartes tickets, sidebar groupes
-│   │   └── views.css       # Sprint bar, charts, hiérarchie, PI, rapports, support, paramètres, roadmap, piprep, sondage
+│   │   └── views.css       # Sprint bar, charts, hiérarchie, PI, rapports, support, paramètres, roadmap, piprep, standup, releases, sondage
 │   └── js/
 │       ├── vendor/
 │       │   ├── chart.umd.min.js     # Chart.js 4.4.0 (local, pas CDN)
@@ -31,19 +31,21 @@ JIRA-Dashboard/
 │       ├── scrum.js        # renderScrum, renderHierarchy, renderBoard, ticketCard, _showScrumStatDetail
 │       ├── kanban.js       # renderKanban() — colonnes WIP, CFD chart, cycle time
 │       ├── pi.js           # renderPI() — grille SAFe, objectifs, capacity chart
-│       ├── reports.js      # renderReport — 7 sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Sondage) · Slack/Confluence · aperçu visuel
+│       ├── reports.js      # renderReport — 8 sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Mood/Vélocité, Sondage) · Slack/Confluence · aperçu visuel
 │       ├── support.js      # renderSupport, renderSupportList, filterSupport
 │       ├── settings.js     # renderSettings, toggleGroupTeam, addGroup
 │       ├── roadmap.js      # renderRoadmap() — vélocité 80/20, chronologie, simulation sprints, calendrier PI, backlog
 │       ├── piprep.js       # renderPIPrep() — objectifs, ROAM, dépendances, capacité individuelle, calendrier PI, fist of five
-│       └── navigation.js   # showView(), raccourcis clavier (1-8 / Échap / Ctrl+K), sidebar resize, recherche globale, init
+│       ├── standup.js      # renderStandup() — daily standup (terminé hier, en cours, bloqué, risques)
+│       ├── releases.js     # renderReleases() — Gantt features, burnup par feature, projection
+│       └── navigation.js   # showView(), raccourcis clavier (1-0 / Échap / Ctrl+K), sidebar resize, recherche globale, init
 ```
 
 ## Ordre de chargement JS (important — pas de modules ES)
 
 Les `<script src>` dans `index.html` doivent respecter cet ordre strict :
 
-`config` → `data` → `demo/*` → `state` → `utils` → `filter` → **`jira`** → `sync` → `modal` → `export` → `charts` → `scrum` → `kanban` → `pi` → `reports` → `support` → `settings` → **`roadmap`** → **`piprep`** → `navigation`
+`config` → `data` → `demo/*` → `state` → `utils` → `filter` → **`jira`** → `sync` → `modal` → `export` → `charts` → `scrum` → `kanban` → `pi` → `reports` → `support` → `settings` → **`roadmap`** → **`piprep`** → `standup` → `releases` → `navigation`
 
 Le fichier `demo/*.js` (actif) est chargé juste après `data.js` pour pré-remplir les globals avec des données démo.
 Si JIRA est configuré (`CONFIG.jira.url` et `CONFIG.jira.token`), `navigation.js` appelle automatiquement `loadJiraData()` au démarrage et écrase les données démo.
@@ -117,18 +119,20 @@ Ticket support (SUPPORT_TICKETS) — id, title, priority, status, assignee, date
 6. Ajouter `<script src="assets/js/nomvue.js">` **avant** `navigation.js` dans `index.html`
 7. Ajouter le refresh dans `selectTeam()` et `selectGroup()` dans `filter.js`
 
-## Vues disponibles (raccourcis 1–8)
+## Vues disponibles (raccourcis 1–0)
 
 | Touche | Vue | Description |
 |--------|-----|-------------|
 | `1` | Scrum | Board sprint (3 vues : colonnes/swimlanes/liste triable) · alertes sprint · activité du jour (changelog JIRA) · burndown/burnup/velocity/CFD |
 | `2` | Kanban | Colonnes WIP + CFD kanban + cycle time |
-| `3` | Roadmap | Vélocité 80/20, chronologie, simulation backlog |
-| `4` | Prépa PI | Calendrier PI, objectifs, ROAM, dépendances, capacité individuelle, fist of five |
-| `5` | PI Planning | Grille SAFe · objectifs · capacité vs charge |
-| `6` | Rapports | Multi-sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Sondage) · Slack/Confluence · aperçu visuel |
-| `7` | Support | Tickets support/incidents |
-| `8` | Paramètres | Groupes d'équipes, configuration |
+| `3` | Roadmap | Vélocité 80/20, chronologie, simulation backlog, santé backlog |
+| `4` | Prépa PI | Calendrier PI, objectifs, ROAM, dépendances, heatmap, capacité individuelle, fist of five, multi-PI |
+| `5` | PI Planning | Grille SAFe · objectifs avec alertes risque · capacité vs charge · alertes dépendances |
+| `6` | Standup | Daily standup condensé : terminé hier, en cours, bloqué, risques |
+| `7` | Releases | Gantt features, burnup par feature, projection dates |
+| `8` | Rapports | Multi-sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Mood/Vélocité, Sondage) · Slack/Confluence |
+| `9` | Support | Tickets support/incidents |
+| `0` | Paramètres | Groupes d'équipes, configuration |
 | `Échap` | — | Fermer le modal / recherche |
 | `Ctrl+K` | — | Recherche globale (tickets, epics, membres) |
 | `←` `→` | — | Navigation entre tickets dans le modal |
@@ -230,9 +234,9 @@ La vue Prépa PI (`piprep.js`) est un outil de planification PI complet, persist
 
 ## Vue Rapports — multi-sections
 
-La vue Rapports (`reports.js`) génère des rapports en format Slack et Confluence pour 7 domaines :
+La vue Rapports (`reports.js`) génère des rapports en format Slack et Confluence pour 8 domaines :
 
-- `sprint`, `kanban`, `pi`, `support`, `roadmap`, `piprep`, `sondage`
+- `sprint`, `kanban`, `pi`, `support`, `roadmap`, `piprep`, `mood`, `sondage`
 - **Aperçu visuel Slack** — layout 2 colonnes (message brut + preview dark theme) pour toutes les sections
 - **Sondage** — 10 templates humoristiques rotatifs (`sprintNum % 10`), date d'envoi auto (2j ouvrés avant fin sprint), mapping emoji Slack → Unicode via `_SLACK_EMOJI`
 - **Équipes** — `reportTeam` indépendant de `currentTeam`, synchronisé au clic sidebar

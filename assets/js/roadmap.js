@@ -82,6 +82,7 @@ function renderRoadmap() {
     </div>
     ${_roadmapTimeline(velRef, cap80, sprintPlan)}
     ${_roadmapSprintPlan(sprintPlan, cap80, cap20)}
+    ${_roadmapBacklogHealth(backlog)}
     ${_roadmapBacklogTable(backlog, cap80)}
   `;
 }
@@ -981,6 +982,62 @@ function _roadmapPICalendar(cap80) {
 // ============================================================
 // Table du backlog complet
 // ============================================================
+
+// ============================================================
+// Backlog Health Score
+// ============================================================
+function _roadmapBacklogHealth(backlog) {
+  if (!backlog.length) return '';
+
+  const agingSprints = CONFIG.alerts?.backlogAgingSprints ?? 3;
+  const sprintDays = CONFIG.sprint.durationDays || 14;
+  const agingMs = agingSprints * sprintDays * 86400000;
+  const now = Date.now();
+
+  // Orphan stories: no epic, no points, or no priority
+  const noEpic     = backlog.filter(t => !t.epic);
+  const noPoints   = backlog.filter(t => !t.points);
+  const noPriority = backlog.filter(t => !t.priority || t.priority === 'none');
+
+  // Aging: tickets not updated in N sprints
+  const aging = backlog.filter(t => {
+    if (!t.updatedAt) return false;
+    return (now - new Date(t.updatedAt).getTime()) > agingMs;
+  });
+
+  // Health score (0-100)
+  const total = backlog.length;
+  const issues = new Set([...noEpic, ...noPoints, ...noPriority, ...aging].map(t => t.id)).size;
+  const healthPct = Math.round((1 - issues / total) * 100);
+  const healthColor = healthPct >= 80 ? '#16A34A' : healthPct >= 50 ? '#F59E0B' : '#DC2626';
+  const healthBg    = healthPct >= 80 ? '#F0FDF4' : healthPct >= 50 ? '#FFFBEB' : '#FEF2F2';
+  const healthIcon  = healthPct >= 80 ? '✅' : healthPct >= 50 ? '⚠️' : '🔴';
+
+  const kpi = (icon, label, count, color) => count > 0 ? `
+    <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:${color}11;border:1px solid ${color}33;border-radius:8px;">
+      <span style="font-size:14px">${icon}</span>
+      <span style="font-size:20px;font-weight:800;color:${color}">${count}</span>
+      <span style="font-size:11px;color:var(--text-muted)">${label}</span>
+    </div>` : '';
+
+  return `
+    <div style="margin-bottom:16px;">
+      <div class="section-header">
+        <div class="section-title">🩺 Santé du Backlog</div>
+        <div style="display:flex;align-items:center;gap:6px;padding:4px 12px;background:${healthBg};border-radius:8px;border:1px solid ${healthColor}33;">
+          <span>${healthIcon}</span>
+          <span style="font-size:16px;font-weight:800;color:${healthColor}">${healthPct}%</span>
+          <span style="font-size:11px;color:${healthColor};font-weight:600;">${issues}/${total} tickets à corriger</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+        ${kpi('📭', 'sans Epic', noEpic.length, '#DC2626')}
+        ${kpi('🔢', 'sans points', noPoints.length, '#F59E0B')}
+        ${kpi('⚖️', 'sans priorité', noPriority.length, '#D97706')}
+        ${kpi('⏳', `inactif >${agingSprints} sprints`, aging.length, '#64748B')}
+      </div>
+    </div>`;
+}
 
 function _roadmapBacklogTable(backlog, cap80) {
   if (!backlog.length) return '';
