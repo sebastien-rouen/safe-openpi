@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// generate-env.js — Génère assets/js/env.js depuis .env
+// generate-env.js - Génère assets/js/env.js depuis .env
 //
 // Usage :
 //   node scripts/generate-env.js
@@ -34,7 +34,7 @@ fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
 });
 
 const output = `// ============================================================
-// env.js — Généré automatiquement par scripts/generate-env.js
+// env.js - Généré automatiquement par scripts/generate-env.js
 // NE PAS COMMITTER CE FICHIER (contient des informations sensibles).
 // ============================================================
 

@@ -1,5 +1,5 @@
 // ============================================================
-// EXPORT — Export PNG de la vue courante (pleine page)
+// EXPORT - Export PNG de la vue courante (pleine page)
 // ============================================================
 
 function exportPNG() {

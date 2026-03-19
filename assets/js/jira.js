@@ -1,5 +1,5 @@
 // ============================================================
-// JIRA.JS — Chargement et transformation des données JIRA
+// JIRA.JS - Chargement et transformation des données JIRA
 //
 // Deux fonctions publiques :
 //   loadJiraCache() → charge data/jira-data.json (sans appel API)
@@ -35,6 +35,33 @@ const _GROUP_COLORS = [
   '#0284C7','#059669','#EA580C','#8B5CF6','#EC4899','#14B8A6','#F59E0B','#EF4444',
 ];
 
+// --- Board column config (dynamic status mapping from JIRA board configuration) ---
+// Structure : { statusName(lowercase) → internalStatus }
+// Built from /agile/1.0/board/{id}/configuration during sync
+let _boardColumnMap = {};
+
+// Map JIRA board column name → internal status
+function _mapColumnToInternal(colName) {
+  const c = (colName || '').toLowerCase().trim();
+  // 1. Composite / specific patterns first (order matters)
+  if (/pas pr[eêè]t|pour plus tard/i.test(c))                            return 'backlog';
+  if (/pr[eêè]t/i.test(c))                                               return 'todo';
+  // 2. Test / QA — before done, because "A livrer en Qualif" contains "livr" but is a test/QA step
+  if (/test|recette|qualif|preprod|préprod|uat|valid/i.test(c))           return 'test';
+  // 3. Done
+  if (/termin|done\b|clos|livr|deploy|d[eéè]ploy|prod|résolu|resolv/i.test(c)) return 'done';
+  // 4. Review
+  if (/review|revue|relecture|code review/i.test(c))                     return 'review';
+  // 5. Blocked
+  if (/bloqu|bloc|imped|attente|hold|wait/i.test(c))                     return 'blocked';
+  // 6. In progress
+  if (/cours|progress|dev|wip|sp[eéè]c|analys|cadrage|développ/i.test(c)) return 'inprog';
+  // 7. Backlog / Todo
+  if (/backlog/i.test(c))                                                return 'backlog';
+  if (/todo|[àa] faire|open|ready|estimer|affinage/i.test(c))           return 'todo';
+  return null;
+}
+
 // --- Mappings JIRA → interne ---
 
 const _STATUS_MAP = {
@@ -47,18 +74,17 @@ const _STATUS_MAP = {
   'selected for development':   'todo',
   'a estimer':                  'todo',
   'à estimer':                  'todo',
+  'en attente':                 'todo',
   'prêt':                       'todo',
   'pret':                       'todo',
   'ready':                      'todo',
   'ready for development':      'todo',
-
-  // --- Analyse / Spec ---
-  'en cours d\'analyse':        'inprog',
-  'en cours d\'analyse ':       'inprog',
-  'en cours de spécification':  'inprog',
-  'en cours de specification':  'inprog',
-  'en cours de spécification tech': 'inprog',
-  'en cours de specification tech': 'inprog',
+  'en cours de spécification tech': 'todo',
+  'en cours de specification tech': 'todo',
+  'en cours d\'analyse':        'todo',
+  'en cours d\'analyse ':       'todo',
+  'en cours de spécification':  'todo',
+  'en cours de specification':  'todo',
 
   // --- In Progress ---
   'in progress':                'inprog',
@@ -83,17 +109,17 @@ const _STATUS_MAP = {
   'en cours de recette':        'test',
   'a livrer en recette':        'test',
   'à livrer en recette':        'test',
-  'en cours de qualif (mi)':    'test',
-  'en cours de qualif':         'test',
-  'a livrer en qualif (mi)':    'test',
-  'à livrer en qualif (mi)':    'test',
-  'a livrer en qualif':         'test',
-  'à livrer en qualif':         'test',
-  'en cours de test préprod':   'test',
-  'en cours de test preprod':   'test',
-  'a livrer en préprod':        'test',
-  'a livrer en preprod':        'test',
-  'à livrer en préprod':        'test',
+  'en cours de qualif (mi)':    'done',
+  'en cours de qualif':         'done',
+  'a livrer en qualif (mi)':    'done',
+  'à livrer en qualif (mi)':    'done',
+  'a livrer en qualif':         'done',
+  'à livrer en qualif':         'done',
+  'en cours de test préprod':   'done',
+  'en cours de test preprod':   'done',
+  'a livrer en préprod':        'done',
+  'a livrer en preprod':        'done',
+  'à livrer en préprod':        'done',
   'uat':                        'test',
   'recette':                    'test',
 
@@ -101,7 +127,6 @@ const _STATUS_MAP = {
   'blocked':                        'blocked',
   'bloqué':                         'blocked',
   'bloque':                         'blocked',
-  'en attente':                     'blocked',
   'impediment':                     'blocked',
   'on hold':                        'blocked',
   'retour au demandeur':            'blocked',
@@ -139,8 +164,11 @@ const _STATUS_MAP = {
 
 function _mapStatus(s) {
   const key = (s || '').toLowerCase().trim();
+  // 1. Board column mapping (from JIRA board configuration - highest priority)
+  if (_boardColumnMap[key]) return _boardColumnMap[key];
+  // 2. Static mapping
   if (_STATUS_MAP[key]) return _STATUS_MAP[key];
-  // Pattern detection pour les statuts personnalisés non listés
+  // 3. Pattern detection pour les statuts personnalisés non listés
   if (/termin|done|clos|resolv|livr|deploy|prod\b|complet/i.test(s)) return 'done';
   if (/test|recette|qualif|preprod|préprod|uat/i.test(s))             return 'test';
   if (/revue|review/i.test(s))                                        return 'review';
@@ -225,8 +253,10 @@ function _getPoints(fields) {
   }
 
   // Fallback dynamique : scan tous les customfield_* avec valeur numérique 1–100
+  const _sprintFieldId = CONFIG.sync.sprintField || 'customfield_10020';
   for (const [k, raw] of Object.entries(fields)) {
     if (!/^customfield_\d+$/.test(k)) continue;
+    if (k === _sprintFieldId) continue;  // Exclure le champ sprint
     const v = _num(raw);
     if (v > 0 && v <= 100) {
       console.info(`[JIRA] Story points auto-détectés → ${k} (ex: ${v})`);
@@ -330,7 +360,7 @@ function _extractDescription(doc) {
       }
       if (node.type === 'hardBreak') { lines.push('\n'); return; }
 
-      // Mention — @User : {type:"mention", attrs:{text:"@Sebastien", id:"..."}}
+      // Mention - @User : {type:"mention", attrs:{text:"@Sebastien", id:"..."}}
       if (node.type === 'mention') {
         const name = node.attrs?.text || '@inconnu';
         lines.push(name.startsWith('@') ? name : '@' + name);
@@ -343,7 +373,7 @@ function _extractDescription(doc) {
         return;
       }
 
-      // inlineCard / blockCard — JIRA smart links (tickets, Confluence, GitLab…)
+      // inlineCard / blockCard - JIRA smart links (tickets, Confluence, GitLab…)
       if ((node.type === 'inlineCard' || node.type === 'blockCard') && node.attrs?.url) {
         lines.push(node.attrs.url);
         return;
@@ -362,7 +392,7 @@ function _extractDescription(doc) {
         return;
       }
 
-      // Media (images, attachments) — placeholder only
+      // Media (images, attachments) - placeholder only
       if (node.type === 'media' || node.type === 'mediaInline') {
         lines.push('[pièce jointe]');
         return;
@@ -457,7 +487,7 @@ function _transform(issues, project, sprintId) {
   });
 
   // Epics référencées mais absentes du sprint → stub
-  // (titre depuis parent si dispo — normalement résolu par l'étape 3.5 de loadJiraData)
+  // (titre depuis parent si dispo - normalement résolu par l'étape 3.5 de loadJiraData)
   otherIssues.forEach(i => {
     const key = _getEpicKey(i.fields);
     const team = i._boardTeam || 'A';
@@ -479,7 +509,7 @@ function _transform(issues, project, sprintId) {
     // Detect JIRA flagged field (impediment indicator)
     const flagged = _isFlagged(f);
     let   status  = _mapStatus(f.status?.name);
-    if (flagged && status !== 'done') status = 'blocked';
+    if (flagged && !isDone(status)) status = 'blocked';
     const labels  = (f.labels || []).map(l => l.toLowerCase());
     const buffer  = _isBuffer(labels, epicKey, epicMap);
     // Due date: duedate or Target end (customfield_10015)
@@ -489,7 +519,9 @@ function _transform(issues, project, sprintId) {
     // Sprint name from sprint field
     const sprintRaw  = f[CONFIG.sync.sprintField];
     const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
-    const sprintObj  = sprintList[sprintList.length - 1] || {};
+    const piSprint   = _extractPISprint(sprintList);
+    const teamSprint = _extractTeamSprint(sprintList);
+    const sprintObj  = teamSprint || sprintList[sprintList.length - 1] || {};
     return {
       id:       i.key,
       title:    f.summary,
@@ -505,6 +537,16 @@ function _transform(issues, project, sprintId) {
       priority:    _mapPriority(f.priority?.name),
       sprint:      sprintId,
       sprintName:  sprintObj.name || '',
+      allSprints:  sprintList.map(s => s.name).filter(Boolean),
+      piSprint:    (() => {
+        let pn = piSprint?.name || i._piSprintName || '';
+        if (!pn && sprintRaw) {
+          const rs = typeof sprintRaw === 'string' ? sprintRaw : JSON.stringify(sprintRaw);
+          const pm = rs.match(/PI\s*#?\s*(\d+)/i);
+          if (pm) pn = `PI#${pm[1]}`;
+        }
+        return pn;
+      })(),
       labels,
       dueDate,
       lastComment,
@@ -520,7 +562,7 @@ function _transform(issues, project, sprintId) {
       id:          i.key,
       title:       f.summary,
       priority:    _mapPriority(f.priority?.name),
-      status:      _mapStatus(f.status?.name) === 'done' ? 'done' : 'open',
+      status:      isDone(_mapStatus(f.status?.name)) ? 'done' : 'open',
       assignee:    (f.assignee?.displayName || '').trim() || null,
       team:        i._boardTeam || 'A',
       date:        (f.created || '').slice(0, 10),
@@ -557,14 +599,42 @@ function _transform(issues, project, sprintId) {
 // Transformation des issues de sprints futurs → format backlog
 // ============================================================
 
+// Extrait le sprint PI (ex: "PI#29", "PI #30") depuis la liste des sprints du ticket
+function _extractPISprint(sprintList) {
+  const piRe = /^PI\s*#?\s*(\d+)/i;
+  for (const s of sprintList) {
+    if (s && s.name && piRe.test(s.name)) return s;
+  }
+  return null;
+}
+
+// Extrait le sprint d'équipe (non-PI) depuis la liste des sprints du ticket
+function _extractTeamSprint(sprintList) {
+  const piRe = /^PI\s*#?\s*(\d+)/i;
+  for (let i = sprintList.length - 1; i >= 0; i--) {
+    if (sprintList[i] && sprintList[i].name && !piRe.test(sprintList[i].name)) return sprintList[i];
+  }
+  return null;
+}
+
 function _transformBacklog(issues) {
   return issues.map(i => {
     const f          = i.fields;
     const sprintRaw  = f[CONFIG.sync.sprintField];
     const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
-    const sprintObj  = sprintList[sprintList.length - 1] || {};
+    const piSprint   = _extractPISprint(sprintList);
+    const teamSprint = _extractTeamSprint(sprintList);
+    // Prefer team sprint name for positioning, but keep PI sprint info
+    const sprintObj  = teamSprint || piSprint || sprintList[sprintList.length - 1] || {};
     const labels = (f.labels || []).map(l => l.toLowerCase());
     const epicKey = _getEpicKey(f) || null;
+    // PI sprint: from parsed sprint field or from _piSprintName (set by PI board fetch)
+    let piSprintName = piSprint?.name || i._piSprintName || '';
+    if (!piSprintName && sprintRaw) {
+      const rawStr = typeof sprintRaw === 'string' ? sprintRaw : JSON.stringify(sprintRaw);
+      const piMatch = rawStr.match(/PI\s*#?\s*(\d+)/i);
+      if (piMatch) piSprintName = `PI#${piMatch[1]}`;
+    }
     return {
       id:          i.key,
       title:       f.summary,
@@ -573,12 +643,14 @@ function _transformBacklog(issues) {
       team:        i._boardTeam || 'A',
       assignee:    (f.assignee?.displayName || '').trim() || null,
       points:      _getPoints(f),
-      status:      'backlog',
+      status:      _mapStatus(f.status?.name) || 'backlog',
+      _jiraStatus: f.status?.name || '',
       buffer:      labels.some(l => l.includes('buffer')),
       priority:    _mapPriority(f.priority?.name),
       sprint:      0,
       sprintName:  sprintObj.name      || '',
       sprintStart: sprintObj.startDate || '',
+      piSprint:    piSprintName,
     };
   });
 }
@@ -587,7 +659,25 @@ function _transformBacklog(issues) {
 // Application d'un objet cache dans les variables globales
 // ============================================================
 
-function _applyCache(cache) {
+async function _applyCache(cache) {
+  // Board column mapping - MUST be restored before tickets (used by _mapStatus)
+  if (cache.board_status_map) {
+    _boardColumnMap = cache.board_status_map;
+    console.log(`[JIRA] Board status map restauré (${Object.keys(_boardColumnMap).length} statuts)`);
+  }
+  // Board columns: load from dedicated file, fallback to cache embed
+  try {
+    const bcRes = await fetch(`${DATA_PROXY}/board-columns.json`);
+    if (bcRes.ok) {
+      BOARD_COLUMNS = await bcRes.json();
+      console.log(`[JIRA] Board columns chargé depuis board-columns.json (${Object.keys(BOARD_COLUMNS).length} équipes)`);
+    } else if (cache.board_columns) {
+      BOARD_COLUMNS = cache.board_columns;
+    }
+  } catch {
+    if (cache.board_columns) BOARD_COLUMNS = cache.board_columns;
+  }
+
   FEATURES.length = 0;        (cache.features        || []).forEach(f => FEATURES.push(f));
   EPICS.length    = 0;        (cache.epics            || []).forEach(e => EPICS.push(e));
   TICKETS.length  = 0;        (cache.tickets || []).forEach(t => {
@@ -597,7 +687,10 @@ function _applyCache(cache) {
     TICKETS.push(t);
   });
   SUPPORT_TICKETS.length  = 0; (cache.support_tickets   || []).forEach(t => SUPPORT_TICKETS.push(t));
-  BACKLOG_TICKETS.length  = 0; (cache.backlog_tickets   || []).forEach(t => BACKLOG_TICKETS.push(t));
+  BACKLOG_TICKETS.length  = 0; (cache.backlog_tickets   || []).forEach(t => {
+    if (t._jiraStatus) t.status = _mapStatus(t._jiraStatus);
+    BACKLOG_TICKETS.push(t);
+  });
 
   Object.keys(MEMBERS).forEach(k => delete MEMBERS[k]);
   Object.assign(MEMBERS, cache.members || {});
@@ -642,7 +735,7 @@ async function loadJiraCache() {
     const res = await fetch(`${DATA_PROXY}/${_cacheFile()}`);
     if (!res.ok) return null;
     const cache = await res.json();
-    _applyCache(cache);
+    await _applyCache(cache);
     return cache.cached_at || null;
   } catch {
     return null;
@@ -672,7 +765,7 @@ async function loadJiraData(opts = {}) {
         _pointsFieldKey = spField.id; // pré-cache pour _getPoints
         console.log(`[JIRA] Story Points field détecté : ${spField.name} → ${spField.id}`);
       } else {
-        console.warn('[JIRA] Champ Story Points non trouvé via /api/3/field — fallback sur IDs connus');
+        console.warn('[JIRA] Champ Story Points non trouvé via /api/3/field - fallback sur IDs connus');
       }
     }
   } catch (e) {
@@ -692,7 +785,7 @@ async function loadJiraData(opts = {}) {
   ].join(',');
 
   // 1. Récupérer tous les boards accessibles en un seul appel
-  //    (projectKeyOrId filtre sur le projet propriétaire du board, pas sur les issues —
+  //    (projectKeyOrId filtre sur le projet propriétaire du board, pas sur les issues -
   //     on filtre donc côté client par location.projectKey pour couvrir tous les setups JIRA)
   const projects = CONFIG.jira.projects || [];
   _syncProgress(0, 1, 'Récupération des boards...');
@@ -723,9 +816,17 @@ async function loadJiraData(opts = {}) {
     if (excluded.length) console.log(`[JIRA] Boards exclus (hors projet) : ${excluded.map(b => `"${b.name}" [${b.location?.projectKey || '?'}]`).join(', ')}`);
   }
 
-  // Ne garder que les boards de type scrum — les boards kanban ne supportent pas l'API sprint
-  const scrumBoards = boards.filter(b => b.type === 'scrum');
+  // Ne garder que les boards de type scrum - les boards kanban ne supportent pas l'API sprint
+  const excludeTeams = (CONFIG.jira.excludeTeams || []).map(t => t.toLowerCase());
+  const scrumBoardsRaw = boards.filter(b => b.type === 'scrum');
+  const scrumBoards = excludeTeams.length
+    ? scrumBoardsRaw.filter(b => !excludeTeams.includes(_boardTeamName(b.name).toLowerCase()))
+    : scrumBoardsRaw;
   const skippedBoards = boards.filter(b => b.type !== 'scrum');
+  if (excludeTeams.length && scrumBoardsRaw.length !== scrumBoards.length) {
+    const excluded = scrumBoardsRaw.filter(b => excludeTeams.includes(_boardTeamName(b.name).toLowerCase()));
+    console.log(`[JIRA] Équipes exclues (excludeTeams) : ${excluded.map(b => `"${_boardTeamName(b.name)}"`).join(', ')}`);
+  }
   console.log(`[JIRA] ${allBoards.length} boards total → ${boards.length} après filtre projet${projects.length ? ` (${projects.join(', ')})` : ''} → ${scrumBoards.length} scrum (${skippedBoards.length} kanban ignorés)`);
   if (skippedBoards.length) console.log(`[JIRA] Boards non-scrum ignorés : ${skippedBoards.map(b => `"${b.name}" [${b.location?.projectKey}]`).join(', ')}`);
 
@@ -751,9 +852,13 @@ async function loadJiraData(opts = {}) {
 
   // Patterns de boards à ignorer (PI planning, boards agrégateurs, etc.)
   const _SKIP_BOARD_RE = /\b(PI\s*Board|Board\s*Features?|Cadrage|Post[- ]Mortem|Rétrospective|Retrospective|Program\s*Board)\b/i;
+  // Boards PI détectés (sprint actif = "PI#XX") - leurs sprints futurs seront fetchés après
+  const _piBoardIds = [];
+  // Board column configs accumulator - { boardName: { columns: [ { name, statuses: [{id, name}] } ] } }
+  const _allBoardColumns = {};
 
   for (const board of scrumBoards) {
-    // Ignorer les boards PI/agrégateurs — pas des boards d'équipe sprint
+    // Ignorer les boards PI/agrégateurs - pas des boards d'équipe sprint
     if (_SKIP_BOARD_RE.test(board.name)) {
       console.log(`[JIRA] Board ignoré (PI/agrégateur) : "${board.name}"`);
       _curStep += 2; // sauter les 2 étapes sprint + issues
@@ -772,18 +877,26 @@ async function loadJiraData(opts = {}) {
       };
     }
 
-    // Sprint actif de ce board
+    // Sprint actif + configuration colonnes de ce board (en parallèle)
     _syncProgress(++_curStep, _totalSteps, `Sprint : ${teamName}…`);
     let sprintId = null;
+
+    // Fetch board column configuration (non-blocking)
+    const _boardConfigPromise = fetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/configuration`, { headers: { Accept: 'application/json' } })
+      .then(r => r.ok ? r.json() : null)
+      .catch(() => null);
+
     try {
       const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/sprint?state=active&maxResults=1`);
       if (sr.ok) {
         const sb     = await sr.json();
         const sprint = (sb.values || [])[0];
         if (sprint) {
-          // Ignorer les boards dont le sprint actif est un PI (ex: "PI#28") — pas des sprints d'équipe
+          // Ignorer les boards dont le sprint actif est un PI (ex: "PI#28") - pas des sprints d'équipe
+          // Mais garder l'ID pour fetcher les sprints PI futurs (PI#29, PI#30…)
           if (/^PI\s*#?\d+/i.test(sprint.name)) {
-            console.log(`[JIRA] Board "${board.name}" ignoré — sprint PI : "${sprint.name}"`);
+            console.log(`[JIRA] Board "${board.name}" ignoré - sprint PI : "${sprint.name}" (sprints futurs seront fetchés)`);
+            _piBoardIds.push(board.id);
             _curStep++; // sauter l'étape issues
             continue;
           }
@@ -806,6 +919,33 @@ async function loadJiraData(opts = {}) {
       }
     } catch (e) {
       console.warn(`[JIRA] Sprint board ${board.id} (${board.name}) : ${e.message}`);
+    }
+
+    // Process board column configuration (await the parallel fetch)
+    const _boardConfig = await _boardConfigPromise;
+    if (_boardConfig?.columnConfig?.columns) {
+      const cols = _boardConfig.columnConfig.columns;
+      const boardCols = [];
+      cols.forEach(col => {
+        const internal = _mapColumnToInternal(col.name);
+        const statuses = (col.statuses || []).map(st => ({
+          id:   st.id,
+          name: st.name || '',
+        }));
+        boardCols.push({ name: col.name, internal, statuses });
+        // Build dynamic status mapping
+        if (internal) {
+          statuses.forEach(st => {
+            const stName = (st.name || '').toLowerCase().trim();
+            if (stName && !_boardColumnMap[stName]) {
+              _boardColumnMap[stName] = internal;
+            }
+          });
+        }
+      });
+      _allBoardColumns[teamName] = boardCols;
+      const summary = boardCols.map(c => `${c.name}→${c.internal || '?'}(${c.statuses.length})`).join(', ');
+      console.log(`[JIRA] Board "${board.name}" colonnes : ${summary}`);
     }
 
     if (!sprintId) {
@@ -837,23 +977,53 @@ async function loadJiraData(opts = {}) {
 
   if (!allIssues.length) throw new Error('Aucun ticket trouvé dans les sprints actifs');
 
+  // 3.5b Détection des équipes inactives (dissoutes)
+  // Une équipe est inactive si son sprint actif est terminé depuis trop longtemps
+  // par rapport au sprint de référence (seuil : 60 jours ≈ 2 PI)
+  {
+    const refStart = CONFIG.sprint.startDate ? new Date(CONFIG.sprint.startDate) : null;
+    if (refStart) {
+      const INACTIVE_THRESHOLD_DAYS = 60;
+      Object.entries(teamConfigs).forEach(([name, tc]) => {
+        if (!tc.sprintEnd) return;
+        const teamEnd = new Date(tc.sprintEnd);
+        const diffDays = Math.round((refStart - teamEnd) / (1000 * 60 * 60 * 24));
+        if (diffDays > INACTIVE_THRESHOLD_DAYS) {
+          tc.inactive = true;
+          tc.hasIssues = false; // exclure du cache et des vues
+          console.log(`[JIRA] Équipe "${name}" marquée inactive (sprint "${tc.sprintName}" terminé il y a ${diffDays}j, seuil ${INACTIVE_THRESHOLD_DAYS}j)`);
+        }
+      });
+    }
+  }
+
+  // Retirer les tickets des équipes inactives
+  const _inactiveTeams = new Set(Object.entries(teamConfigs).filter(([, tc]) => tc.inactive).map(([n]) => n));
+  if (_inactiveTeams.size) {
+    const before = allIssues.length;
+    for (let i = allIssues.length - 1; i >= 0; i--) {
+      if (_inactiveTeams.has(allIssues[i]._boardTeam)) allIssues.splice(i, 1);
+    }
+    if (before !== allIssues.length) console.log(`[JIRA] ${before - allIssues.length} tickets d'équipes inactives retirés`);
+  }
+
   // allFutureIssues declared here so it's accessible after the if/else block
   const allFutureIssues = [];
   const _futureSeenKeys = new Set();
 
-  // 3.6 Historique de vélocité — via board API (sprints fermés par board)
-  // (Skipped in incremental mode — velocity doesn't change during sprint)
+  // 3.6 Historique de vélocité - via board API (sprints fermés par board)
+  // (Skipped in incremental mode - velocity doesn't change during sprint)
   if (opts.incremental) {
-    console.log('[JIRA] Sync incrémentale — vélocité et backlog ignorés');
+    console.log('[JIRA] Sync incrémentale - vélocité et backlog ignorés');
   } else {
   // Fetch tous les tickets de chaque sprint fermé, filtre les "Done" en JS
   // (pas de JQL status=Done car les statuts varient selon les instances JIRA)
   {
     const _ptFields = fields;
 
-    // Champs minimaux pour le calcul de vélocité (story points uniquement)
+    // Champs pour le calcul de vélocité + détail tickets par sprint (popin)
     const _velFields = [
-      'status',
+      'status', 'summary', 'issuetype', 'assignee', 'parent', 'labels',
       'customfield_10016', 'customfield_10028', 'customfield_10005',
       'customfield_10004', 'customfield_10115', 'customfield_10106',
       'customfield_10034', 'customfield_10193',
@@ -866,31 +1036,72 @@ async function loadJiraData(opts = {}) {
         const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=closed&maxResults=${CONFIG.sync.closedSprintsFetch}`);
         if (!sr.ok) return;
         const allClosed = (await sr.json()).values || [];
-        // Filtrer les sprints PI (ex: "PI#28", "PI 29") — ce ne sont pas des sprints d'équipe
+        // Filtrer les sprints PI (ex: "PI#28", "PI 29") - ce ne sont pas des sprints d'équipe
         const teamSprints = allClosed.filter(s => !/^PI\s*#?\d+/i.test(s.name));
+        // Trier par date de fin (ou début) décroissante - l'API retourne par ID, pas par date
+        teamSprints.sort((a, b) => {
+          const da = new Date(a.endDate || a.startDate || 0);
+          const db = new Date(b.endDate || b.startDate || 0);
+          return da - db;
+        });
         const closed = teamSprints.slice(-CONFIG.sync.velocityHistoryCount);
         const projKey = tc.projectKey || '';
-        tc.velocityHistory = await Promise.all(closed.map(async sprint => {
+
+        // Phase 1 : fetcher les issues done de chaque sprint (en parallèle)
+        const sprintData = await Promise.all(closed.map(async sprint => {
           try {
-            // Filtrer par projet pour éviter les issues d'autres projets sur le même board
             const jql = projKey
               ? `sprint=${sprint.id} AND project="${projKey}"`
               : `sprint=${sprint.id}`;
-            const ir  = await fetch(`${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=500&fields=${_velFields}`, { headers: { Accept: 'application/json' } });
+            const ir  = await fetch(`${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${_velFields}`, { headers: { Accept: 'application/json' } });
             if (!ir.ok) {
               console.warn(`[JIRA] Vélocité ${teamName} sprint ${sprint.name} : HTTP ${ir.status}`);
-              return { name: sprint.name, velocity: 0 };
+              return { sprint, issues: [] };
             }
             const issues = (await ir.json()).issues || [];
-            const velocity = issues
-              .filter(i => _mapStatus(i.fields.status?.name) === 'done')
-              .reduce((a, i) => a + _getPoints(i.fields), 0);
-            return { name: sprint.name, velocity, startDate: sprint.startDate || '', endDate: sprint.endDate || '' };
+            return { sprint, issues: issues.filter(i => isDone(_mapStatus(i.fields.status?.name))) };
           } catch (e) {
             console.warn(`[JIRA] Vélocité ${teamName} sprint ${sprint.name} : ${e.message}`);
-            return { name: sprint.name, velocity: 0, startDate: sprint.startDate || '', endDate: sprint.endDate || '' };
+            return { sprint, issues: [] };
           }
         }));
+
+        // Phase 2 : pour chaque ticket done, retenir uniquement le sprint le plus récent
+        // (les sprints sont triés chronologiquement → le dernier gagne)
+        const issueLastSprint = new Map(); // issueKey → index du sprint le plus récent
+        sprintData.forEach((sd, idx) => {
+          sd.issues.forEach(i => issueLastSprint.set(i.key, idx));
+        });
+        // Aussi vérifier les tickets du sprint actif : si un ticket done d'un sprint
+        // fermé est aussi dans le sprint actif, il a glissé → l'exclure du fermé
+        const activeKeys = new Set(allIssues.filter(i => i._boardTeam === teamName).map(i => i.key));
+
+        // Phase 3 : construire velocityHistory en excluant les tickets qui ont glissé
+        tc.velocityHistory = sprintData.map((sd, idx) => {
+          const doneIssues = sd.issues.filter(i => {
+            // Ticket présent dans le sprint actif → il a glissé vers le sprint courant
+            if (activeKeys.has(i.key)) {
+              console.log(`[JIRA] Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → sprint actif)`);
+              return false;
+            }
+            if (issueLastSprint.get(i.key) !== idx) {
+              console.log(`[JIRA] Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → ${sprintData[issueLastSprint.get(i.key)]?.sprint.name})`);
+              return false;
+            }
+            return true;
+          });
+          const velocity = doneIssues.reduce((a, i) => a + _getPoints(i.fields), 0);
+          const tickets = doneIssues.map(i => ({
+            id:       i.key,
+            title:    i.fields.summary || '',
+            type:     _mapType(i.fields.issuetype?.name),
+            status:   _mapStatus(i.fields.status?.name),
+            points:   _getPoints(i.fields),
+            assignee: i.fields.assignee?.displayName || '',
+            epic:     i.fields.parent?.key || '',
+          }));
+          return { name: sd.sprint.name, velocity, tickets, startDate: sd.sprint.startDate || '', endDate: sd.sprint.endDate || '' };
+        });
         console.log(`[JIRA] Vélocité ${teamName} : ${tc.velocityHistory.map(s => `${s.name}=${s.velocity}`).join(', ')}`);
       } catch (e) {
         console.warn(`[JIRA] Vélocité ${teamName} : ${e.message}`);
@@ -906,7 +1117,7 @@ async function loadJiraData(opts = {}) {
       if (!tc.boardId || !tc.hasIssues) return;
       try {
         // Récupérer les sprints futurs du board
-        const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=future&maxResults=10`);
+        const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=future&maxResults=${CONFIG.sync.maxFutureSprints}`);
         if (!sr.ok) return;
         const sb = await sr.json();
         const futureSprints = sb.values || [];
@@ -934,6 +1145,101 @@ async function loadJiraData(opts = {}) {
       }
     }));
   }
+
+  // 3.8 Sprints PI futurs - récupérer les tickets planifiés dans les sprints PI (PI#28, PI#29, PI#30…)
+  //     Stratégie : requête JQL directe par nom de sprint "PI#XX" - indépendant des boards.
+  //     Les sprints PI peuvent être sur n'importe quel board (y compris hors-projet ou kanban).
+  {
+    const _currentPIMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+    const _currentPINum = _currentPIMatch ? parseInt(_currentPIMatch[1]) : null;
+
+    if (_currentPINum) {
+      // Chercher les PI courant et futurs (ex: PI#28, PI#29, PI#30)
+      const piNames = [];
+      const _piFuture = CONFIG.sync.piFutureCount || 2;
+      for (let i = 0; i <= _piFuture; i++) piNames.push(`"PI#${_currentPINum + i}"`);
+      // Aussi chercher avec espace : "PI #29"
+      for (let i = 0; i <= _piFuture; i++) piNames.push(`"PI #${_currentPINum + i}"`);
+
+      const projFilter = (CONFIG.jira.projects || []).length
+        ? ` AND project IN (${CONFIG.jira.projects.map(p => `"${p}"`).join(',')})`
+        : '';
+      const piJql = `sprint IN (${piNames.join(',')})${projFilter} ORDER BY priority ASC`;
+      console.log(`[JIRA] Recherche tickets PI : ${piJql}`);
+
+      try {
+        const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(piJql)}&maxResults=${CONFIG.sync.maxPIIssues}&fields=${fields}`;
+        const ir  = await fetch(url, { headers: { Accept: 'application/json' } });
+        if (ir.ok) {
+          const issues = (await ir.json()).issues || [];
+          const _activeKeys = new Set(allIssues.map(i => i.key));
+          let added = 0, enriched = 0;
+
+          let _piDebugLogged = false;
+          issues.forEach(issue => {
+            // Extraire le sprint PI depuis le champ sprint du ticket
+            const sprintRaw  = issue.fields[CONFIG.sync.sprintField];
+            if (!_piDebugLogged) {
+              console.log(`[JIRA] PI debug - ${issue.key} sprintField raw:`, sprintRaw);
+              _piDebugLogged = true;
+            }
+            const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
+            const piSprint   = _extractPISprint(sprintList);
+            let   piName     = piSprint?.name || '';
+            // Fallback : regex sur la donnée brute (gère les formats non parsés)
+            if (!piName && sprintRaw) {
+              const rawStr = typeof sprintRaw === 'string' ? sprintRaw : JSON.stringify(sprintRaw);
+              const piMatch = rawStr.match(/PI\s*#?\s*(\d+)/i);
+              if (piMatch) piName = `PI#${piMatch[1]}`;
+            }
+
+            if (_futureSeenKeys.has(issue.key)) {
+              // Ticket déjà vu depuis un board d'équipe - enrichir avec le sprint PI
+              const existing = allFutureIssues.find(i => i.key === issue.key);
+              if (existing && !existing._piSprintName) {
+                existing._piSprintName = piName;
+                enriched++;
+              }
+              return;
+            }
+            if (_activeKeys.has(issue.key)) {
+              // Ticket dans le sprint actif - enrichir
+              const existing = allIssues.find(ai => ai.key === issue.key);
+              if (existing) { existing._piSprintName = piName; enriched++; }
+              return;
+            }
+            // Nouveau ticket - déterminer l'équipe depuis les issues connues (même epic)
+            const epicKey = _getEpicKey(issue.fields);
+            let epicTeam = null;
+            if (epicKey) {
+              const sameEpic = allIssues.find(ai => _getEpicKey(ai.fields) === epicKey && ai._boardTeam);
+              if (sameEpic) {
+                epicTeam = sameEpic._boardTeam;
+              } else {
+                const sameEpicFuture = allFutureIssues.find(fi => _getEpicKey(fi.fields) === epicKey && fi._boardTeam && fi._boardTeam !== '_PI');
+                if (sameEpicFuture) epicTeam = sameEpicFuture._boardTeam;
+              }
+            }
+            _futureSeenKeys.add(issue.key);
+            issue._boardTeam     = epicTeam || '_PI';
+            issue._isFuture      = true;
+            issue._piSprintName  = piName;
+            allFutureIssues.push(issue);
+            added++;
+          });
+          // Distribution des PI trouvés
+          const piDist = {};
+          allFutureIssues.forEach(fi => { if (fi._piSprintName) piDist[fi._piSprintName] = (piDist[fi._piSprintName] || 0) + 1; });
+          console.log(`[JIRA] Tickets PI : ${issues.length} trouvés, ${added} nouveaux, ${enriched} enrichis - distribution:`, piDist);
+        } else {
+          console.warn(`[JIRA] Recherche tickets PI : HTTP ${ir.status}`);
+        }
+      } catch (e) {
+        console.warn(`[JIRA] Recherche tickets PI : ${e.message}`);
+      }
+    }
+  }
+
   } // end else (non-incremental)
 
   // 3.5 Résoudre les titres des epics référencées mais absentes du sprint
@@ -989,12 +1295,27 @@ async function loadJiraData(opts = {}) {
   cache.team_configs = Object.fromEntries(
     Object.entries(teamConfigs).filter(([, tc]) => tc.hasIssues)
   );
+  // Board column configuration & dynamic status mapping
+  cache.board_status_map = { ..._boardColumnMap };
+  BOARD_COLUMNS = _allBoardColumns;
+
+  // Save board columns to dedicated file for visibility
+  try {
+    await fetch(`${DATA_PROXY}/board-columns.json`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(_allBoardColumns, null, 2),
+    });
+    console.log('[JIRA] Board columns sauvegardé → board-columns.json');
+  } catch (e) {
+    console.warn('[JIRA] Sauvegarde board-columns.json échouée :', e.message);
+  }
 
   // Tickets futurs / backlog planifié (de-dup avec sprint actif)
   if (opts.incremental) {
     // Preserve existing backlog from memory
     cache.backlog_tickets = (typeof BACKLOG_TICKETS !== 'undefined' ? [...BACKLOG_TICKETS] : []);
-    console.log(`[JIRA] Sync incrémentale — backlog conservé (${cache.backlog_tickets.length})`);
+    console.log(`[JIRA] Sync incrémentale - backlog conservé (${cache.backlog_tickets.length})`);
   } else {
     const _seenActive = new Set(allIssues.map(i => i.key));
     const _uniqueFuture = allFutureIssues.filter(i => !_seenActive.has(i.key));
@@ -1002,14 +1323,14 @@ async function loadJiraData(opts = {}) {
     if (cache.backlog_tickets.length) console.log(`[JIRA] ${cache.backlog_tickets.length} tickets backlog/futurs`);
   }
 
-  // 5.5 Lead time / Cycle time — fetch changelog des tickets Done
+  // 5.5 Lead time / Cycle time - fetch changelog des tickets Done
   {
-    const doneTickets = cache.tickets.filter(t => t.status === 'done');
+    const doneTickets = cache.tickets.filter(t => isDone(t.status));
     if (doneTickets.length) {
       console.log(`[JIRA] Calcul lead/cycle time pour ${doneTickets.length} tickets terminés…`);
-      // Batch: max 10 concurrent
+      const _batchSize = CONFIG.sync.cycleTimeBatchSize || 10;
       const batches = [];
-      for (let i = 0; i < doneTickets.length; i += 10) batches.push(doneTickets.slice(i, i + 10));
+      for (let i = 0; i < doneTickets.length; i += _batchSize) batches.push(doneTickets.slice(i, i + _batchSize));
       for (const batch of batches) {
         await Promise.all(batch.map(async t => {
           try {
@@ -1026,7 +1347,7 @@ async function loadJiraData(opts = {}) {
                 if (item.field !== 'status') return;
                 const to = _mapStatus(item.toString || '');
                 if (to === 'inprog' && (!firstInProg || ts < firstInProg)) firstInProg = ts;
-                if (to === 'done') doneDate = ts;
+                if (isDone(to)) doneDate = ts;
               });
             });
             if (created && doneDate) {

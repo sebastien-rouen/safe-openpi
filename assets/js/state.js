@@ -1,5 +1,5 @@
 // ============================================================
-// STATE — Variables d'état globales de l'application
+// STATE - Variables d'état globales de l'application
 // ============================================================
 
 let currentView       = 'scrum';

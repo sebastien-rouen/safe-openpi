@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // ============================================================
-// server.js — Serveur local JIRA Dashboard (port 3001)
+// server.js - Serveur local JIRA Dashboard (port 3001)
 //
 // Rôles :
 //   1. Serveur de fichiers statiques (HTML/CSS/JS)
@@ -150,7 +150,7 @@ function mask(s) { return s ? (s.slice(0, 4) + '••••' + s.slice(-4)) : '
 
 app.listen(PORT, () => {
   const cached = fs.existsSync(DATA_DIR) ? fs.readdirSync(DATA_DIR).filter(f => f.endsWith('.json')).length : 0;
-  console.log(`\n  JIRA Dashboard — http://localhost:${PORT}`);
-  console.log(`  JIRA  : ${JIRA_URL || '(non configuré)'}  |  user: ${JIRA_USER || '—'}  |  token: ${mask(JIRA_TOKEN)}`);
+  console.log(`\n  JIRA Dashboard - http://localhost:${PORT}`);
+  console.log(`  JIRA  : ${JIRA_URL || '(non configuré)'}  |  user: ${JIRA_USER || '-'}  |  token: ${mask(JIRA_TOKEN)}`);
   console.log(`  Cache : ${cached} fichier(s) dans data/\n`);
 });

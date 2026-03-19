@@ -1,12 +1,12 @@
 // ============================================================
-// SUPPORT VIEW — Tickets support avec description complète
+// SUPPORT VIEW - Tickets support avec description complète
 // ============================================================
 
 function renderSupport() {
   const critCount = SUPPORT_TICKETS.filter(t => t.priority === 'critical').length;
   const highCount = SUPPORT_TICKETS.filter(t => t.priority === 'high').length;
-  const openCount = SUPPORT_TICKETS.filter(t => t.status !== 'done').length;
-  const doneCount = SUPPORT_TICKETS.filter(t => t.status === 'done').length;
+  const openCount = SUPPORT_TICKETS.filter(t => !isDone(t.status)).length;
+  const doneCount = SUPPORT_TICKETS.filter(t => isDone(t.status)).length;
 
   document.getElementById('support-stats').innerHTML = [
     { num: openCount,  lbl: 'Tickets Ouverts', color: '#3B82F6' },
@@ -32,8 +32,8 @@ function renderSupportList() {
   const pOrder = { critical: 0, high: 1, medium: 2, low: 3 };
   tickets.sort((a, b) => pOrder[a.priority] - pOrder[b.priority]);
 
-  if      (supportFilter === 'open') tickets = tickets.filter(t => t.status !== 'done');
-  else if (supportFilter === 'done') tickets = tickets.filter(t => t.status === 'done');
+  if      (supportFilter === 'open') tickets = tickets.filter(t => !isDone(t.status));
+  else if (supportFilter === 'done') tickets = tickets.filter(t => isDone(t.status));
   else if (supportFilter !== 'all')  tickets = tickets.filter(t => t.priority === supportFilter);
 
   const pColors = { critical: '#DC2626', high: '#EA580C', medium: '#D97706', low: '#059669' };

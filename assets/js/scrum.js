@@ -1,5 +1,5 @@
 // ============================================================
-// SCRUM VIEW — Board sprint, hiérarchie Feature>Epic, statistiques
+// SCRUM VIEW - Board sprint, hiérarchie Feature>Epic, statistiques
 // ============================================================
 
 // ----------- Team mood / rituals persistence (data/team-mood.json) -----------
@@ -22,7 +22,7 @@ function _moodSave() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(_moodCache, null, 2),
-    }).catch(() => { /* server unavailable — localStorage fallback */ });
+    }).catch(() => { /* server unavailable - localStorage fallback */ });
   }, 300);
 }
 
@@ -92,7 +92,7 @@ function _renderSprintAlerts() {
     });
   }
 
-  // J-N → mood meter (ROTI) — opens panel like fist of five
+  // J-N → mood meter (ROTI) - opens panel like fist of five
   if (daysToEnd >= 0 && daysToEnd <= moodDays) {
     const moodVotes = _moodData().votes || {};
     const hasVotes  = _moodTeams().some(t => { const v = moodVotes[_moodKey(t)]; return Array.isArray(v) && v.length > 0; });
@@ -117,7 +117,7 @@ function _renderSprintAlerts() {
   // ---- Health alerts (scope creep, blocked ratio, velocity trend) ----
   const tickets = (typeof getTickets === 'function') ? getTickets() : [];
 
-  // Scope creep — stories added mid-sprint (detected via todayChanges or changelog)
+  // Scope creep - stories added mid-sprint (detected via todayChanges or changelog)
   const scopeThreshold = ac.scopeCreepThreshold ?? 2;
   if (daysFromStart > 1 && tickets.length) {
     // Count tickets that were added after sprint start (sprint field change to current sprint)
@@ -134,7 +134,7 @@ function _renderSprintAlerts() {
     }
   }
 
-  // Blocked ratio — blocked / in-progress too high
+  // Blocked ratio - blocked / in-progress too high
   const blockedThreshold = ac.blockedRatioThreshold ?? 0.3;
   const inProg  = tickets.filter(t => t.status === 'inprog' || t.status === 'review').length;
   const blocked = tickets.filter(t => t.status === 'blocked').length;
@@ -147,7 +147,7 @@ function _renderSprintAlerts() {
     });
   }
 
-  // Velocity dropping trend — compare last 3 sprints
+  // Velocity dropping trend - compare last 3 sprints
   const velDropPct = ac.velocityDropPct ?? 15;
   const activeTeams = _moodTeams();
   const allVH = activeTeams.flatMap(t => CONFIG.teams[t]?.velocityHistory || []);
@@ -186,7 +186,7 @@ window._toggleRitual = function(type) {
   _renderSprintAlerts();
 };
 
-// ----------- Mood meter (ROTI) panel — like fist of five -----------
+// ----------- Mood meter (ROTI) panel - like fist of five -----------
 let _moodPanelOpen = false;
 
 function _moodTeams() {
@@ -247,7 +247,7 @@ window._moodNote = function(teamId, val) {
   _moodSave();
 };
 
-// Build mood trend sparkline — shows average mood per sprint across teams
+// Build mood trend sparkline - shows average mood per sprint across teams
 function _moodTrendSparkline(teams) {
   const md = _moodData();
   if (!md.votes) return '';
@@ -338,17 +338,17 @@ function _renderMoodPanel() {
     // Distribution bars
     const distrib = [1,2,3,4,5].map(n => votes.filter(v => v === n).length);
     const maxD = Math.max(...distrib, 1);
-    const distribHtml = count ? `<div style="display:flex;align-items:flex-end;gap:4px;height:36px;">
+    const distribHtml = `<div style="display:flex;align-items:flex-end;gap:4px;height:36px;">
       ${distrib.map((d, i) => `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
-        <div style="width:18px;height:${Math.max(3, Math.round(d / maxD * 28))}px;background:${d ? (i < 2 ? '#FECACA' : i === 2 ? '#FEF3C7' : '#D1FAE5') : 'var(--border)'};border-radius:3px;"></div>
+        <div style="width:18px;height:${count ? Math.max(3, Math.round(d / maxD * 28)) : 3}px;background:${count && d ? (i < 2 ? '#FECACA' : i === 2 ? '#FEF3C7' : '#D1FAE5') : 'var(--border)'};border-radius:3px;${count ? '' : 'opacity:.4;'}"></div>
         <span style="font-size:8px;color:var(--text-muted);">${d || ''}</span>
       </div>`).join('')}
-    </div>` : '';
+    </div>`;
 
     const btns = [1,2,3,4,5].map(n => `
       <button onclick="_moodVote('${tid}',${n})"
         style="border:1.5px solid var(--border);border-radius:10px;background:var(--surface);padding:8px 12px;font-size:22px;cursor:pointer;transition:all .15s;"
-        title="${n} — ${labels[n]}">${emojis[n-1]}</button>`
+        title="${n} - ${labels[n]}">${emojis[n-1]}</button>`
     ).join('');
 
     const actions = count ? `
@@ -391,7 +391,7 @@ function _renderMoodPanel() {
       </div>`
     : '';
 
-  // Mood trend sparkline — historical mood averages across sprints
+  // Mood trend sparkline - historical mood averages across sprints
   const trendHtml = _moodTrendSparkline(teams);
 
   el.innerHTML = `<div class="mood-panel">
@@ -405,22 +405,22 @@ function _renderMoodPanel() {
   </div>`;
 }
 
-// Board view mode — 'columns' | 'deadlines' | 'list'
+// Board view mode - 'columns' | 'deadlines' | 'list'
 let _boardViewMode = localStorage.getItem('board_view_mode') || 'columns';
 
-// Quick-filter state (improvement #9) — persisted in localStorage
+// Quick-filter state (improvement #9) - persisted in localStorage
 let _scrumFilter     = localStorage.getItem('sqf_filter') || null;
 let _scrumTextFilter = localStorage.getItem('sqf_text')   || '';
 let _scrumTypeFilter = localStorage.getItem('sqf_type')   || '';
 let _scrumAssignee   = localStorage.getItem('sqf_assignee') || '';
 let _scrumEpicFilter = localStorage.getItem('sqf_epic')   || '';
 
-// Standalone sidebar progress — callable from any view / init
+// Standalone sidebar progress - callable from any view / init
 function _renderSidebarProgress() {
   const sbWrap = document.getElementById('sb-progress-wrap');
   if (!sbWrap) return;
   const tickets  = (typeof getTickets === 'function') ? getTickets() : (typeof TICKETS !== 'undefined' ? TICKETS : []);
-  const done     = tickets.filter(t => t.status === 'done');
+  const done     = tickets.filter(t => isDone(t.status));
   const inprog   = tickets.filter(t => t.status === 'inprog');
   const review   = tickets.filter(t => t.status === 'review');
   const blocked  = tickets.filter(t => t.status === 'blocked');
@@ -434,7 +434,7 @@ function _renderSidebarProgress() {
   const bufferPts = bufferTk.reduce((a, t) => a + (t.points || 0), 0);
   const pctTk     = tickets.length ? Math.round(done.length / tickets.length * 100) : 0;
   const bufferPct = ptsTotal ? Math.round(bufferPts / ptsTotal * 100) : 0;
-  const sbBufDone = bufferTk.filter(t => t.status === 'done').reduce((a, t) => a + (t.points || 0), 0);
+  const sbBufDone = bufferTk.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
   const sbFeatPct = ptsTotal > 0 ? Math.round((ptsDone - sbBufDone) / ptsTotal * 100) : 0;
   const sbBufPct  = ptsTotal > 0 ? Math.round(sbBufDone / ptsTotal * 100) : 0;
   const sbBufTip  = `Buffer : ${sbBufDone}/${bufferPts} pts done (${bufferCnt} tickets)`;
@@ -455,7 +455,7 @@ function _renderSidebarProgress() {
 
 function renderScrum() {
   const tickets = getTickets();
-  const done    = tickets.filter(t => t.status === 'done');
+  const done    = tickets.filter(t => isDone(t.status));
   const inprog  = tickets.filter(t => t.status === 'inprog');
   const review  = tickets.filter(t => t.status === 'review');
   const blocked = tickets.filter(t => t.status === 'blocked');
@@ -468,20 +468,20 @@ function renderScrum() {
   // Sprint effectif selon le filtre courant
   const s    = _activeSprintCtx();
   const _el  = id => document.getElementById(id);
-  const startShort = s.startDate ? s.startDate.replace(/\s+\d{4}$/, '') : '—';
-  const endFull    = s.endDate   || '—';
-  if (_el('sprint-name'))     _el('sprint-name').textContent     = s.label || '—';
-  if (_el('sprint-dates'))    _el('sprint-dates').textContent    = s.startDate ? `${startShort} – ${endFull}` : '—';
+  const startShort = s.startDate ? s.startDate.replace(/\s+\d{4}$/, '') : '-';
+  const endFull    = s.endDate   || '-';
+  if (_el('sprint-name'))     _el('sprint-name').textContent     = s.label || '-';
+  if (_el('sprint-dates'))    _el('sprint-dates').textContent    = s.startDate ? `${startShort} – ${endFull}` : '-';
   if (_el('sprint-velocity')) _el('sprint-velocity').textContent = ptsTotal + ' pts';
   // Buffer visualization in progress bar
   const bufTickets   = tickets.filter(t => t.buffer);
-  const bufDonePts   = bufTickets.filter(t => t.status === 'done').reduce((a, t) => a + (t.points || 0), 0);
+  const bufDonePts   = bufTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
   const bufTotalPts  = bufTickets.reduce((a, t) => a + (t.points || 0), 0);
   const featDonePts  = ptsDone - bufDonePts;
   const featPct      = ptsTotal > 0 ? Math.round(featDonePts / ptsTotal * 100) : 0;
   const bufDonePct   = ptsTotal > 0 ? Math.round(bufDonePts / ptsTotal * 100) : 0;
 
-  // WIP fill (inprog + review + test) — shown after done, before remaining
+  // WIP fill (inprog + review + test) - shown after done, before remaining
   const wipStatuses = ['inprog', 'review', 'test'];
   const wipPts     = tickets.filter(t => wipStatuses.includes(t.status)).reduce((a, t) => a + (t.points || 0), 0);
   const wipPct     = ptsTotal > 0 ? Math.round(wipPts / ptsTotal * 100) : 0;
@@ -515,26 +515,46 @@ function renderScrum() {
   const _ctxLabel = currentTeam && currentTeam !== 'all'
     ? currentTeam
     : currentGroup ? (GROUPS.find(g => g.id === currentGroup)?.name || '') : '';
-  if (_el('topbar-title')) _el('topbar-title').textContent = `📋 Vue Scrum — ${s.label || 'Sprint actif'}${_ctxLabel ? ` · ${_ctxLabel}` : ''}`;
+  if (_el('topbar-title')) _el('topbar-title').textContent = `📋 Vue Scrum - ${s.label || 'Sprint actif'}${_ctxLabel ? ` · ${_ctxLabel}` : ''}`;
 
   // Stat cards
   const bufferAll  = tickets.filter(t => t.buffer);
   const bufferPtsS = bufferAll.reduce((a, t) => a + (t.points || 0), 0);
+  // Vélocité cumulée du PI en cours
+  const _piNum = (() => {
+    const m = (s.label || '').match(/(\d+)\.\d+/);
+    return m ? m[1] : null;
+  })();
+  let piVelocity = null;
+  if (_piNum) {
+    const activeTeams = getActiveTeams();
+    const piRegex = new RegExp('\\b' + _piNum + '\\.\\d+');
+    let piHistSum = 0;
+    activeTeams.forEach(tid => {
+      const hist = CONFIG.teams[tid]?.velocityHistory || [];
+      hist.forEach(h => { if (piRegex.test(h.name)) piHistSum += (h.velocity || 0); });
+    });
+    piVelocity = piHistSum + ptsDone; // sprints passés du PI + sprint courant
+  }
+
   const statCards = [
     { num: ptsDone,                       lbl: 'Points Terminés', color: '#10B981', filter: 'done',    title: 'Tickets terminés' },
     { num: ptsRem,                        lbl: 'Points Restants', color: '#F59E0B', filter: 'remaining', title: 'Tickets restants' },
     { num: inprog.length + review.length, lbl: 'En Cours',        color: '#3B82F6', filter: 'inprog',  title: 'Tickets en cours' },
     { num: blocked.length,                lbl: 'Bloqués',         color: '#EF4444', filter: 'blocked', title: 'Tickets bloqués' },
   ];
+  if (piVelocity !== null) {
+    statCards.push({ num: piVelocity, lbl: `Vélocité PI${_piNum}`, color: '#7C3AED', filter: null, title: `Vélocité cumulée du PI ${_piNum} (sprints passés + courant)` });
+  }
   if (bufferAll.length) {
     statCards.push({ num: bufferPtsS, lbl: '🛡️ Buffer', color: '#22C55E', filter: 'buffer', title: 'Tickets buffer (20%)' });
   }
   document.getElementById('scrum-stats').innerHTML = statCards.map(s => {
-    const clickable = s.num > 0;
-    return `<div class="stat-card${clickable ? ' stat-card--clickable' : ''}"${clickable ? ` onclick="_showScrumStatDetail('${s.filter}')" title="Voir : ${s.title}"` : ''}><div class="num" style="color:${s.color}">${s.num}</div><div class="lbl">${s.lbl}</div></div>`;
+    const clickable = s.num > 0 && s.filter;
+    return `<div class="stat-card${clickable ? ' stat-card--clickable' : ''}"${clickable ? ` onclick="_showScrumStatDetail('${s.filter}')" title="Voir : ${s.title}"` : (s.title ? ` title="${s.title}"` : '')}><div class="num" style="color:${s.color}">${s.num}</div><div class="lbl">${s.lbl}</div></div>`;
   }).join('');
 
-  renderHierarchy(tickets);
+  _renderScrumRisks(tickets, blocked);
   _renderScrumQuickFilters();
   _renderDailyActivity();
   renderBoard(tickets);
@@ -546,6 +566,85 @@ function renderScrum() {
     // Mettre à jour les charts avec les nouvelles données
     refreshCharts();
   }
+}
+
+// ============================================================
+// Risques & Bloqués - sous les stat cards
+// ============================================================
+
+function _renderScrumRisks(tickets, blocked) {
+  const el = document.getElementById('scrum-risks');
+  if (!el) return;
+
+  const items = [];
+
+  // Blocked tickets
+  if (blocked.length) {
+    items.push(...blocked.map(t => ({
+      icon: '🚧',
+      color: '#DC2626',
+      label: `${t.id} - ${(t.title || '').slice(0, 60)}`,
+      sub: t.assignee ? t.assignee.split(' ')[0] : 'Non assigné',
+      tid: t.id,
+    })));
+  }
+
+  // Flagged tickets
+  const flagged = tickets.filter(t => t.flagged && !isDone(t.status));
+  flagged.forEach(t => {
+    if (blocked.some(b => b.id === t.id)) return; // already shown
+    items.push({ icon: '🚩', color: '#DC2626', label: `${t.id} - ${(t.title || '').slice(0, 60)}`, sub: 'Flaggé', tid: t.id });
+  });
+
+  // Unassigned active tickets
+  const unassigned = tickets.filter(t => !t.assignee && !isDone(t.status) && t.status !== 'backlog');
+  if (unassigned.length) {
+    items.push({ icon: '👤', color: '#F59E0B', label: `${unassigned.length} ticket${unassigned.length > 1 ? 's' : ''} non assigné${unassigned.length > 1 ? 's' : ''}`, tickets: unassigned });
+  }
+
+  // Sprint end approaching
+  const s = _activeSprintCtx();
+  if (s.endDate) {
+    const now = new Date();
+    const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((end - now) / 86400000);
+    const notDone = tickets.filter(t => !isDone(t.status)).length;
+    const total = tickets.length;
+    const pctDone = total ? Math.round((total - notDone) / total * 100) : 0;
+    if (daysLeft <= 3 && pctDone < 70) {
+      items.push({ icon: '⏰', color: '#F59E0B', label: `Fin de sprint dans ${daysLeft}j - ${pctDone}% terminé (${notDone} restant${notDone > 1 ? 's' : ''})` });
+    }
+  }
+
+  // Critical/high not done
+  const critical = tickets.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status));
+  if (critical.length) {
+    items.push({ icon: '🔴', color: '#F59E0B', label: `${critical.length} ticket${critical.length > 1 ? 's' : ''} critique${critical.length > 1 ? 's' : ''}/haute priorité non terminé${critical.length > 1 ? 's' : ''}`, tickets: critical });
+  }
+
+  if (!items.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `<div class="scrum-risks-bar">
+    ${items.map(it => {
+      if (it.tid) {
+        return `<div class="scrum-risk-item" style="--risk-c:${it.color};" onclick="openModal('${it.tid}')" title="Voir le ticket">
+          <span class="scrum-risk-icon">${it.icon}</span>
+          <span class="scrum-risk-label">${it.label}</span>
+          <span class="scrum-risk-sub">${it.sub || ''}</span>
+        </div>`;
+      }
+      if (it.tickets) {
+        return `<div class="scrum-risk-item" style="--risk-c:${it.color};cursor:default;">
+          <span class="scrum-risk-icon">${it.icon}</span>
+          <span class="scrum-risk-label">${it.label}</span>
+        </div>`;
+      }
+      return `<div class="scrum-risk-item" style="--risk-c:${it.color};cursor:default;">
+        <span class="scrum-risk-icon">${it.icon}</span>
+        <span class="scrum-risk-label">${it.label}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
 }
 
 // Retourne le contexte sprint effectif selon le filtre courant.
@@ -580,7 +679,7 @@ function _updateSidebarStats() {
   // Nom du sprint + lien board
   const linkEl = _el('sb-sprint-link');
   if (linkEl) {
-    linkEl.textContent = s.label || '—';
+    linkEl.textContent = s.label || '-';
     // Lien vers le board JIRA de l'équipe courante (si configuré)
     const teamCfg  = teamCfgS;
     const boardId  = teamCfg?.boardId;
@@ -635,7 +734,7 @@ function _updateSidebarStats() {
     }
   }
 
-  // Dates sprint — format "06 mar. → 19 mar. 2026"
+  // Dates sprint - format "06 mar. → 19 mar. 2026"
   const datesEl = _el('sb-sprint-dates');
   if (datesEl && s.startDate && s.endDate) {
     const _shortDate = (str) => {
@@ -652,81 +751,9 @@ function _updateSidebarStats() {
   }
 }
 
-function renderHierarchy(tickets) {
-  const el = document.getElementById('hierarchy-view');
-  let html = '';
-
-  FEATURES.forEach(f => {
-    const fEpics   = EPICS.filter(e => e.feature === f.id);
-    const fTickets = tickets.filter(t => fEpics.some(e => e.id === t.epic));
-    if (!fTickets.length) return;
-
-    // Regrouper les tickets par groupe
-    const groupMap = new Map();
-    fTickets.forEach(t => {
-      const grp = GROUPS.find(g => g.teams.includes(t.team));
-      const key = grp ? grp.id : '__none__';
-      if (!groupMap.has(key)) groupMap.set(key, { grp: grp || null, teams: new Set(), tkts: [], epicIds: new Set() });
-      const entry = groupMap.get(key);
-      entry.teams.add(t.team);
-      entry.tkts.push(t);
-      if (t.epic) entry.epicIds.add(t.epic);
-    });
-
-    groupMap.forEach(({ grp, teams, tkts, epicIds }) => {
-      const grpDone  = tkts.filter(t => t.status === 'done').length;
-      const grpPts   = tkts.reduce((a, t) => a + t.points, 0);
-      const teamsStr = [...teams].sort().join(', ');
-      const label    = grp ? grp.name : f.title;
-      const dotColor = grp ? grp.color : f.color;
-
-      const allDone = grpDone === tkts.length && tkts.length > 0;
-      html += `<div class="feature-row" style="background:${dotColor}18;border-left:3px solid ${dotColor};${allDone ? 'opacity:.55;' : ''}" onclick="const s=this.nextElementSibling,open=s.style.display==='none';s.style.display=open?'block':'none';this.querySelector('.fr-arrow').textContent=open?'▼':'▶';">
-        <span style="display:flex;align-items:center;gap:6px;"><span style="width:8px;height:8px;border-radius:50%;background:${dotColor};display:inline-block;flex-shrink:0;"></span><span class="fr-arrow">▶</span> ${label}${teamsStr ? ' — ' + teamsStr : ''}</span>
-        <span style="font-size:12px;opacity:.8">${allDone ? '✓ ' : ''}${grpDone}/${tkts.length} tickets • ${grpPts} pts</span>
-      </div><div style="display:none;">`;
-
-      // Sort epics: not-done first, done last
-      const sortedEpics = fEpics.filter(e => epicIds.has(e.id)).sort((a, b) => {
-        const aDone = tkts.filter(t => t.epic === a.id).every(t => t.status === 'done');
-        const bDone = tkts.filter(t => t.epic === b.id).every(t => t.status === 'done');
-        return (aDone ? 1 : 0) - (bDone ? 1 : 0);
-      });
-
-      sortedEpics.forEach(e => {
-        const eTickets = tkts.filter(t => t.epic === e.id);
-        if (!eTickets.length) return;
-        const eDone  = eTickets.filter(t => t.status === 'done').length;
-        const ePct   = eTickets.length ? Math.round(eDone / eTickets.length * 100) : 0;
-        const ePts   = eTickets.reduce((a, t) => a + t.points, 0);
-        const isDone = ePct === 100 && eTickets.length > 0;
-        const titleStyle = isDone ? 'text-decoration:line-through;opacity:.55;' : '';
-        const prefix     = isDone
-          ? `<span style="color:#22C55E;font-size:14px;line-height:1;" title="Terminé">✓</span>`
-          : `<span style="width:10px;height:10px;border-radius:50%;background:${e.color};display:inline-block;flex-shrink:0;"></span>`;
-        html += `<div class="epic-row" style="cursor:default;">
-          <span style="display:flex;align-items:center;gap:8px;min-width:0;">
-            ${prefix}
-            <span style="${titleStyle}">${_jiraBrowse(e.id, { style: 'color:inherit;text-decoration:none;font-weight:700;cursor:pointer;' })} — ${e.title}</span>
-            <span class="badge badge-epic">${e.team}</span>
-          </span>
-          <span class="prog">${eDone}/${eTickets.length} • ${ePct}%${ePts ? ` <span style="opacity:.65;font-size:11px;">${ePts}pts</span>` : ''}
-            <span style="position:relative;display:inline-block;width:60px;height:4px;background:#DBEAFE;border-radius:2px;vertical-align:middle;margin-left:4px;overflow:hidden;">
-              <span style="position:absolute;top:0;left:0;width:${ePct}%;height:100%;background:${isDone ? '#22C55E' : e.color};border-radius:2px;"></span>
-            </span>
-          </span>
-        </div>`;
-      });
-
-      html += '</div>';
-    });
-  });
-
-  el.innerHTML = html || '<div style="padding:1rem;color:var(--text-muted);font-size:13px;">Aucune hiérarchie à afficher. Synchronisez les données JIRA.</div>';
-}
 
 // ============================================================
-// DAILY ACTIVITY — snapshot + changelog for PO checklist
+// DAILY ACTIVITY - snapshot + changelog for PO checklist
 // ============================================================
 
 // Field labels for display
@@ -790,10 +817,10 @@ function _daRenderRow(c) {
     const toS   = _mapStatus(c.to) || c.to;
     transitionHtml = `<span class="badge badge-${fromS}" style="font-size:10px;">${statusLabel(fromS)}</span><span class="da-arrow">→</span><span class="badge badge-${toS}" style="font-size:10px;">${statusLabel(toS)}</span>`;
   } else {
-    transitionHtml = `<span class="da-field-badge">${_daFieldLabel(c.field)}</span><span class="da-field-val" title="${c.from || '—'}">${c.from || '—'}</span><span class="da-arrow">→</span><span class="da-field-val" title="${c.to || '—'}">${c.to || '—'}</span>`;
+    transitionHtml = `<span class="da-field-badge">${_daFieldLabel(c.field)}</span><span class="da-field-val" title="${c.from || '-'}">${c.from || '-'}</span><span class="da-arrow">→</span><span class="da-field-val" title="${c.to || '-'}">${c.to || '-'}</span>`;
   }
   const mappedTo = c.kind === 'status' ? (_mapStatus(c.to) || c.to) : '';
-  return `<div class="da-row${mappedTo === 'done' ? ' da-done' : ''}${c.kind === 'field' ? ' da-field' : ''}" onclick="openModal('${c.id}')">
+  return `<div class="da-row${isDone(mappedTo) ? ' da-done' : ''}${c.kind === 'field' ? ' da-field' : ''}" onclick="openModal('${c.id}')">
     <span class="da-time">${c.time}</span>
     <span class="da-transition">${transitionHtml}</span>
     <span class="da-ticket">
@@ -809,7 +836,7 @@ function _daRenderRow(c) {
 function _daSummary(changes) {
   const sc = changes.filter(c => c.kind === 'status');
   const fc = changes.filter(c => c.kind === 'field');
-  const done = sc.filter(c => { const s = _mapStatus(c.to) || c.to; return s === 'done'; }).length;
+  const done = sc.filter(c => { const s = _mapStatus(c.to) || c.to; return isDone(s); }).length;
   return [
     done       ? `✅ ${done} terminé${done > 1 ? 's' : ''}` : '',
     sc.length  ? `🔄 ${sc.length} transition${sc.length > 1 ? 's' : ''}` : '',
@@ -832,7 +859,7 @@ function _renderDailyActivity() {
   const todayChanges     = _filter(todayAll);
   const yesterdayChanges = _filter(yesterdayAll);
 
-  // Get or create container — placed after scrum-quick-filters
+  // Get or create container - placed after scrum-quick-filters
   let wrap = document.getElementById('daily-activity-wrap');
   if (!wrap) {
     wrap = document.createElement('div');
@@ -1039,12 +1066,8 @@ window._toggleTaskLane = function() {
 };
 
 function _renderBoardColumns(filtered) {
-  const cols = [
-    { key: 'todo',   label: 'À faire',   color: 'var(--todo)'   },
-    { key: 'inprog', label: 'En cours',  color: 'var(--inprog)' },
-    { key: 'review', label: 'En review', color: 'var(--review)' },
-    { key: 'done',   label: 'Terminé',   color: 'var(--done)'   },
-  ];
+  // Build columns dynamically from JIRA board configuration
+  const cols = getBoardColumns(filtered);
 
   // Separate task tickets with specific labels into their own swimlane
   const _isSwimlaneTache = (t) => t.type === 'tache' && Array.isArray(t.labels) &&
@@ -1054,6 +1077,14 @@ function _renderBoardColumns(filtered) {
 
   const board = document.getElementById('scrum-board');
   board.className = 'board board-with-lanes';
+
+  // Count tickets per column (for headers + swimlane empty state)
+  const colCounts = {};
+  cols.forEach(col => {
+    colCounts[col.key] = otherTickets.filter(t =>
+      t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
+    ).length;
+  });
 
   // Task swimlane
   let taskLaneHtml = '';
@@ -1071,28 +1102,48 @@ function _renderBoardColumns(filtered) {
         const colT = taskTickets.filter(t =>
           t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
         );
-        return `<div class="board-col board-col-mini">
+        const empty = !colCounts[col.key] && !colT.length;
+        return `<div class="board-col board-col-mini${empty ? ' col-empty-state' : ''}">
           <div class="col-body">${colT.map(t => ticketCard(t)).join('') || '<div class="col-empty"></div>'}</div>
         </div>`;
       }).join('')}</div>` : ''}
     </div>`;
   }
 
+  // Sticky header bar
+  const stickyHtml = `<div class="board-sticky-bar">${cols.map(col => {
+    const empty = !colCounts[col.key];
+    const cat = statusCat(col.key);
+    return `<div class="col-header${empty ? ' col-empty-state' : ''}" data-cat="${cat}" title="${col.label}">
+      <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
+      <span class="col-count">${colCounts[col.key]}</span>
+    </div>`;
+  }).join('')}</div>`;
+
   // Main board
   const mainHtml = cols.map(col => {
     const colTickets = otherTickets.filter(t =>
       t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
     );
-    return `<div class="board-col">
-      <div class="col-header">
-        <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;"></span>${col.label}</div>
+    const empty = !colTickets.length;
+    const cat = statusCat(col.key);
+    return `<div class="board-col${empty ? ' col-empty-state' : ''}">
+      <div class="col-header" data-cat="${cat}" title="${col.label}">
+        <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
         <span class="col-count">${colTickets.length}</span>
       </div>
       <div class="col-body">${colTickets.map(t => ticketCard(t)).join('')}</div>
     </div>`;
   }).join('');
 
-  board.innerHTML = taskLaneHtml + `<div class="board-main-grid">${mainHtml}</div>`;
+  board.innerHTML = taskLaneHtml + stickyHtml + `<div class="board-main-grid">${mainHtml}</div>`;
+
+  // Sync sticky bar horizontal scroll with main grid
+  const stickyBar = board.querySelector('.board-sticky-bar');
+  const mainGrid = board.querySelector('.board-main-grid');
+  if (stickyBar && mainGrid) {
+    mainGrid.addEventListener('scroll', () => { stickyBar.scrollLeft = mainGrid.scrollLeft; });
+  }
 }
 
 function _renderBoardDeadlines(filtered) {
@@ -1116,7 +1167,7 @@ function _renderBoardDeadlines(filtered) {
   ];
 
   filtered.forEach(t => {
-    if (t.status === 'done') return; // skip done tickets in deadline view
+    if (isDone(t.status)) return; // skip done tickets in deadline view
     const dd = _dueDate(t);
     if (!dd || isNaN(dd)) { lanes[5].tickets.push(t); return; }
     const diff = Math.ceil((dd - now) / 86400000);
@@ -1137,7 +1188,7 @@ function _renderBoardDeadlines(filtered) {
   }));
 
   // Add done lane at end
-  const doneTickets = filtered.filter(t => t.status === 'done');
+  const doneTickets = filtered.filter(t => isDone(t.status));
   if (doneTickets.length) {
     lanes.push({ key: 'done', label: '✅ Terminés', color: '#10B981', tickets: doneTickets });
   }
@@ -1167,10 +1218,10 @@ function _deadlineCard(t, dateStr) {
   const isBlocked   = t.status === 'blocked';
   const isFlagged   = !!t.flagged;
   const extraCls    = isBlocked ? ' blocked' : isFlagged ? ' flagged' : '';
-  return `<div class="ticket-card type-${t.type}${extraCls}" onclick="openModal('${t.id}')" style="flex-direction:row;align-items:center;gap:8px;padding:8px 10px;">
+  return `<div class="ticket-card type-${t.type}${extraCls}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}" style="flex-direction:row;align-items:center;gap:8px;padding:8px 10px;">
     <span style="font-size:11px;color:var(--text-muted);min-width:45px;flex-shrink:0;">${dateStr}</span>
     <span class="badge badge-${t.status}" style="font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
-    <span class="ticket-key" style="flex-shrink:0;">${_jiraBrowse(t.id)}</span>
+    <span class="ticket-prio-key">${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
     <span style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title}</span>
     ${epicTag(epic, t.epic)}
     ${ptsBadge(t.points, {size:'small'})}
@@ -1247,14 +1298,14 @@ function _renderBoardList(filtered) {
     ${sorted.map(t => {
       const epic = EPICS.find(e => e.id === t.epic);
       const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
-      const isDone = t.status === 'done';
+      const _tkDone = isDone(t.status);
       const rowCls = t.status === 'blocked' ? ' bl-blocked' : t.flagged ? ' bl-flagged' : t.buffer ? ' bl-buffer' : '';
       let ddStr = '';
       if (t.dueDate) {
         const dd = new Date(t.dueDate.length === 10 ? t.dueDate + 'T00:00:00' : t.dueDate);
         if (!isNaN(dd)) ddStr = dd.toLocaleDateString('fr-FR', {day:'numeric',month:'short'});
       }
-      return `<div class="bl-row${rowCls}${isDone ? ' bl-done' : ''}" onclick="openModal('${t.id}')">
+      return `<div class="bl-row${rowCls}${_tkDone ? ' bl-done' : ''}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
         <span class="bl-cell" style="width:30px;">${priorityIcon(t.priority)}</span>
         <span class="bl-cell bl-key" style="width:70px;">${_jiraBrowse(t.id)}</span>
         <span class="bl-cell bl-title" style="flex:1;">${t.title}</span>
@@ -1273,8 +1324,8 @@ function _showScrumBlockedDetail() { _showScrumStatDetail('blocked'); }
 function _showScrumStatDetail(filter) {
   const all = getTickets();
   const cfg = {
-    done:      { icon: '✅', label: 'Tickets terminés',  list: all.filter(t => t.status === 'done') },
-    remaining: { icon: '🔶', label: 'Tickets restants',  list: all.filter(t => t.status !== 'done') },
+    done:      { icon: '✅', label: 'Tickets terminés',  list: all.filter(t => isDone(t.status)) },
+    remaining: { icon: '🔶', label: 'Tickets restants',  list: all.filter(t => !isDone(t.status)) },
     inprog:    { icon: '🔵', label: 'Tickets en cours',  list: all.filter(t => t.status === 'inprog' || t.status === 'review') },
     blocked:   { icon: '⚠',  label: 'Tickets bloqués',  list: all.filter(t => t.status === 'blocked') },
     buffer:    { icon: '🛡️', label: 'Tickets buffer',   list: all.filter(t => t.buffer) },
@@ -1301,15 +1352,15 @@ function _showScrumStatDetail(filter) {
     ${cfg.list.map(t => {
       const epic        = EPICS.find(e => e.id === t.epic);
       const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
-      const isDone      = t.status === 'done';
-      const strike      = isDone ? 'text-decoration:line-through;opacity:.5;' : '';
+      const _tkDone     = isDone(t.status);
+      const strike      = _tkDone ? 'text-decoration:line-through;opacity:.5;' : '';
       const flagBadge   = t.flagged ? '<span style="color:#DC2626;font-size:11px;font-weight:700;flex-shrink:0;">🚩</span>' : '';
       const rowBg = t.flagged ? 'background:#FEF2F2;' : t.buffer ? 'background:#F0FDF4;' : '';
-      return `<div style="display:flex;align-items:center;gap:8px;${rowBg}padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;${isDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
+      return `<div style="display:flex;align-items:center;gap:8px;${rowBg}padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
         ${flagBadge}
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${strike}">${_jiraBrowse(t.id)} — ${t.title}</span>
+        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${strike}">${_jiraBrowse(t.id)} - ${t.title}</span>
         <span class="badge badge-${t.status}" style="white-space:nowrap;font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
         ${epicTag(epic, t.epic)}
         ${ptsBadge(t.points)}
@@ -1343,7 +1394,7 @@ function ticketCard(t) {
       const _curPerson = _pList[_dailyPersonIdx];
       const isPersonTicket = _curPerson && _curPerson.tickets.some(pt => pt.id === t.id);
       dailyFocus = isPersonTicket ? ' daily-focus-person' : '';
-      dailyDim = !isPersonTicket && t.status !== 'done' ? ' daily-dimmed' : '';
+      dailyDim = !isPersonTicket && !isDone(t.status) ? ' daily-dimmed' : '';
     } else {
       dailyDim = _dailyFocusId && _dailyFocusId !== t.id ? ' daily-dimmed' : '';
       dailyFocus = _dailyFocusId === t.id ? ' daily-focus' : '';
@@ -1352,7 +1403,7 @@ function ticketCard(t) {
   const dailyDone = _dailyActive && _dailyDiscussed.has(t.id) && _dailyFocusId !== t.id ? '<span class="daily-done-badge">✓</span>' : '';
   return `<div class="ticket-card type-${t.type}${extraCls}${dailyDim}${dailyFocus}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
     <div class="ticket-top">
-      <span class="ticket-key">${_jiraBrowse(t.id)}</span>
+      <span class="ticket-prio-key">${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
       ${ptsBadge(t.points, {size:'small'})}
       ${dailyDone}
     </div>
@@ -1361,7 +1412,6 @@ function ticketCard(t) {
       <span class="badge badge-${t.type}">${typeName(t.type)}</span>
       ${epicTag(epic, t.epic)}
       <span class="avatar" style="background:${avatarColor}" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
-      ${priorityIcon(t.priority)}
       ${statusBadge}
       ${bufferBadge}
     </div>
@@ -1369,12 +1419,12 @@ function ticketCard(t) {
 }
 
 // ============================================================
-// DAILY MODE — Système complet pour faciliter le daily standup
+// DAILY MODE - Système complet pour faciliter le daily standup
 // 3 modes : Walk the Board, Vue par Personne, + Parking Lot
 // ============================================================
 
 let _dailyActive   = false;
-let _dailyMode     = 'board';        // 'board' | 'person'
+let _dailyMode     = 'board';        // 'board' | 'person' - restored per team from localStorage
 let _dailyFocusId  = null;           // ticket id currently focused
 let _dailyFocusIdx = -1;             // index in ordered list
 let _dailyDiscussed = new Set();     // tickets already discussed
@@ -1387,7 +1437,7 @@ let _dailyParkingLot = [];          // parking lot items
 
 // Ordered ticket list for walk-the-board (right to left: blocked → review → inprog → todo)
 function _dailyBoardOrder() {
-  const tickets = getTickets().filter(t => t.status !== 'done');
+  const tickets = getTickets().filter(t => !isDone(t.status));
   const order = ['blocked', 'review', 'inprog', 'todo'];
   return tickets.sort((a, b) => {
     const ai = order.indexOf(a.status); const bi = order.indexOf(b.status);
@@ -1399,7 +1449,7 @@ function _dailyBoardOrder() {
 }
 
 // Ordered person list for person mode
-// Seeded shuffle — deterministic per day, different each day
+// Seeded shuffle - deterministic per day, different each day
 function _dailyShuffle(arr) {
   const d = new Date();
   let seed = d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
@@ -1413,9 +1463,9 @@ function _dailyShuffle(arr) {
 }
 
 function _dailyPersonList() {
-  const tickets = getTickets().filter(t => t.status !== 'done');
+  const tickets = getTickets().filter(t => !isDone(t.status));
   const members = [...new Set(tickets.map(t => t.assignee).filter(Boolean))].sort();
-  // Shuffle based on today's date — stable within a day, different each day
+  // Shuffle based on today's date - stable within a day, different each day
   const shuffled = _dailyShuffle(members);
   // Add "Non assigné" at the end if any
   if (tickets.some(t => !t.assignee)) shuffled.push(null);
@@ -1433,6 +1483,9 @@ function _dailyPersonList() {
 window._dailyToggle = function() {
   _dailyActive = !_dailyActive;
   if (_dailyActive) {
+    // Restore per-team daily mode from localStorage
+    const savedMode = localStorage.getItem('daily_mode_' + (currentTeam || 'all'));
+    if (savedMode === 'board' || savedMode === 'person') _dailyMode = savedMode;
     document.body.classList.add('daily-active');
     _dailyDiscussed = new Set();
     _dailyFocusId = null;
@@ -1462,6 +1515,7 @@ window._dailyToggle = function() {
 // ---- Switch daily sub-mode ----
 window._dailySetMode = function(mode) {
   _dailyMode = mode;
+  localStorage.setItem('daily_mode_' + (currentTeam || 'all'), mode);
   if (mode === 'person') { _dailyPersonIdx = 0; _dailyPersonStartMs = Date.now(); _dailyFocusId = null; }
   if (mode === 'board') {
     const ordered = _dailyBoardOrder();
@@ -1569,18 +1623,18 @@ window._dailyRemoveParking = function(i) {
 window._dailyCopyParking = function() {
   if (!_dailyParkingLot.length) return;
   const allTickets = getTickets();
-  let slack = `🅿️ *Parking Lot — Daily ${new Date().toLocaleDateString('fr-FR')}*\n`;
+  let slack = `[DAILY] 🅿️ Parking Lot - Daily ${new Date().toLocaleDateString('fr-FR')}\n\n`;
   _dailyParkingLot.forEach((p, i) => {
-    slack += `> ${i + 1}. ${p.text}`;
-    if (p.assignee) slack += ` — @${p.assignee.split(' ')[0]}`;
+    slack += `${i + 1}. 🔳 ${p.text}`;
+    if (p.assignee) slack += ` - @${p.assignee.replace(' ', '-')}`;
     if (p.ticket) {
       const t = allTickets.find(x => x.id === p.ticket);
       const url = typeof _jiraBrowseUrl === 'function' ? _jiraBrowseUrl(p.ticket) : null;
       const title = t?.title || '';
       if (url) {
-        slack += ` (<${url}|${p.ticket}>${title ? ' — ' + title : ''})`;
+        slack += ` (<${url}|${p.ticket}>${title ? ' - ' + title : ''})`;
       } else {
-        slack += ` (${p.ticket}${title ? ' — ' + title : ''})`;
+        slack += ` (${p.ticket}${title ? ' - ' + title : ''})`;
       }
     }
     slack += `\n`;
@@ -1673,7 +1727,7 @@ function _dailyRenderPanel() {
       const sc = { blocked: '#DC2626', review: '#7C3AED', inprog: '#2563EB', todo: '#94A3B8' };
       focusInfo = `<div class="daily-focus-info">
         <span class="daily-focus-status" style="background:${(sc[t.status] || '#94A3B8')}18;color:${sc[t.status] || '#94A3B8'};border:1px solid ${(sc[t.status] || '#94A3B8')}33;">${statusLabel(t.status)}</span>
-        <strong>${t.id}</strong> — ${(t.title || '').slice(0, 60)}
+        <strong>${t.id}</strong> - ${(t.title || '').slice(0, 60)}
         ${t.assignee ? `<span class="daily-focus-assignee">@${t.assignee.split(' ')[0]}</span>` : ''}
         <span id="daily-timer-ticket" class="daily-timer-ticket">${_dailyTicketMs ? _dailyElapsed(_dailyTicketMs) : ''}</span>
       </div>`;
@@ -1737,7 +1791,7 @@ function _dailyRenderPanel() {
       ${parkingCount ? `<div class="daily-parking-items">${_dailyParkingLot.map((p, i) =>
         `<div class="daily-parking-item">
           <span class="daily-parking-text">${p.text}</span>
-          ${p.assignee ? `<span class="daily-parking-assignee">@${p.assignee.split(' ')[0]}</span>` : ''}
+          ${p.assignee ? `<span class="daily-parking-assignee">@${p.assignee}</span>` : ''}
           ${p.ticket ? `<span class="daily-parking-ref">${p.ticket}</span>` : ''}
           <span class="daily-parking-time">${p.time}</span>
           <button class="daily-parking-del" onclick="_dailyRemoveParking(${i})">✕</button>
@@ -1766,10 +1820,16 @@ function _dailyRenderPanel() {
         <button class="daily-end-btn" onclick="_dailyToggle()" title="Terminer le daily">✕ Fin</button>
       </div>
     </div>
-    ${focusInfo}
-    ${personInfo}
-    ${personDots}
-    ${parkingHtml}
+    <div class="daily-body">
+      <div class="daily-body-main">
+        ${focusInfo}
+        ${personInfo}
+        ${personDots}
+      </div>
+      <div class="daily-body-parking">
+        ${parkingHtml}
+      </div>
+    </div>
   `;
 }
 
@@ -1784,19 +1844,35 @@ function _dailyTicketMini(t) {
 }
 
 // ============================================================
-// Daily finish — celebration or encouragement
+// Daily finish - celebration or encouragement
 // ============================================================
 function _dailyShowFinish() {
   _dailyFinishShown = true;
+  // Stop timers on finish
+  if (_dailyTimer) { clearInterval(_dailyTimer); _dailyTimer = null; }
   const elapsedSec = Math.floor((Date.now() - _dailyStartMs) / 1000);
   const elapsedMin = Math.floor(elapsedSec / 60);
   const elapsedStr = `${elapsedMin}:${String(elapsedSec % 60).padStart(2, '0')}`;
   const underTime = elapsedSec <= 15 * 60;
 
+  // Build parking recap HTML
+  const parkingRecap = _dailyParkingLot.length ? `
+    <div class="daily-finish-parking">
+      <div class="daily-finish-parking-title">🅿️ Parking Lot</div>
+      <div class="daily-finish-parking-list">${_dailyParkingLot.map((p, i) =>
+        `<div class="daily-finish-parking-item">
+          <span>${i + 1}. ${p.text}</span>
+          ${p.assignee ? `<span class="daily-parking-assignee">@${p.assignee}</span>` : ''}
+          ${p.ticket ? `<span class="daily-parking-ref">${p.ticket}</span>` : ''}
+        </div>`
+      ).join('')}</div>
+      <button class="daily-finish-copy-btn" onclick="event.stopPropagation();_dailyCopyParking();this.textContent='✅ Copié';">📋 Copier pour Slack</button>
+    </div>` : '';
+
   // Create overlay
   const overlay = document.createElement('div');
   overlay.className = 'daily-finish-overlay';
-  overlay.onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
 
   if (underTime) {
     // Confetti animation + celebration
@@ -1810,7 +1886,11 @@ function _dailyShowFinish() {
           <span>✅ ${_dailyDiscussed.size} tickets</span>
           <span>🅿️ ${_dailyParkingLot.length} parking</span>
         </div>
-        <button class="daily-finish-btn" onclick="this.parentElement.parentElement.remove()">Fermer</button>
+        ${parkingRecap}
+        <div class="daily-finish-actions">
+          <button class="daily-finish-btn" onclick="this.closest('.daily-finish-overlay').remove()">Fermer</button>
+          <button class="daily-end-btn" onclick="_dailyToggle();this.closest('.daily-finish-overlay').remove()">✕ Fin du daily</button>
+        </div>
       </div>`;
     document.body.appendChild(overlay);
     _dailySpawnConfetti(document.getElementById('daily-confetti'));
@@ -1829,13 +1909,17 @@ function _dailyShowFinish() {
       <div class="daily-finish-card daily-finish-overtime">
         <div class="daily-finish-emoji">⏱️</div>
         <div class="daily-finish-title">Daily en ${elapsedStr}</div>
-        <div class="daily-finish-sub">${overMin} min au-delà des 15 min — on fera mieux demain !</div>
+        <div class="daily-finish-sub">${overMin} min au-delà des 15 min - on fera mieux demain !</div>
         <div class="daily-finish-tip">💡 ${tip}</div>
         <div class="daily-finish-stats">
           <span>✅ ${_dailyDiscussed.size} tickets</span>
           <span>🅿️ ${_dailyParkingLot.length} parking</span>
         </div>
-        <button class="daily-finish-btn" onclick="this.parentElement.parentElement.remove()">Fermer</button>
+        ${parkingRecap}
+        <div class="daily-finish-actions">
+          <button class="daily-finish-btn" onclick="this.closest('.daily-finish-overlay').remove()">Fermer</button>
+          <button class="daily-end-btn" onclick="_dailyToggle();this.closest('.daily-finish-overlay').remove()">✕ Fin du daily</button>
+        </div>
       </div>`;
     document.body.appendChild(overlay);
   }

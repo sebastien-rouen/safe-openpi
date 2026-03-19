@@ -1,5 +1,5 @@
 // ============================================================
-// PI PLANNING VIEW — SAFe Product Increment
+// PI PLANNING VIEW - SAFe Product Increment
 // Données réelles depuis TICKETS / EPICS / CONFIG.teams
 // ============================================================
 
@@ -17,39 +17,45 @@ function renderPI() {
   const sprintCols   = [
     {
       label: '◀ Précédent', isCurrent: false, isNext: false, isPrev: true,
-      hint: '<strong>Sprint précédent</strong> — estimation<br>Epics ayant au moins un ticket <em>terminé</em> dans le sprint actif.<br>Indique le travail accompli qui était probablement en cours lors du sprint précédent.',
+      hint: '<strong>Sprint précédent</strong> - estimation<br>Epics ayant au moins un ticket <em>terminé</em> dans le sprint actif.<br>Indique le travail accompli qui était probablement en cours lors du sprint précédent.',
     },
     {
       label: `▶ ${currentLabel}`, isCurrent: true, isNext: false, isPrev: false,
-      hint: `<strong>${currentLabel}</strong> — sprint actif<br>Tous les epics du sprint en cours, tels que remontés par JIRA.<br>Données réelles issues de la synchronisation.`,
+      hint: `<strong>${currentLabel}</strong> - sprint actif<br>Tous les epics du sprint en cours, tels que remontés par JIRA.<br>Données réelles issues de la synchronisation.`,
     },
     {
       label: '⏭ Prochain', isCurrent: false, isNext: true, isPrev: false,
-      hint: '<strong>Prochain sprint</strong> — prévisionnel<br>Epics avec au moins un ticket <em>non terminé</em> (carry-over probable).<br>Ces epics continueront vraisemblablement dans le sprint suivant.',
+      hint: '<strong>Prochain sprint</strong> - prévisionnel<br>Epics avec au moins un ticket <em>non terminé</em> (carry-over probable).<br>Ces epics continueront vraisemblablement dans le sprint suivant.',
     },
   ];
+
+  // Helper : un epic appartient-il à cette équipe ? (filtre les epics cross-team)
+  const _isTeamEpic = (eid, team) => {
+    const epic = EPICS.find(x => x.id === eid);
+    return !epic || !epic.team || epic.team === team;
+  };
 
   // Epics par équipe dans le sprint courant (données réelles)
   const epicsByTeam = {};
   allTeams.forEach(team => {
     epicsByTeam[team] = [...new Set(
       tickets.filter(t => t.team === team).map(t => t.epic).filter(Boolean)
-    )];
+    )].filter(eid => _isTeamEpic(eid, team));
   });
 
   // Epics "sprint précédent" : epics avec au moins un ticket terminé (travail accompli)
   const prevEpicsByTeam = {};
   allTeams.forEach(team => {
-    const doneEpics = new Set(tickets.filter(t => t.team === team && t.status === 'done').map(t => t.epic).filter(Boolean));
-    prevEpicsByTeam[team] = [...doneEpics];
+    const doneEpics = new Set(tickets.filter(t => t.team === team && isDone(t.status)).map(t => t.epic).filter(Boolean));
+    prevEpicsByTeam[team] = [...doneEpics].filter(eid => _isTeamEpic(eid, team));
   });
 
   // Epics "prochain sprint" : epics avec des tickets non terminés (carry-over probable)
   const nextEpicsByTeam = {};
   allTeams.forEach(team => {
     nextEpicsByTeam[team] = [...new Set(
-      tickets.filter(t => t.team === team && t.status !== 'done').map(t => t.epic).filter(Boolean)
-    )];
+      tickets.filter(t => t.team === team && !isDone(t.status)).map(t => t.epic).filter(Boolean)
+    )].filter(eid => _isTeamEpic(eid, team));
   });
 
   // Helper : data-tip enrichi pour un chip (title + progression + points + bloqués)
@@ -57,7 +63,7 @@ function renderPI() {
     const e       = EPICS.find(x => x.id === eid);
     const title   = e?.title || eid;
     const tks     = getTickets().filter(t => t.team === team && t.epic === eid);
-    const done    = tks.filter(t => t.status === 'done').length;
+    const done    = tks.filter(t => isDone(t.status)).length;
     const blocked = tks.filter(t => t.status === 'blocked').length;
     const pts     = tks.reduce((a, t) => a + (t.points || 0), 0);
     const pct     = tks.length ? Math.round(done / tks.length * 100) : 0;
@@ -72,20 +78,20 @@ function renderPI() {
 
   // Helper : rendu d'une liste d'epics dans une cellule du tableau
   function _epicLines(epics, team, chipClass, bgColor) {
-    if (!epics.length) return '<span style="color:var(--text-muted);font-size:11px">—</span>';
-    // Sort epics by completion % ascending (least complete first) — improvement #5
+    if (!epics.length) return '<span style="color:var(--text-muted);font-size:11px">-</span>';
+    // Sort epics by completion % ascending (least complete first) - improvement #5
     const sortedEpics = epics.slice().sort((a, b) => {
       const tksA = tickets.filter(t => t.team === team && t.epic === a);
       const tksB = tickets.filter(t => t.team === team && t.epic === b);
-      const pctA = tksA.length ? Math.round(tksA.filter(t => t.status === 'done').length / tksA.length * 100) : 0;
-      const pctB = tksB.length ? Math.round(tksB.filter(t => t.status === 'done').length / tksB.length * 100) : 0;
+      const pctA = tksA.length ? Math.round(tksA.filter(t => isDone(t.status)).length / tksA.length * 100) : 0;
+      const pctB = tksB.length ? Math.round(tksB.filter(t => isDone(t.status)).length / tksB.length * 100) : 0;
       return pctA - pctB;
     });
     return sortedEpics.map(eid => {
       const e       = EPICS.find(x => x.id === eid);
       if (!e) return '';
       const tks     = tickets.filter(t => t.team === team && t.epic === eid);
-      const done    = tks.filter(t => t.status === 'done').length;
+      const done    = tks.filter(t => isDone(t.status)).length;
       const pct     = tks.length ? Math.round(done / tks.length * 100) : 0;
       const pctClr  = pct < 30 ? '#EF4444' : pct < 70 ? '#F59E0B' : '#22C55E';
       const blocked = tks.some(t => t.status === 'blocked');
@@ -150,7 +156,7 @@ function renderPI() {
         const epics = nextEpicsByTeam[team] || [];
         html += `<td style="background:rgba(245,158,11,.03);vertical-align:top" data-pi-cell="${team}|${epics.join(',')}">${_epicLines(epics, team, 'pi-chip-next', 'rgba(245,158,11,.03)')}</td>`;
       } else {
-        html += `<td style="opacity:.3;vertical-align:top">—</td>`;
+        html += `<td style="opacity:.3;vertical-align:top">-</td>`;
       }
     });
     html += '</tr>';
@@ -221,20 +227,20 @@ function renderPI() {
     });
   });
 
-  // Objectifs PI — epics par équipe, groupés par sprint, avec progress live
+  // Objectifs PI - epics par équipe, groupés par sprint, avec progress live
   // Cross-reference piprep objectives if available
   const ppObjs = (typeof _ppGet === 'function') ? (_ppGet('objectives') || []) : [];
 
   // Aggregate stats for global summary
   let _piObjStats = { totalEpics: 0, doneEpics: 0, totalTk: 0, doneTk: 0, atRisk: [] };
 
-  document.getElementById('pi-objectives').innerHTML = allTeams.map(team => {
+  // --- Helper: render one team's objectives ---
+  const _piObjTeamHtml = (team) => {
     const teamCfg     = CONFIG.teams[team] || {};
     const color       = teamCfg.color || '#94A3B8';
     const name        = teamCfg.name  || `Équipe ${team}`;
     const teamTickets = tickets.filter(t => t.team === team);
 
-    // Grouper les epics par label de sprint
     const sprintMap = {};
     teamTickets.forEach(t => {
       const sp = t.sprint || 'Sprint actif';
@@ -250,12 +256,11 @@ function renderPI() {
       </div>`;
     }
 
-    // Team-level aggregate
-    const teamDone  = teamTickets.filter(t => t.status === 'done').length;
+    const teamDone  = teamTickets.filter(t => isDone(t.status)).length;
     const teamTotal = teamTickets.length;
     const teamPct   = teamTotal ? Math.round(teamDone / teamTotal * 100) : 0;
     const teamPts   = teamTickets.reduce((a, t) => a + (t.points || 0), 0);
-    const teamPtsDone = teamTickets.filter(t => t.status === 'done').reduce((a, t) => a + (t.points || 0), 0);
+    const teamPtsDone = teamTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
     const teamPctClr = teamPct < 30 ? '#EF4444' : teamPct < 70 ? '#F59E0B' : '#22C55E';
 
     const sprintGroupsHtml = sprintKeys.map(sp => {
@@ -265,21 +270,19 @@ function renderPI() {
         const ec       = e?.color || '#94A3B8';
         const etitle   = e?.title || eid;
         const eTickets = teamTickets.filter(t => t.epic === eid);
-        const done     = eTickets.filter(t => t.status === 'done').length;
+        const done     = eTickets.filter(t => isDone(t.status)).length;
         const total    = eTickets.length;
         const pct      = total ? Math.round(done / total * 100) : 0;
         const pts      = eTickets.reduce((a, t) => a + (t.points || 0), 0);
         const blocked  = eTickets.filter(t => t.status === 'blocked').length;
         const url      = typeof _jiraBrowseUrl === 'function' ? _jiraBrowseUrl(eid) : '#';
-        const isDone   = pct === 100 && total > 0;
+        const isComplete = pct === 100 && total > 0;
 
-        // Track stats
         _piObjStats.totalEpics++;
         _piObjStats.totalTk += total;
         _piObjStats.doneTk += done;
-        if (isDone) _piObjStats.doneEpics++;
+        if (isComplete) _piObjStats.doneEpics++;
 
-        // Risk detection: epic < 50% done with blocked tickets
         const remaining = total - done;
         if (pct < 50 && remaining > 2 && blocked > 0) {
           _piObjStats.atRisk.push({ eid, title: etitle, team: name, pct, blocked, remaining });
@@ -289,7 +292,7 @@ function renderPI() {
           <span class="pi-epic-dot" style="background:${ec}"></span>
           <div class="pi-epic-info">
             <a class="pi-epic-link" href="${url}" target="_blank" onclick="event.stopPropagation()">${eid}</a>
-            <span class="pi-epic-title${isDone ? ' pi-epic-done' : ''}">${etitle}</span>
+            <span class="pi-epic-title${isComplete ? ' pi-epic-done' : ''}">${etitle}</span>
           </div>
           <div class="pi-epic-meta">
             <div class="pi-epic-progress"><div class="pi-epic-fill" style="width:${pct}%;background:${ec}"></div></div>
@@ -304,7 +307,6 @@ function renderPI() {
       </div>`;
     }).join('');
 
-    // Team progress summary bar
     const teamSummary = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
       <div style="flex:1;height:6px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;">
         <div style="height:100%;width:${teamPct}%;background:${teamPctClr};border-radius:3px;transition:width .3s;"></div>
@@ -318,15 +320,70 @@ function renderPI() {
       ${teamSummary}
       ${sprintGroupsHtml}
     </div>`;
-  }).join('');
+  };
+
+  // --- Group teams by GROUPS, render grouped sections ---
+  const activeTeamSet = new Set(allTeams);
+  const teamsInGroups = new Set();
+  const groupSections = (typeof GROUPS !== 'undefined' ? GROUPS : []).map(g => {
+    const gTeams = (g.teams || []).filter(t => activeTeamSet.has(t));
+    if (!gTeams.length) return '';
+    gTeams.forEach(t => teamsInGroups.add(t));
+
+    // Group-level aggregate
+    const gTickets  = tickets.filter(t => gTeams.includes(t.team));
+    const gDone     = gTickets.filter(t => isDone(t.status)).length;
+    const gTotal    = gTickets.length;
+    const gPct      = gTotal ? Math.round(gDone / gTotal * 100) : 0;
+    const gPts      = gTickets.reduce((a, t) => a + (t.points || 0), 0);
+    const gPtsDone  = gTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
+    const gPctClr   = gPct < 30 ? '#EF4444' : gPct < 70 ? '#F59E0B' : '#22C55E';
+    const gColor    = g.color || '#94A3B8';
+
+    const teamsHtml = gTeams.map(t => _piObjTeamHtml(t)).join('');
+
+    return `<div class="pi-obj-group" style="margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 12px;background:${gColor}0C;border-radius:8px;border:1px solid ${gColor}22;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${gColor};flex-shrink:0;"></span>
+        <span style="font-weight:700;font-size:14px;color:${gColor};flex:1;">${g.name || g.id}</span>
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div style="width:80px;height:5px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:${gPct}%;background:${gPctClr};border-radius:3px;"></div>
+          </div>
+          <span style="font-size:11px;font-weight:700;color:${gPctClr};">${gPct}%</span>
+          <span style="font-size:10px;color:var(--text-muted);">${gPtsDone}/${gPts} pts</span>
+        </div>
+      </div>
+      ${teamsHtml}
+    </div>`;
+  }).filter(Boolean);
+
+  // Teams not in any group
+  const ungroupedTeams = allTeams.filter(t => !teamsInGroups.has(t));
+  const ungroupedHtml  = ungroupedTeams.map(t => _piObjTeamHtml(t)).join('');
+
+  document.getElementById('pi-objectives').innerHTML =
+    groupSections.join('') +
+    (ungroupedHtml ? `<div class="pi-obj-group" style="margin-bottom:20px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 12px;background:rgba(0,0,0,.03);border-radius:8px;border:1px solid var(--border);">
+        <span style="font-weight:700;font-size:14px;color:var(--text-muted);flex:1;">Autres équipes</span>
+      </div>
+      ${ungroupedHtml}
+    </div>` : '');
 
   // ---- PI Objective Risk Alerts ----
   _renderPIObjRiskAlerts(_piObjStats, tickets, allTeams);
 
-  // Buffer tracking
-  _renderPIBuffer(tickets, allTeams);
+  // Buffer tracking — combine sprint actif + backlog PI pour couvrir tout le PI
+  const _piMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  const _piNum   = _piMatch ? _piMatch[1] : null;
+  const _blAll   = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
+    .filter(bt => _piNum && (bt.piSprint || '').includes(_piNum))
+    .filter(bt => !tickets.find(t => t.id === bt.id));
+  const allPITickets = tickets.concat(_blAll);
+  _renderPIBuffer(allPITickets, allTeams);
 
-  // Capacity chart — données réelles (points planifiés vs vélocité cible)
+  // Capacity chart - données réelles (points planifiés vs vélocité cible)
   setTimeout(() => {
     const ctx = document.getElementById('piCapacityChart');
     if (!ctx) return;
@@ -386,7 +443,7 @@ function renderPI() {
   // Dependency deadline alerts
   _renderPIDepAlerts();
 
-  // Vélocité historique — sprints fermés récents (stockés dans CONFIG.teams après sync)
+  // Vélocité historique - sprints fermés récents (stockés dans CONFIG.teams après sync)
   _renderVelocityHistory(allTeams);
 }
 
@@ -455,7 +512,7 @@ function _piShowCellDetail(team, epicIds) {
     if (!tks.length) return '';
     totalTickets += tks.length;
 
-    const done    = tks.filter(t => t.status === 'done').length;
+    const done    = tks.filter(t => isDone(t.status)).length;
     const blocked = tks.filter(t => t.status === 'blocked').length;
     const pts     = tks.reduce((a, t) => a + (t.points || 0), 0);
     const pct     = tks.length ? Math.round(done / tks.length * 100) : 0;
@@ -470,12 +527,12 @@ function _piShowCellDetail(team, epicIds) {
       const aColor  = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[t.assignee]) || teamColor;
       const pIcon   = priorityIcon(t.priority || 'medium');
       const ticketLink = _jiraBrowse(t.id, { style: `font-weight:700;font-size:12px;color:${typeClr};text-decoration:none;` });
-      const isDone  = t.status === 'done';
+      const _tkDone = isDone(t.status);
 
-      return `<div data-tk-id="${t.id}" data-tk-status="${t.status}" data-tk-type="${t.type || ''}" data-tk-assign="${t.assignee || ''}" data-tk-title="${(t.title || '').replace(/"/g, '&quot;')}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;margin-bottom:4px;background:${isDone ? '#FAFAFA' : '#fff'};border:1px solid ${isDone ? 'var(--border)' : '#E2E8F0'};transition:background .15s;">
+      return `<div data-tk-id="${t.id}" data-tk-status="${t.status}" data-tk-type="${t.type || ''}" data-tk-assign="${t.assignee || ''}" data-tk-title="${(t.title || '').replace(/"/g, '&quot;')}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;margin-bottom:4px;background:${_tkDone ? '#FAFAFA' : '#fff'};border:1px solid ${_tkDone ? 'var(--border)' : '#E2E8F0'};transition:background .15s;">
         <span style="font-size:13px;flex-shrink:0">${pIcon}</span>
         <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${typeClr}22;color:${typeClr};flex-shrink:0;white-space:nowrap">${typeName(t.type || 'story')}</span>
-        <span style="flex:1;min-width:0;${isDone ? 'opacity:.55;text-decoration:line-through;' : ''}">
+        <span style="flex:1;min-width:0;${_tkDone ? 'opacity:.55;text-decoration:line-through;' : ''}">
           ${ticketLink}
           <span style="font-size:12px;color:var(--text);margin-left:4px">${t.title || '(sans titre)'}</span>
         </span>
@@ -554,7 +611,7 @@ function _piShowCellDetail(team, epicIds) {
 
   document.getElementById('modal-title').innerHTML =
     `<span style="color:${teamColor}">${teamName}</span>
-     <span style="font-weight:400;font-size:13px;color:var(--text-muted);margin-left:8px">— ${totalTickets} ticket${totalTickets > 1 ? 's' : ''} · ${epicIds.length} epic${epicIds.length > 1 ? 's' : ''}</span>`;
+     <span style="font-weight:400;font-size:13px;color:var(--text-muted);margin-left:8px">- ${totalTickets} ticket${totalTickets > 1 ? 's' : ''} · ${epicIds.length} epic${epicIds.length > 1 ? 's' : ''}</span>`;
   document.getElementById('modal-body').innerHTML =
     `${filterBar}<div id="_pimod-list" style="max-height:55vh;overflow-y:auto;padding-right:4px">${ticketList}</div>`;
   document.getElementById('modal-overlay').classList.add('open');
@@ -641,7 +698,7 @@ function _renderVelocityHistory(allTeams) {
     return;
   }
 
-  // Tableau récapitulatif — cible empirique = moyenne des sprints fermés
+  // Tableau récapitulatif - cible empirique = moyenne des sprints fermés
   const _velTipData = {}; // per-team tip data for hover
   const teamRows = allTeams.map(t => {
     const cfg     = CONFIG.teams[t] || {};
@@ -658,10 +715,10 @@ function _renderVelocityHistory(allTeams) {
 
     const cells   = allSprints.map(spName => {
       const entry = history.find(s => s.name === spName);
-      if (!entry) return `<td style="color:var(--text-muted);text-align:center">—</td>`;
+      if (!entry) return `<td style="color:var(--text-muted);text-align:center">-</td>`;
       const pct   = empirical ? Math.round(entry.velocity / empirical * 100) : null;
       const color2 = pct === null ? '' : pct >= 90 ? '#22C55E' : pct >= 70 ? '#F59E0B' : '#EF4444';
-      return `<td class="pi-vel-cell">
+      return `<td class="pi-vel-cell" data-vel-detail="${t}|${spName}" style="cursor:pointer">
         <strong style="color:${color2 || 'inherit'}">${entry.velocity}</strong>
         ${pct !== null ? `<span class="pi-vel-pct">${pct}%</span>` : ''}
       </td>`;
@@ -670,11 +727,11 @@ function _renderVelocityHistory(allTeams) {
     return `<tr>
       <td class="pi-vel-team" style="color:${color}">${name}</td>
       ${cells}
-      <td class="pi-vel-cell pi-vel-current">
+      <td class="pi-vel-cell pi-vel-current" data-vel-detail="${t}|_current" style="cursor:pointer">
         <strong>${currentPts}</strong>
         ${empirical ? `<span class="pi-vel-pct">${Math.round(currentPts / empirical * 100)}%</span>` : ''}
       </td>
-      <td class="pi-vel-target" data-vel-team="${t}" style="cursor:default">${empirical ? `${empirical} pts` : '—'}</td>
+      <td class="pi-vel-target" data-vel-team="${t}" style="cursor:default">${empirical ? `${empirical} pts` : '-'}</td>
     </tr>`;
   }).join('');
 
@@ -714,7 +771,7 @@ function _renderVelocityHistory(allTeams) {
       }).join('');
 
     const tipHtml = `<div style="font-size:12px;line-height:1.7">
-      <div style="font-weight:700;margin-bottom:6px;color:${d.color}">📊 ${d.name} — Calcul cible</div>
+      <div style="font-weight:700;margin-bottom:6px;color:${d.color}">📊 ${d.name} - Calcul cible</div>
       <table style="width:100%;margin-bottom:8px">${sprintLines}</table>
       <hr style="border:none;border-top:1px solid #475569;margin:6px 0">
       <div style="display:flex;flex-direction:column;gap:2px">
@@ -728,6 +785,14 @@ function _renderVelocityHistory(allTeams) {
     td.addEventListener('mouseenter', e => { _tipEl.innerHTML = tipHtml; _tipEl.style.display = 'block'; _tipEl.style.maxWidth = '360px'; _mov(e); });
     td.addEventListener('mousemove', _mov);
     td.addEventListener('mouseleave', () => { _tipEl.style.display = 'none'; });
+  });
+
+  // Click on velocity cells → detail modal
+  el.querySelectorAll('[data-vel-detail]').forEach(td => {
+    td.addEventListener('click', () => {
+      const [teamId, sprintName] = td.dataset.velDetail.split('|');
+      _piVelCellDetail(teamId, sprintName);
+    });
   });
 
   // Chart vélocité trend
@@ -786,7 +851,7 @@ function _renderVelocityHistory(allTeams) {
 }
 
 // ============================================================
-// DEPENDENCY DEADLINE ALERTS — dépendances non résolues à D-N
+// DEPENDENCY DEADLINE ALERTS - dépendances non résolues à D-N
 // ============================================================
 
 function _renderPIDepAlerts() {
@@ -802,11 +867,16 @@ function _renderPIDepAlerts() {
   const sprintEnd = s.endDate ? new Date(s.endDate) : null;
   if (sprintEnd) sprintEnd.setHours(0, 0, 0, 0);
 
+  // Filtrer par équipes actives (sélection sidebar)
+  const activeTeams = new Set(typeof getActiveTeams === 'function' ? getActiveTeams() : []);
+
   const alerts = [];
   deps.forEach(d => {
     // Skip resolved deps (if they have a resolved flag)
     if (d.resolved) return;
     if (!d.fromTeam || !d.toTeam) return;
+    // Ne montrer que les dépendances impliquant au moins une équipe active
+    if (activeTeams.size && !activeTeams.has(d.fromTeam) && !activeTeams.has(d.toTeam)) return;
 
     // Use targetDate if set, otherwise use sprint end
     const target = d.targetDate ? new Date(d.targetDate) : sprintEnd;
@@ -820,7 +890,7 @@ function _renderPIDepAlerts() {
       const overdue  = daysLeft < 0;
       alerts.push({
         icon: overdue ? '🔴' : '🟡',
-        text: `<strong>${title}</strong> — ${fromName} → ${toName}${overdue ? ` · <span style="color:#DC2626">en retard de ${Math.abs(daysLeft)}j</span>` : ` · ${daysLeft}j restant${daysLeft > 1 ? 's' : ''}`}`,
+        text: `<strong>${title}</strong> - ${fromName} → ${toName}${overdue ? ` · <span style="color:#DC2626">en retard de ${Math.abs(daysLeft)}j</span>` : ` · ${daysLeft}j restant${daysLeft > 1 ? 's' : ''}`}`,
       });
     }
   });
@@ -853,7 +923,7 @@ function _renderPIDepAlerts() {
 }
 
 // ============================================================
-// PI OBJECTIVE RISK ALERTS — objectifs en danger
+// PI OBJECTIVE RISK ALERTS - objectifs en danger
 // ============================================================
 
 function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
@@ -873,11 +943,11 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
   stats.atRisk.forEach(r => {
     alerts.push({
       icon: '🔴',
-      text: `<strong>${r.eid}</strong> (${r.team}) — ${r.pct}% terminé, ${r.blocked} bloqué${r.blocked > 1 ? 's' : ''}, ${r.remaining} restant${r.remaining > 1 ? 's' : ''}`,
+      text: `<strong>${r.eid}</strong> (${r.team}) - ${r.pct}% terminé, ${r.blocked} bloqué${r.blocked > 1 ? 's' : ''}, ${r.remaining} restant${r.remaining > 1 ? 's' : ''}`,
     });
   });
 
-  // 2. Capacity gap — overloaded teams
+  // 2. Capacity gap - overloaded teams
   allTeams.forEach(team => {
     const tc = CONFIG.teams[team];
     if (!tc) return;
@@ -887,7 +957,7 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
       const overPct = Math.round((planned / vel - 1) * 100);
       alerts.push({
         icon: '⚠️',
-        text: `<strong>${tc.name || team}</strong> — surcharge +${overPct}% (${planned} pts planifiés vs ${vel} pts capacité)`,
+        text: `<strong>${tc.name || team}</strong> - surcharge +${overPct}% (${planned} pts planifiés vs ${vel} pts capacité)`,
       });
     }
   });
@@ -902,7 +972,7 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
     if (daysLeft <= 3 && globalPct < 60) {
       alerts.push({
         icon: '⏰',
-        text: `Fin de sprint dans ${daysLeft}j — seulement ${globalPct}% terminé (${stats.doneTk}/${stats.totalTk} tickets)`,
+        text: `Fin de sprint dans ${daysLeft}j - seulement ${globalPct}% terminé (${stats.doneTk}/${stats.totalTk} tickets)`,
       });
     }
   }
@@ -922,7 +992,84 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
 }
 
 // ============================================================
-// BUFFER TRACKING — planifié vs terminé, évolution en cours de PI
+// VELOCITY CELL DETAIL - popin détail des tickets terminés par sprint/équipe
+// ============================================================
+
+function _piVelCellDetail(teamId, sprintName) {
+  const tc        = CONFIG.teams[teamId] || {};
+  const teamName  = tc.name  || teamId;
+  const teamColor = tc.color || '#94A3B8';
+  const isCurrent = sprintName === '_current';
+
+  // Tickets de cette équipe
+  const allTk = typeof getTickets === 'function' ? getTickets() : TICKETS;
+  let tks, sprintLabel;
+
+  if (isCurrent) {
+    // Sprint actif : tickets done de l'équipe
+    tks = allTk.filter(t => t.team === teamId && isDone(t.status));
+    sprintLabel = CONFIG.sprint.label || 'Sprint actif';
+  } else {
+    // Sprint passé : chercher dans velocityHistory (tickets stockés lors du fetch)
+    const histEntry = (tc.velocityHistory || []).find(s => s.name === sprintName);
+    if (histEntry && histEntry.tickets && histEntry.tickets.length) {
+      tks = histEntry.tickets;
+    } else {
+      // Fallback : chercher dans TICKETS courants (cas démo ou cache ancien)
+      tks = allTk.filter(t => t.team === teamId && isDone(t.status) && t.sprintName === sprintName);
+      if (!tks.length) {
+        tks = allTk.filter(t => t.team === teamId && isDone(t.status) && t.allSprints && t.allSprints.includes(sprintName));
+      }
+    }
+    sprintLabel = sprintName;
+  }
+
+  const totalPts = tks.reduce((a, t) => a + (t.points || 0), 0);
+
+  // Group by type
+  const byType = {};
+  tks.forEach(t => {
+    const tn = t.type || 'autre';
+    if (!byType[tn]) byType[tn] = { count: 0, pts: 0, tickets: [] };
+    byType[tn].count++;
+    byType[tn].pts += (t.points || 0);
+    byType[tn].tickets.push(t);
+  });
+
+  const typeSummary = Object.entries(byType)
+    .sort((a, b) => b[1].pts - a[1].pts)
+    .map(([type, g]) => {
+      const color = CONFIG.typeColors?.[type] || '#475569';
+      return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:${color}15;border:1px solid ${color}33;font-size:11px;font-weight:600;color:${color}">${typeName(type)} ${g.count} · ${g.pts} pts</span>`;
+    }).join(' ');
+
+  const rows = tks
+    .sort((a, b) => (b.points || 0) - (a.points || 0))
+    .map(t => {
+      const typeClr = CONFIG.typeColors?.[t.type] || '#475569';
+      const epicObj = typeof EPICS !== 'undefined' ? EPICS.find(e => e.id === t.epic) : null;
+      const epicLabel = epicObj ? epicTag(epicObj, t.epic, { maxWidth: 100 }) : '';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="closeModalDirect();openModal('${t.id}')" onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='transparent'">
+        <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${typeClr}22;color:${typeClr};flex-shrink:0">${typeName(t.type || 'story')}</span>
+        ${_jiraBrowse(t.id, { style: 'font-weight:600;font-size:11px;color:inherit;text-decoration:none;flex-shrink:0' })}
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text)">${t.title}</span>
+        ${epicLabel}
+        ${ptsBadge(t.points, { size: 'small' })}
+        <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">${t.assignee || '–'}</span>
+      </div>`;
+    }).join('');
+
+  document.getElementById('modal-title').innerHTML =
+    `<span style="color:${teamColor}">${teamName}</span>
+     <span style="font-weight:400;font-size:13px;color:var(--text-muted);margin-left:8px">· ${sprintLabel} · ${tks.length} ticket${tks.length > 1 ? 's' : ''} · <strong>${totalPts} pts</strong></span>`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">${typeSummary}</div>
+    <div style="max-height:55vh;overflow-y:auto">${rows || '<p style="color:var(--text-muted);font-size:12px">Aucun ticket terminé trouvé pour ce sprint.</p>'}</div>`;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ============================================================
+// BUFFER TRACKING - planifié vs terminé, évolution en cours de PI
 // ============================================================
 
 function _renderPIBuffer(tickets, allTeams) {
@@ -936,7 +1083,7 @@ function _renderPIBuffer(tickets, allTeams) {
   }
 
   const totalPts     = bufferTickets.reduce((s, t) => s + (t.points || 0), 0);
-  const donePts      = bufferTickets.filter(t => t.status === 'done').reduce((s, t) => s + (t.points || 0), 0);
+  const donePts      = bufferTickets.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
   const inprogPts    = bufferTickets.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
   const todoPts      = totalPts - donePts - inprogPts;
   const donePct      = totalPts ? Math.round(donePts / totalPts * 100) : 0;
@@ -964,7 +1111,7 @@ function _renderPIBuffer(tickets, allTeams) {
     const tBuf    = bufferTickets.filter(t => t.team === tid);
     if (!tBuf.length) return '';
     const tTotal  = tBuf.reduce((s, t) => s + (t.points || 0), 0);
-    const tDone   = tBuf.filter(t => t.status === 'done').reduce((s, t) => s + (t.points || 0), 0);
+    const tDone   = tBuf.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
     const tInprog = tBuf.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
     const tDonePct   = tTotal ? Math.round(tDone / tTotal * 100) : 0;
     const tInprogPct = tTotal ? Math.round(tInprog / tTotal * 100) : 0;
@@ -995,6 +1142,7 @@ function _renderPIBuffer(tickets, allTeams) {
         <span style="color:${cfg.color};flex-shrink:0">${cfg.icon}</span>
         ${_jiraBrowse(t.id, { style: 'font-weight:600;font-size:11px;color:inherit;text-decoration:none;flex-shrink:0' })}
         <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${t.title}</span>
+        ${(() => { const sn = t.sprintName || (t.allSprints && t.allSprints[t.allSprints.length - 1]) || CONFIG.teams[t.team]?.sprintName || ''; return sn ? `<span style="font-size:10px;color:var(--text-muted);font-weight:600;flex-shrink:0;white-space:nowrap">${sn.replace(/sprint\s*/i, 'S')}</span>` : ''; })()}
         ${ptsBadge(t.points, {size:'small'})}
         <span style="font-size:10px;color:${teamColor};font-weight:600;flex-shrink:0">${teamName}</span>
       </div>`;
@@ -1028,19 +1176,16 @@ function _renderPIBuffer(tickets, allTeams) {
           <div class="pi-buf-kpi-val" style="color:#94A3B8">${todoPts}<small> pts</small></div>
           <div class="pi-buf-kpi-label">Non commencé</div>
         </div>
-        <div class="pi-buf-kpi pi-buf-kpi-tip" data-buf-tip="ratio">
-          <div class="pi-buf-kpi-val">${bufferRatio}%</div>
-          <div class="pi-buf-kpi-label">Ratio buffer/sprint</div>
-        </div>
-        <div class="pi-buf-kpi" style="flex:1;min-width:140px">
-          <div class="pi-buf-kpi-label" style="margin-bottom:4px">Avancement buffer</div>
+        <div class="pi-buf-kpi pi-buf-kpi-tip" data-buf-tip="ratio" style="flex:1;min-width:180px">
+          <div class="pi-buf-kpi-label" style="margin-bottom:4px">% Buffer dans le PI</div>
           <div style="display:flex;align-items:center;gap:8px">
-            <div style="flex:1;height:8px;border-radius:4px;overflow:hidden;background:#F1F5F9;display:flex">
-              <div style="width:${donePct}%;background:#22C55E;transition:width .3s"></div>
-              <div style="width:${inprogPct}%;background:#3B82F6;transition:width .3s"></div>
+            <div style="position:relative;flex:1;height:10px;border-radius:5px;overflow:hidden;background:#F1F5F9">
+              <div style="position:absolute;left:0;top:0;height:100%;width:${bufferRatio}%;background:${bufferRatio > 20 ? '#EF4444' : '#22C55E'};transition:width .3s;border-radius:5px"></div>
+              <div style="position:absolute;left:20%;top:-2px;width:2px;height:14px;background:#64748B;border-radius:1px;z-index:1" title="Seuil 20%"></div>
             </div>
-            <span style="font-size:13px;font-weight:700;color:${donePct >= 80 ? '#22C55E' : donePct >= 50 ? '#F59E0B' : '#94A3B8'}">${donePct}%</span>
+            <span style="font-size:13px;font-weight:700;color:${bufferRatio > 20 ? '#EF4444' : '#22C55E'}">${bufferRatio}%</span>
           </div>
+          <div style="font-size:9px;color:var(--text-muted);margin-top:2px">${bufferRatio > 20 ? '⚠️ Seuil 20% dépassé' : '✅ Dans le seuil 20%'}</div>
         </div>
       </div>
 
@@ -1068,7 +1213,7 @@ function _renderPIBuffer(tickets, allTeams) {
 
   // Tooltip on ratio KPI
   const featurePts = sprintTotal - totalPts;
-  const bufDone    = bufferTickets.filter(t => t.status === 'done');
+  const bufDone    = bufferTickets.filter(t => isDone(t.status));
   const bufInprog  = bufferTickets.filter(t => ['inprog','review','test'].includes(t.status));
   const bufTodo    = bufferTickets.filter(t => t.status === 'todo' || t.status === 'backlog');
   const bufBlocked = bufferTickets.filter(t => t.status === 'blocked');
@@ -1097,7 +1242,7 @@ function _renderPIBuffer(tickets, allTeams) {
         <span>🟡 Buffer : <strong>${totalPts} pts</strong> (${bufferRatio}%)</span>
       </div>
       <hr style="border:none;border-top:1px solid #475569;margin:6px 0">
-      <div style="font-weight:700;margin-bottom:4px">🛡️ Détail buffer — ${bufferTickets.length} tickets</div>
+      <div style="font-weight:700;margin-bottom:4px">🛡️ Détail buffer - ${bufferTickets.length} tickets</div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
         <span>✅ ${bufDone.length} terminé${bufDone.length > 1 ? 's' : ''} (${donePts} pts)</span>
         <span>🔄 ${bufInprog.length} en cours (${inprogPts} pts)</span>

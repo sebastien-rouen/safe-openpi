@@ -61,11 +61,11 @@
 <!-- Config -->
 <div class="config">
   <h2>Configuration (window.ENV)</h2>
-  <div class="row"><span class="key">JIRA_URL</span>   <span id="c-url"   class="empty">—</span></div>
-  <div class="row"><span class="key">JIRA_USER</span>  <span id="c-user"  class="empty">—</span></div>
-  <div class="row"><span class="key">JIRA_TOKEN</span> <span id="c-token" class="empty">—</span></div>
-  <div class="row"><span class="key">JIRA_PROJECT</span><span id="c-proj" class="empty">—</span></div>
-  <div class="row"><span class="key">JIRA_BOARD_ID</span><span id="c-board" class="empty">—</span></div>
+  <div class="row"><span class="key">JIRA_URL</span>   <span id="c-url"   class="empty">-</span></div>
+  <div class="row"><span class="key">JIRA_USER</span>  <span id="c-user"  class="empty">-</span></div>
+  <div class="row"><span class="key">JIRA_TOKEN</span> <span id="c-token" class="empty">-</span></div>
+  <div class="row"><span class="key">JIRA_PROJECT</span><span id="c-proj" class="empty">-</span></div>
+  <div class="row"><span class="key">JIRA_BOARD_ID</span><span id="c-board" class="empty">-</span></div>
 </div>
 
 <button class="btn-run-all" onclick="runAll()">▶ Tout tester</button>
@@ -84,14 +84,14 @@ const PROXY   = 'http://localhost:3001';          // proxy local (proxy.py)
 const BASE    = PROXY + '/jira';                  // /jira/* → JIRA_URL/rest/*
 const PROJECT = E.JIRA_PROJECT  || 'PROJ';
 const BOARD   = E.JIRA_BOARD_ID || '';
-// Auth gérée côté proxy — on n'envoie plus de token depuis le navigateur
+// Auth gérée côté proxy - on n'envoie plus de token depuis le navigateur
 const AUTH    = '';
 
-// Tests définis — les URLs passent par /jira/* (proxy → JIRA_URL/rest/*)
+// Tests définis - les URLs passent par /jira/* (proxy → JIRA_URL/rest/*)
 const TESTS = [
   {
     id:    'myself',
-    name:  '1. Auth — Utilisateur courant',
+    name:  '1. Auth - Utilisateur courant',
     url:   () => `${BASE}/api/3/myself`,
     desc:  'Vérifie les credentials. Retourne le profil Atlassian.',
   },
@@ -123,10 +123,10 @@ const TESTS = [
 
 // Init
 window.addEventListener('DOMContentLoaded', () => {
-  const mask = t => t.length > 8 ? t.slice(0,4)+'••••'+t.slice(-4) : (t ? t : '—');
+  const mask = t => t.length > 8 ? t.slice(0,4)+'••••'+t.slice(-4) : (t ? t : '-');
   const set  = (id, val, ok) => {
     const el = document.getElementById(id);
-    el.textContent = val || '—';
+    el.textContent = val || '-';
     el.className   = ok ? 'val' : 'empty';
   };
   const jiraUrl = E.JIRA_URL || '';
@@ -145,7 +145,7 @@ window.addEventListener('DOMContentLoaded', () => {
           <div class="test-url" id="url-${t.id}">${t.url()}</div>
         </div>
         <div style="display:flex;align-items:center;gap:.5rem">
-          <span class="status-wait" id="st-${t.id}">—</span>
+          <span class="status-wait" id="st-${t.id}">-</span>
           <button class="btn-run" id="btn-${t.id}" onclick="runTest('${t.id}')">▶ Lancer</button>
         </div>
       </div>
@@ -153,7 +153,7 @@ window.addEventListener('DOMContentLoaded', () => {
     </div>
   `).join('');
 
-  log('info', `Config chargée — JIRA: ${BASE || 'non configuré'}`);
+  log('info', `Config chargée - JIRA: ${BASE || 'non configuré'}`);
 });
 
 // Lancer un test
@@ -184,7 +184,7 @@ async function runTest(id) {
     st.innerHTML = `<span class="status-ok">✅ ${r.status}</span>`;
     body.className = 'test-body visible';
     body.innerHTML = `<div style="font-size:.72rem;color:#64748b;margin-bottom:.35rem">${elapsed}ms</div><pre>${JSON.stringify(data, null, 2)}</pre>`;
-    log('ok', `[${id}] ${r.status} — ${elapsed}ms`);
+    log('ok', `[${id}] ${r.status} - ${elapsed}ms`);
   } catch (err) {
     const elapsed = Date.now() - t0;
     const detail  = err.body ? '\n' + JSON.stringify(err.body, null, 2) : '';
@@ -204,7 +204,7 @@ function runAll() {
 
 function clearAll() {
   TESTS.forEach(t => {
-    document.getElementById(`st-${t.id}`).innerHTML = '<span class="status-wait">—</span>';
+    document.getElementById(`st-${t.id}`).innerHTML = '<span class="status-wait">-</span>';
     const b = document.getElementById(`body-${t.id}`);
     b.className = 'test-body';
     b.innerHTML = '';

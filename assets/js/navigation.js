@@ -1,5 +1,5 @@
 // ============================================================
-// NAVIGATION — Vues, raccourcis clavier, URL hash, initialisation
+// NAVIGATION - Vues, raccourcis clavier, URL hash, initialisation
 // ============================================================
 
 function toggleGroupSelector() {
@@ -25,18 +25,15 @@ function showView(view) {
   });
 
   const titles = {
-    scrum:    `📋 Vue Scrum — ${CONFIG.sprint.label || 'Sprint actif'}`,
+    scrum:    `📋 Vue Scrum - ${CONFIG.sprint.label || 'Sprint actif'}`,
     kanban:   '🗂️ Vue Kanban',
     pi:       '🗓️ PI Planning',
     reports:  '📊 Rapports de Fin de Sprint',
     support:  '🎫 Tickets de Support',
     settings: '⚙️ Paramètres',
     roadmap:  '🗺️ Roadmap & Planification',
-    piprep:   '📋 Préparation PI Planning',
-    standup:  '☀️ Daily Standup',
-    releases: '🚀 Releases & Projection',
   };
-  // La vue Scrum met à jour son propre titre via renderScrum() — inutile de l'écraser ici
+  // La vue Scrum met à jour son propre titre via renderScrum() - inutile de l'écraser ici
   if (view !== 'scrum') document.getElementById('topbar-title').textContent = titles[view] || '';
 
   _updateTopbarActions(view);
@@ -48,11 +45,8 @@ function showView(view) {
   if (view === 'support')  renderSupport();
   if (view === 'settings') renderSettings();
   if (view === 'roadmap')  renderRoadmap();
-  if (view === 'piprep')   renderPIPrep();
-  if (view === 'standup')  renderStandup();
-  if (view === 'releases') renderReleases();
 
-  // Sidebar progress is only built inside renderScrum — refresh it for other views too
+  // Sidebar progress is only built inside renderScrum - refresh it for other views too
   if (view !== 'scrum') { _renderSidebarProgress(); _updateSidebarStats(); }
   _updateBlockedBadge();
   _checkStaleBanner();
@@ -90,12 +84,9 @@ function _updateTopbarActions(view) {
     reports: 'Rapports',
     support: 'Support',
     roadmap: 'Roadmap',
-    piprep:   'Prépa PI',
-    standup:  'Standup',
-    releases: 'Releases',
   };
   // Mapping vue → section rapport
-  const viewToSection = { scrum:'sprint', kanban:'kanban', pi:'pi', support:'support', roadmap:'roadmap', piprep:'piprep' };
+  const viewToSection = { scrum:'sprint', kanban:'kanban', pi:'pi', support:'support', roadmap:'roadmap' };
   const label = labels[view] || '';
   const png = label ? `<button class="btn btn-secondary" onclick="exportPNG()">📸 Export ${label}</button>` : '';
   const rptSection = viewToSection[view];
@@ -109,10 +100,7 @@ function _updateTopbarActions(view) {
     pi:       `${png}${rpt}`,
     reports:  `<button class="btn btn-secondary" onclick="copyReport()">📋 Copier</button>${png}`,
     support:  `${png}${rpt}`,
-    roadmap:  `${png}${rpt}`,
-    piprep:   `<button class="btn btn-secondary" onclick="_ppExportJSON()">💾 Exporter JSON</button>${png}${rpt}`,
-    standup:  png,
-    releases: png,
+    roadmap:  `<button class="btn btn-secondary" onclick="_ppExportJSON()">💾 Exporter PI</button>${png}${rpt}`,
     settings: '',
   };
 
@@ -145,14 +133,14 @@ function _checkStaleBanner() {
 function _showStaleBanner(content) {
   const banner = document.createElement('div');
   banner.id = 'stale-banner';
-  banner.innerHTML = `⚠ Données potentiellement obsolètes —
+  banner.innerHTML = `⚠ Données potentiellement obsolètes -
     <button onclick="doSync()">Synchroniser</button>
     <button class="stale-close" onclick="this.parentElement.remove()">✕</button>`;
   content.insertBefore(banner, content.firstChild);
 }
 
 // ============================================================
-// URL hash — sérialise / restaure l'état de navigation
+// URL hash - sérialise / restaure l'état de navigation
 // Format : #vue[/group:GID | équipe][/extra…]
 // ============================================================
 
@@ -188,8 +176,10 @@ function _applyHash() {
   if (!hash) return false;
 
   const parts = hash.split('/');
-  const view  = parts[0];
-  const views = ['scrum', 'kanban', 'pi', 'reports', 'support', 'settings', 'roadmap', 'piprep', 'standup', 'releases'];
+  let view  = parts[0];
+  // Backward compat: old views merged into roadmap
+  if (view === 'piprep' || view === 'releases') view = 'roadmap';
+  const views = ['scrum', 'kanban', 'pi', 'reports', 'support', 'settings', 'roadmap'];
   if (!views.includes(view)) return false;
 
   // Contexte équipe / groupe
@@ -225,19 +215,41 @@ function _applyHash() {
   return true;
 }
 
-// Raccourcis clavier : 1-6 pour naviguer, Échap pour fermer le modal, Ctrl+K search, ←/→ modal nav
+// Raccourcis clavier : 1-6 pour naviguer, Échap pour fermer le modal, Ctrl+K search, Ctrl+F page search, ←/→ modal nav
 document.addEventListener('keydown', e => {
-  // Ctrl+K — open search overlay
+  // Ctrl+K - open search overlay (global)
   if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
     e.preventDefault();
     openSearch();
     return;
   }
-  // Escape — close search or modal
+  // Ctrl+F - open search overlay scoped to current page
+  if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+    e.preventDefault();
+    openSearch('page');
+    return;
+  }
+  // Escape - close search or modal
   if (e.key === 'Escape') {
     const overlay = document.getElementById('search-overlay');
     if (overlay && overlay.style.display !== 'none') { closeSearch(); return; }
     closeModalDirect();
+    return;
+  }
+  // Arrow/Enter navigation in search results
+  const _srOverlay = document.getElementById('search-overlay');
+  if (_srOverlay && _srOverlay.style.display !== 'none') {
+    const items = _srOverlay.querySelectorAll('.search-result-item');
+    if (items.length) {
+      const active = _srOverlay.querySelector('.search-result-item.sr-active');
+      let idx = active ? [...items].indexOf(active) : -1;
+      if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); }
+      else if (e.key === 'Enter' && active) { e.preventDefault(); active.click(); return; }
+      else return;
+      items.forEach(i => i.classList.remove('sr-active'));
+      if (items[idx]) { items[idx].classList.add('sr-active'); items[idx].scrollIntoView({ block: 'nearest' }); }
+    }
     return;
   }
   // Arrow navigation inside open modal
@@ -252,20 +264,36 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') { e.preventDefault(); _dailyNext(); return; }
   }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  const map = { '1': 'scrum', '2': 'kanban', '3': 'roadmap', '4': 'piprep', '5': 'pi', '6': 'standup', '7': 'releases', '8': 'reports', '9': 'support', '0': 'settings' };
+  const map = { '1': 'scrum', '2': 'kanban', '3': 'roadmap', '4': 'pi', '5': 'reports', '6': 'support', '7': 'settings' };
   if (map[e.key]) showView(map[e.key]);
 });
 
 // ============================================================
-// Recherche globale (Ctrl+K) — improvement #1
+// Recherche globale (Ctrl+K) & page (Ctrl+F)
 // ============================================================
-function openSearch() {
+let _searchMode = 'global'; // 'global' | 'page'
+
+function openSearch(mode) {
+  _searchMode = mode || 'global';
   const overlay = document.getElementById('search-overlay');
   if (!overlay) return;
   overlay.style.display = 'flex';
   const input = document.getElementById('search-input');
-  if (input) { input.value = ''; input.focus(); }
-  document.getElementById('search-results').innerHTML = '';
+  if (input) {
+    input.value = '';
+    input.placeholder = _searchMode === 'page'
+      ? 'Rechercher dans cette page… (Ctrl+F)'
+      : 'Rechercher un ticket, epic, section… (Ctrl+K)';
+    input.focus();
+  }
+  const el = document.getElementById('search-results');
+  if (el) {
+    if (_searchMode === 'page') {
+      _renderSearchResults(_collectSections(true));
+    } else {
+      el.innerHTML = '';
+    }
+  }
 }
 
 function closeSearch() {
@@ -273,34 +301,155 @@ function closeSearch() {
   if (overlay) overlay.style.display = 'none';
 }
 
-window._onSearchInput = function(q) {
-  const results = window._globalSearch(q);
+// --- Collect navigable sections from the DOM ---
+function _collectSections(currentPageOnly) {
+  const selectors = '.section-title, .section-header > .section-title, .rm-section-title, .chart-title, .pi-obj-header, .settings-section-header';
+  const activeView = currentPageOnly ? document.querySelector('.view.active') : null;
+  const root = activeView || document.getElementById('content') || document.body;
+  const els = root.querySelectorAll(selectors);
+  const seen = new Set();
+  const results = [];
+
+  // View labels for meta badge
+  const viewLabels = { 'view-scrum': 'Scrum', 'view-kanban': 'Kanban', 'view-pi': 'PI Planning', 'view-reports': 'Rapports', 'view-support': 'Support', 'view-settings': 'Paramètres', 'view-roadmap': 'Roadmap' };
+
+  els.forEach(el => {
+    let text = (el.textContent || '').trim().replace(/\s+/g, ' ');
+    if (!text || text.length < 2 || text.length > 80) return;
+    if (seen.has(text)) return;
+    seen.add(text);
+
+    // Find parent view for meta label
+    const parentView = el.closest('.view');
+    const viewId = parentView ? parentView.id : '';
+    const viewLabel = viewLabels[viewId] || '';
+
+    // Use the closest scrollable parent element for targeting
+    const target = el.closest('.section-header, .rm-section-header, .chart-card, .pi-obj, .settings-section') || el;
+    const uid = 'sr-' + results.length;
+    target.dataset.searchTarget = uid;
+
+    results.push({
+      group: 'section',
+      id: uid,
+      title: text,
+      meta: viewLabel,
+      _viewId: viewId,
+      _el: target,
+    });
+  });
+
+  // Sections statiques : toujours disponibles même si la vue n'a pas encore été rendue
+  // Chaque entrée pointe vers une vue + section Roadmap (rm-sec-*) ou un ID de section
+  if (!currentPageOnly) {
+    const statics = [
+      { title: '📊 Vision & Avancement',    view: 'roadmap', rmSec: 'vision' },
+      { title: '📅 Planification',           view: 'roadmap', rmSec: 'planification' },
+      { title: '⚡ Capacité & Charge',        view: 'roadmap', rmSec: 'capacite' },
+      { title: '⚠️ Risques & Qualité',       view: 'roadmap', rmSec: 'risques' },
+      { title: '🤝 Rituels',                 view: 'roadmap', rmSec: 'rituels' },
+      { title: '📋 Backlog',                 view: 'roadmap', rmSec: 'backlog' },
+      { title: '🎯 Objectifs PI',            view: 'roadmap', rmSec: 'capacite', keywords: 'objectifs pi objectives' },
+      { title: '⚡ ROAM Board - Risques',     view: 'roadmap', rmSec: 'risques', keywords: 'roam risques risks' },
+      { title: '🔗 Dépendances inter-équipes', view: 'roadmap', rmSec: 'risques', keywords: 'dépendances dependencies' },
+      { title: '🤜 Fist of Five',            view: 'roadmap', rmSec: 'rituels', keywords: 'fist vote confiance' },
+    ];
+    statics.forEach(s => {
+      if (seen.has(s.title)) return;
+      seen.add(s.title);
+      const uid = 'sr-static-' + s.rmSec + '-' + results.length;
+      results.push({
+        group: 'section',
+        id: uid,
+        title: s.title,
+        meta: 'Roadmap',
+        _viewId: 'view-roadmap',
+        _rmSec: s.rmSec,
+        _keywords: s.keywords || '',
+      });
+    });
+  }
+
+  return results;
+}
+
+// --- Search tickets on current page (id, title, description) ---
+function _searchPageTickets(lq) {
+  const tickets = typeof getTickets === 'function' ? getTickets() : (typeof TICKETS !== 'undefined' ? TICKETS : []);
+  const results = [];
+  tickets.forEach(t => {
+    if (results.length >= 15) return;
+    if (
+      (t.id || '').toLowerCase().includes(lq) ||
+      (t.title || '').toLowerCase().includes(lq) ||
+      (t.description || '').toLowerCase().includes(lq)
+    ) {
+      results.push({
+        group: 'ticket',
+        id: t.id,
+        title: t.title || t.id,
+        meta: t.assignee || '',
+        _pageTicket: true,
+      });
+    }
+  });
+  return results;
+}
+
+function _renderSearchResults(results) {
   const el = document.getElementById('search-results');
   if (!el) return;
-  if (!q.trim()) { el.innerHTML = ''; return; }
   if (!results.length) {
-    el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + q + '"</div>';
+    el.innerHTML = '<div class="search-empty">Aucune section trouvée</div>';
     return;
   }
-  // Group by type
   const groups = {};
   results.forEach(r => {
     if (!groups[r.group]) groups[r.group] = [];
     groups[r.group].push(r);
   });
-  const groupLabels = { ticket: 'Tickets', epic: 'Epics', member: 'Membres' };
+  const groupLabels = { ticket: 'Tickets', epic: 'Epics', member: 'Membres', section: 'Sections' };
   el.innerHTML = Object.entries(groups).map(([gk, items]) =>
     `<div class="search-result-group">
       <div class="search-result-group-label">${groupLabels[gk] || gk}</div>
-      ${items.map(item =>
-        `<div class="search-result-item" onclick="_searchResultClick('${item.group}','${item.id}')">
-          <span class="sri-key">${item.id}</span>
+      ${items.map(item => {
+        // Escape single quotes in id for onclick
+        const safeId = (item.id || '').replace(/'/g, "\\'");
+        return `<div class="search-result-item" onclick="_searchResultClick('${item.group}','${safeId}')">
+          <span class="sri-key">${item.group === 'section' ? '§' : item.id}</span>
           <span class="sri-title">${item.title}</span>
           ${item.meta ? `<span class="sri-badge">${item.meta}</span>` : ''}
-        </div>`
-      ).join('')}
+        </div>`;
+      }).join('')}
     </div>`
   ).join('');
+}
+
+window._onSearchInput = function(q) {
+  const el = document.getElementById('search-results');
+  if (!el) return;
+
+  if (_searchMode === 'page') {
+    const sections = _collectSections(true);
+    if (!q.trim()) { _renderSearchResults(sections); return; }
+    const lq = q.toLowerCase();
+    const filtered = sections.filter(s => s.title.toLowerCase().includes(lq));
+    // Also search tickets visible on current page
+    const pageTickets = _searchPageTickets(lq);
+    const all = [...filtered, ...pageTickets];
+    if (!all.length) { el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + q + '"</div>'; return; }
+    _renderSearchResults(all);
+    return;
+  }
+
+  // Global mode
+  const results = window._globalSearch(q);
+  if (!q.trim()) { el.innerHTML = ''; return; }
+  if (!results.length) {
+    el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + q + '"</div>';
+    return;
+  }
+  _renderSearchResults(results);
 };
 
 window._globalSearch = function(q) {
@@ -308,9 +457,18 @@ window._globalSearch = function(q) {
   const lq = q.toLowerCase();
   const results = [];
 
+  // Search sections (across all views + static roadmap sections)
+  const sections = _collectSections(false);
+  sections.forEach(s => {
+    if (results.length >= 20) return;
+    if (s.title.toLowerCase().includes(lq) || (s._keywords && s._keywords.toLowerCase().includes(lq))) {
+      results.push(s);
+    }
+  });
+
   // Search TICKETS
   (typeof TICKETS !== 'undefined' ? TICKETS : []).forEach(t => {
-    if (results.length >= 12) return;
+    if (results.length >= 20) return;
     if (
       (t.id    || '').toLowerCase().includes(lq) ||
       (t.title || '').toLowerCase().includes(lq) ||
@@ -322,7 +480,7 @@ window._globalSearch = function(q) {
 
   // Search EPICS
   (typeof EPICS !== 'undefined' ? EPICS : []).forEach(e => {
-    if (results.length >= 12) return;
+    if (results.length >= 20) return;
     if (
       (e.id    || '').toLowerCase().includes(lq) ||
       (e.title || '').toLowerCase().includes(lq)
@@ -331,27 +489,61 @@ window._globalSearch = function(q) {
     }
   });
 
-  // Search MEMBERS (object { team: [names] } or array)
+  // Search MEMBERS
   const _m = typeof MEMBERS !== 'undefined' ? MEMBERS : {};
   const memberList = Array.isArray(_m) ? _m : [...new Set(Object.values(_m).flat())];
   memberList.forEach(m => {
-    if (results.length >= 12) return;
+    if (results.length >= 20) return;
     const name = typeof m === 'string' ? m : (m.name || m.id || '');
     if (name.toLowerCase().includes(lq)) {
       results.push({ group: 'member', id: name, title: name, meta: '' });
     }
   });
 
-  return results.slice(0, 12);
+  return results.slice(0, 20);
 };
+
+// --- Highlight a section element ---
+function _highlightSection(el) {
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.classList.add('search-highlight');
+  setTimeout(() => el.classList.remove('search-highlight'), 2200);
+}
 
 window._searchResultClick = function(group, id) {
   closeSearch();
-  if (group === 'ticket') {
-    // Build context list from current visible tickets
-    const visibleTickets = (typeof getTickets === 'function' ? getTickets() : TICKETS);
-    window._modalTicketList = visibleTickets.map(t => t.id);
-    openModal(id);
+  if (group === 'section') {
+    // Static roadmap section (sr-static-*) → navigate to roadmap + scroll to section
+    if (id.startsWith('sr-static-')) {
+      const rmSec = id.replace('sr-static-', '').replace(/-\d+$/, '');
+      showView('roadmap');
+      setTimeout(() => { if (typeof _rmScrollTo === 'function') _rmScrollTo(rmSec); }, 150);
+      return;
+    }
+    // Find element by data-search-target
+    const target = document.querySelector(`[data-search-target="${id}"]`);
+    if (target) {
+      // Switch to the right view if needed
+      const parentView = target.closest('.view');
+      if (parentView && !parentView.classList.contains('active')) {
+        const viewId = parentView.id.replace('view-', '');
+        showView(viewId);
+        // Wait for view render then scroll
+        setTimeout(() => _highlightSection(target), 120);
+      } else {
+        _highlightSection(target);
+      }
+    }
+  } else if (group === 'ticket') {
+    // Try to find and highlight the ticket card on the current page first
+    const card = document.querySelector(`.view.active [data-ticket-id="${id}"]`);
+    if (card && _searchMode === 'page') {
+      _highlightSection(card);
+    } else {
+      const visibleTickets = (typeof getTickets === 'function' ? getTickets() : TICKETS);
+      window._modalTicketList = visibleTickets.map(t => t.id);
+      openModal(id);
+    }
   } else if (group === 'epic') {
     showView('pi');
   }
@@ -402,7 +594,7 @@ window.addEventListener('hashchange', () => { if (!_applyHash()) showView('scrum
 })();
 
 // ============================================================
-// Init — lecture du cache au démarrage (jamais d'appel JIRA)
+// Init - lecture du cache au démarrage (jamais d'appel JIRA)
 // ============================================================
 
 renderGroupBtns();
@@ -428,7 +620,7 @@ renderTeamBtns();
       const age = _formatCacheAge(cachedAt);
       showToast(`Données chargées depuis le cache (${age})`, 'success');
     } else {
-      showToast('Pas de cache — cliquez sur Synchroniser pour charger depuis JIRA', 'info');
+      showToast('Pas de cache - cliquez sur Synchroniser pour charger depuis JIRA', 'info');
     }
   }
 

@@ -1,5 +1,5 @@
 // ============================================================
-// SETTINGS VIEW — Configuration équipes, JIRA, groupes, notifications
+// SETTINGS VIEW - Configuration équipes, JIRA, groupes, notifications
 // ============================================================
 
 // --- Dark mode ---
@@ -175,9 +175,9 @@ function renderSettings() {
             <span class="stg-team-meta">${members.length} membres · ${velocity} pts</span>
           </div>
           <div class="stg-team-details">
-            <span class="stg-chip" title="Sprint">${sprintN || '—'}</span>
-            <span class="stg-chip" title="Board ID">Board ${boardId || '—'}</span>
-            <span class="stg-chip" title="Projet">${projKey || '—'}</span>
+            <span class="stg-chip" title="Sprint">${sprintN || '-'}</span>
+            <span class="stg-chip" title="Board ID">Board ${boardId || '-'}</span>
+            <span class="stg-chip" title="Projet">${projKey || '-'}</span>
             <input type="color" value="${color}" style="width:24px;height:20px;padding:0;border:1px solid var(--border);border-radius:4px;cursor:pointer;vertical-align:middle;"
               onchange="if(CONFIG.teams['${team}'])CONFIG.teams['${team}'].color=this.value;" title="Couleur">
           </div>
@@ -240,5 +240,5 @@ function addGroup() {
   GROUPS.push({ id: 'G-' + (idx + 1), name: 'Nouveau groupe', color: colors[idx % colors.length], teams: [] });
   renderGroupBtns();
   renderSettings();
-  showToast('✅ Groupe ajouté — configurez-le ci-dessous', 'success');
+  showToast('✅ Groupe ajouté - configurez-le ci-dessous', 'success');
 }

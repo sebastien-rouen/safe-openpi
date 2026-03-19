@@ -36,7 +36,7 @@
       <span class="sync-icon">🔄</span> Synchroniser
     </button>
     <div class="sync-meta">
-      <span class="last-sync" id="lastSync">Dernière sync: —</span>
+      <span class="last-sync" id="lastSync">Dernière sync: -</span>
       <label class="sync-partial-toggle" title="Sync rapide : ne recharge que les tickets du sprint actif (vélocité et backlog conservés)">
         <input type="checkbox" id="sync-incremental">
         <span class="sync-partial-icon">⚡</span>
@@ -64,13 +64,10 @@
     <div class="nav-item"        onclick="showView('kanban')"   data-view="kanban">   <span class="nav-icon">🗂️</span> Vue Kanban</div>
     <div class="nav-item"        onclick="showView('roadmap')"  data-view="roadmap">  <span class="nav-icon">🗺️</span> Roadmap</div>
     <div class="nav-item"        onclick="showView('pi')"       data-view="pi">       <span class="nav-icon">🗓️</span> PI Planning</div>
-    <div class="nav-item"        onclick="showView('piprep')"   data-view="piprep">   <span class="nav-icon">📋</span> PI Planning suivant</div>
-    <div class="nav-item"        onclick="showView('standup')"   data-view="standup">   <span class="nav-icon">☀️</span> Standup</div>
-    <div class="nav-item"        onclick="showView('releases')"  data-view="releases">  <span class="nav-icon">🚀</span> Releases</div>
     <div class="nav-item"        onclick="showView('reports')"  data-view="reports">  <span class="nav-icon">📊</span> Rapports</div>
     <div class="nav-item"        onclick="showView('support')"  data-view="support">  <span class="nav-icon">🎫</span> Support</div>
     <div class="nav-item"        onclick="showView('settings')" data-view="settings"> <span class="nav-icon">⚙️</span> Paramètres</div>
-    <div class="shortcut-hint">⌨️ Raccourcis: 1-0</div>
+    <div class="shortcut-hint">⌨️ Raccourcis: 1-7</div>
   </nav>
 
   <div class="sidebar-stats">
@@ -81,7 +78,7 @@
       <div class="sb-sprint-top">
         <span class="sb-pi-badge" id="sb-pi-badge" style="display:none"></span>
       </div>
-      <a class="sb-sprint-name" id="sb-sprint-link" href="#" target="_blank" title="Ouvrir le board JIRA">—</a>
+      <a class="sb-sprint-name" id="sb-sprint-link" href="#" target="_blank" title="Ouvrir le board JIRA">-</a>
       <div class="sb-sprint-dates-row">
         <span class="sb-sprint-dates" id="sb-sprint-dates"></span>
         <span class="sb-remaining" id="sb-remaining"></span>
@@ -106,9 +103,9 @@
     <!-- VUE SCRUM -->
     <div class="view active" id="view-scrum">
       <div class="sprint-bar">
-        <div class="si"><small>Sprint</small><strong id="sprint-name">—</strong></div>
-        <div class="si"><small>Période</small><strong id="sprint-dates">—</strong></div>
-        <div class="si"><small>Points engagés</small><strong id="sprint-velocity">— pts</strong></div>
+        <div class="si"><small>Sprint</small><strong id="sprint-name">-</strong></div>
+        <div class="si"><small>Période</small><strong id="sprint-dates">-</strong></div>
+        <div class="si"><small>Points engagés</small><strong id="sprint-velocity">- pts</strong></div>
         <div class="si" style="flex:1">
           <small>Avancement</small>
           <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
@@ -116,7 +113,7 @@
               <div class="progress-fill-wip" id="sprint-prog-wip" style="width:0%;left:0%"></div>
               <div class="progress-fill" id="sprint-prog" style="width:0%"></div>
               <div class="progress-fill-buffer" id="sprint-prog-buffer" style="width:0%;left:0%"></div>
-              <div class="progress-mark-80" id="sprint-mark-80" style="display:none" title="Seuil 80% — capacité feature"></div>
+              <div class="progress-mark-80" id="sprint-mark-80" style="display:none" title="Seuil 80% - capacité feature"></div>
             </div>
             <strong id="sprint-pct">0%</strong>
           </div>
@@ -128,7 +125,7 @@
       </div>
       <div class="sprint-alerts" id="sprint-alerts"></div>
       <div class="stats-row" id="scrum-stats"></div>
-      <div class="hierarchy" id="hierarchy-view"></div>
+      <div id="scrum-risks"></div>
       <div class="section-header">
         <div class="section-title">📋 Tableau Sprint</div>
         <div style="display:flex;align-items:center;gap:8px;">
@@ -145,7 +142,7 @@
       </div>
       <div class="charts-row charts-row-2" id="charts-row-2">
         <div class="chart-card"><div class="chart-title">📈 Burnup Chart</div><div class="chart-wrap"><canvas id="burnupChart"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">📊 CFD — Flux Sprint</div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">📊 CFD - Flux Sprint</div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
       </div>
     </div>
 
@@ -154,7 +151,7 @@
       <div class="kanban-metrics" id="kanban-metrics"></div>
       <div class="section-header">
         <div class="section-title">🗂️ Tableau Kanban</div>
-        <span style="font-size:12px;color:var(--text-muted)">WIP Limits activées — Rouge = dépassé</span>
+        <span style="font-size:12px;color:var(--text-muted)">WIP Limits activées - Rouge = dépassé</span>
       </div>
       <div class="kanban-board" id="kanban-board"></div>
       <div style="margin-top:20px;" class="section-header"><div class="section-title">📊 Flux Cumulatif & Cycle Time</div></div>
@@ -167,7 +164,7 @@
     <!-- VUE PI PLANNING -->
     <div class="view" id="view-pi">
       <div class="section-header">
-        <div class="section-title">🗓️ PI Planning — PI 4 (Q1 2025)</div>
+        <div class="section-title">🗓️ PI Planning - PI 4 (Q1 2025)</div>
         <span style="font-size:12px;color:var(--text-muted)">4 Sprints × 4 Équipes</span>
       </div>
       <div id="pi-table-filters"></div>
@@ -224,18 +221,6 @@
       <div id="roadmap-content"></div>
     </div>
 
-    <!-- VUE PRÉPARATION PI PLANNING -->
-    <div class="view" id="view-piprep"></div>
-
-    <!-- VUE STANDUP -->
-    <div class="view" id="view-standup">
-      <div id="standup-content"></div>
-    </div>
-
-    <!-- VUE RELEASES -->
-    <div class="view" id="view-releases">
-      <div id="releases-content"></div>
-    </div>
 
   </div><!-- #content -->
 </div><!-- #main -->
@@ -262,7 +247,7 @@
 <!-- SEARCH OVERLAY (Ctrl+K) -->
 <div id="search-overlay" class="search-overlay" onclick="if(event.target===this)closeSearch()" style="display:none">
   <div class="search-box">
-    <input id="search-input" class="search-input" type="text" placeholder="Rechercher un ticket, epic, membre… (Ctrl+K)" oninput="_onSearchInput(this.value)" autocomplete="off">
+    <input id="search-input" class="search-input" type="text" placeholder="Rechercher un ticket, epic, section… (Ctrl+K)" oninput="_onSearchInput(this.value)" autocomplete="off">
     <div id="search-results" class="search-results"></div>
   </div>
 </div>
@@ -271,7 +256,7 @@
 <script src="assets/js/env.js"></script>
 <script src="assets/js/config.js"></script>
 <script src="assets/js/data.js"></script>
-<!-- Données démo — remplacer par demo/demo-autre.js pour un autre scénario -->
+<!-- Données démo - remplacer par demo/demo-autre.js pour un autre scénario -->
 <script src="demo/demo-default.js"></script>
 <script src="assets/js/state.js"></script>
 <script src="assets/js/utils.js"></script>
@@ -289,7 +274,6 @@
 <script src="assets/js/settings.js"></script>
 <script src="assets/js/roadmap.js"></script>
 <script src="assets/js/piprep.js"></script>
-<script src="assets/js/standup.js"></script>
 <script src="assets/js/releases.js"></script>
 <script src="assets/js/navigation.js"></script>
 

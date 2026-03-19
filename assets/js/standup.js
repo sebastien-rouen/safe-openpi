@@ -1,5 +1,5 @@
 // ============================================================
-// STANDUP VIEW — Vue condensée pour le daily standup
+// STANDUP VIEW - Vue condensée pour le daily standup
 // Ce qui a bougé hier, ce qui est bloqué, risques
 // ============================================================
 
@@ -40,9 +40,9 @@ function renderStandup() {
   });
 
   // Group changes by type of movement
-  const completed = changes.filter(t => t.status === 'done');
+  const completed = changes.filter(t => isDone(t.status));
   const inProgress = changes.filter(t => t.status === 'inprog' || t.status === 'review');
-  const moved = changes.filter(t => t.status !== 'done' && t.status !== 'inprog' && t.status !== 'review' && t.status !== 'blocked');
+  const moved = changes.filter(t => !isDone(t.status) && t.status !== 'inprog' && t.status !== 'review' && t.status !== 'blocked');
 
   // ---- Section 2: Blocked ----
   const blocked = tickets.filter(t => t.status === 'blocked');
@@ -51,13 +51,13 @@ function renderStandup() {
   const risks = [];
 
   // Critical/high tickets not done
-  const criticalNotDone = tickets.filter(t => (t.priority === 'critical' || t.priority === 'high') && t.status !== 'done');
+  const criticalNotDone = tickets.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status));
   if (criticalNotDone.length) {
     risks.push({ icon: '🔴', label: `${criticalNotDone.length} ticket${criticalNotDone.length > 1 ? 's' : ''} critique${criticalNotDone.length > 1 ? 's' : ''}/haute priorité non terminé${criticalNotDone.length > 1 ? 's' : ''}`, tickets: criticalNotDone });
   }
 
   // Tickets with no assignee
-  const unassigned = tickets.filter(t => !t.assignee && t.status !== 'done' && t.status !== 'backlog');
+  const unassigned = tickets.filter(t => !t.assignee && !isDone(t.status) && t.status !== 'backlog');
   if (unassigned.length) {
     risks.push({ icon: '👤', label: `${unassigned.length} ticket${unassigned.length > 1 ? 's' : ''} non assigné${unassigned.length > 1 ? 's' : ''}`, tickets: unassigned });
   }
@@ -67,16 +67,16 @@ function renderStandup() {
   if (s.endDate) {
     const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
     const daysLeft = Math.round((end - now) / 86400000);
-    const notDone = tickets.filter(t => t.status !== 'done').length;
+    const notDone = tickets.filter(t => !isDone(t.status)).length;
     const total = tickets.length;
     const pctDone = total ? Math.round((total - notDone) / total * 100) : 0;
     if (daysLeft <= 3 && pctDone < 70) {
-      risks.push({ icon: '⏰', label: `Fin de sprint dans ${daysLeft}j — ${pctDone}% terminé (${notDone} restant${notDone > 1 ? 's' : ''})` });
+      risks.push({ icon: '⏰', label: `Fin de sprint dans ${daysLeft}j - ${pctDone}% terminé (${notDone} restant${notDone > 1 ? 's' : ''})` });
     }
   }
 
   // Flagged tickets
-  const flagged = tickets.filter(t => t.flagged && t.status !== 'done');
+  const flagged = tickets.filter(t => t.flagged && !isDone(t.status));
   if (flagged.length) {
     risks.push({ icon: '🚩', label: `${flagged.length} ticket${flagged.length > 1 ? 's' : ''} flaggé${flagged.length > 1 ? 's' : ''} (impediment)`, tickets: flagged });
   }
@@ -91,7 +91,7 @@ function renderStandup() {
     const statusBadge = showStatus ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${sc}18;color:${sc};font-weight:600;border:1px solid ${sc}33;">${statusLabel(t.status)}</span>` : '';
     return `<div class="su-ticket" onclick="openModal('${t.id}')" style="cursor:pointer;">
       ${link}
-      <span style="font-size:12px;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title || '—'}</span>
+      <span style="font-size:12px;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title || '-'}</span>
       ${statusBadge}
       ${t.assignee ? `<span style="font-size:10px;color:var(--text-muted);">${t.assignee.split(' ')[0]}</span>` : ''}
       ${t.points ? `<span style="font-size:10px;font-weight:700;color:var(--text-muted);">${t.points}pts</span>` : ''}
@@ -113,7 +113,7 @@ function renderStandup() {
   const sprintInfo = s.endDate ? (() => {
     const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
     const daysLeft = Math.round((end - now) / 86400000);
-    const totalDone = tickets.filter(t => t.status === 'done').length;
+    const totalDone = tickets.filter(t => isDone(t.status)).length;
     const pct = tickets.length ? Math.round(totalDone / tickets.length * 100) : 0;
     return `J${daysLeft >= 0 ? '+' : ''}${Math.abs(Math.round((now - new Date(s.startDate)) / 86400000))} · ${daysLeft}j restants · ${pct}% terminé`;
   })() : '';
@@ -146,7 +146,7 @@ function renderStandup() {
           <span style="font-size:14px;flex-shrink:0;">${r.icon}</span>
           <div>
             <div style="font-size:12px;font-weight:600;color:var(--text);">${r.label}</div>
-            ${r.tickets ? r.tickets.slice(0, 5).map(t => `<div style="font-size:11px;color:var(--text-muted);padding:1px 0;cursor:pointer;" onclick="openModal('${t.id}')">${t.id} — ${(t.title || '').slice(0, 50)}</div>`).join('') : ''}
+            ${r.tickets ? r.tickets.slice(0, 5).map(t => `<div style="font-size:11px;color:var(--text-muted);padding:1px 0;cursor:pointer;" onclick="openModal('${t.id}')">${t.id} - ${(t.title || '').slice(0, 50)}</div>`).join('') : ''}
           </div>
         </div>`).join('') : '<div style="font-size:12px;color:var(--text-muted);padding:8px;">Aucun risque détecté</div>'
       )}

@@ -1,5 +1,5 @@
 // ============================================================
-// ROADMAP — Planification charge / vélocité / règle 80/20
+// ROADMAP - Planification charge / vélocité / règle 80/20
 // ============================================================
 
 // Breakdown du buffer 20% (% relatifs à la vélocité totale)
@@ -38,28 +38,450 @@ const _BUFFER_CATS = [
 // Point d'entrée principal
 // ============================================================
 
-function renderRoadmap() {
+// Section collapsible - état persisté dans localStorage
+function _rmSection(id, icon, title, content, defaultOpen) {
+  const stored = localStorage.getItem('rm_sec_' + id);
+  const open = stored !== null ? stored === '1' : defaultOpen !== false;
+  return `<div class="rm-section${open ? '' : ' collapsed'}" id="rm-sec-${id}">
+    <div class="rm-section-header" onclick="_rmToggleSection('${id}')">
+      <span class="rm-section-arrow">${open ? '▼' : '▶'}</span>
+      <span style="font-size:15px;">${icon}</span>
+      <span class="rm-section-title">${title}</span>
+    </div>
+    <div class="rm-section-body" style="${open ? '' : 'display:none;'}">${content}</div>
+  </div>`;
+}
+window._rmToggleSection = function(id) {
+  const sec = document.getElementById('rm-sec-' + id);
+  if (!sec) return;
+  const open = sec.classList.toggle('collapsed');
+  const body = sec.querySelector('.rm-section-body');
+  const arrow = sec.querySelector('.rm-section-arrow');
+  if (open) { body.style.display = 'none'; arrow.textContent = '▶'; localStorage.setItem('rm_sec_' + id, '0'); }
+  else      { body.style.display = '';     arrow.textContent = '▼'; localStorage.setItem('rm_sec_' + id, '1'); }
+};
+
+// Scroll to section + open it if collapsed
+window._rmScrollTo = function(id) {
+  const sec = document.getElementById('rm-sec-' + id);
+  if (!sec) return;
+  // Open if collapsed
+  if (sec.classList.contains('collapsed')) _rmToggleSection(id);
+  // Scroll with offset for sticky tabs
+  setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  // Highlight active tab
+  document.querySelectorAll('.rm-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === id));
+};
+
+// Scroll spy - highlight tab matching visible section
+let _rmSpyCleanup = null;
+function _rmInitScrollSpy() {
+  if (_rmSpyCleanup) _rmSpyCleanup();
+  const content = document.getElementById('main') || window;
+  const handler = () => {
+    const tabs = document.getElementById('rm-tabs');
+    if (!tabs) return;
+    const sections = document.querySelectorAll('.rm-section');
+    let activeId = null;
+    const offset = 120;
+    sections.forEach(sec => {
+      const rect = sec.getBoundingClientRect();
+      if (rect.top <= offset && rect.bottom > offset) activeId = sec.id.replace('rm-sec-', '');
+    });
+    if (activeId) {
+      tabs.querySelectorAll('.rm-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === activeId));
+    }
+  };
+  content.addEventListener('scroll', handler, { passive: true });
+  _rmSpyCleanup = () => content.removeEventListener('scroll', handler);
+  handler();
+}
+
+// ============================================================
+// Roadmap visuelle - Groupes × Équipes × Epics par PI
+// ============================================================
+function _roadmapVisual(featureData, sprintPlan, s) {
+  const activeTeams = getActiveTeams();
+  const allTickets = getTickets();
+  const _bl = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
+  const allPool = [...allTickets, ..._bl];
+
+  // Detect current PI from sprint label, or fallback to team sprint names
+  const piRegex = /(\d{2,3})\.(\d+)/;
+  let currentPI = null;
+  const piMatchLabel = (s.label || '').match(piRegex);
+  if (piMatchLabel) {
+    currentPI = parseInt(piMatchLabel[1]);
+  } else {
+    // Fallback: detect PI from any active team's sprint name
+    for (const tid of activeTeams) {
+      const tc = CONFIG.teams[tid];
+      if (tc?.sprintName) {
+        const m = tc.sprintName.match(piRegex);
+        if (m) { currentPI = parseInt(m[1]); break; }
+      }
+    }
+    // Last resort: detect from CONFIG.sprint.label
+    if (currentPI === null) {
+      const m2 = (CONFIG.sprint.label || '').match(piRegex);
+      if (m2) currentPI = parseInt(m2[1]);
+    }
+  }
+
+  if (currentPI === null) return ''; // Can't build visual without PI context
+
+  // Helper: extract PI number from a ticket (piSprint > sprintName > default)
+  const _piFromTicket = (t) => {
+    // 1. Try piSprint field (ex: "PI#29")
+    if (t.piSprint) {
+      const m = t.piSprint.match(/(\d{2,3})/);
+      if (m) return parseInt(m[1]);
+    }
+    // 2. Try sprintName (ex: "Fuego - Ité 29.1")
+    if (t.sprintName) {
+      const m = t.sprintName.match(piRegex);
+      if (m) return parseInt(m[1]);
+    }
+    return null;
+  };
+
+  // Extract PI numbers from all ticket sprint names and piSprint fields
+  const piSet = new Set();
+  allPool.forEach(t => {
+    const pi = _piFromTicket(t);
+    if (pi !== null) piSet.add(pi);
+  });
+  // Also add current PI
+  piSet.add(currentPI);
+
+  // Build sorted PI columns (current + future PIs, include PI+2 if tickets exist)
+  const piColumns = [...piSet].filter(pi => pi >= currentPI).sort((a, b) => a - b);
+  // Ensure at least PI+1 is shown
+  if (!piColumns.includes(currentPI + 1)) piColumns.push(currentPI + 1);
+  // Add PI+2 if there are tickets for it
+  if (piSet.has(currentPI + 2) && !piColumns.includes(currentPI + 2)) piColumns.push(currentPI + 2);
+  piColumns.sort((a, b) => a - b);
+
+  // Map epics to PIs (which PIs have tickets for each epic?)
+  const epics = (typeof EPICS !== 'undefined' ? EPICS : []).filter(e => !e.team || activeTeams.includes(e.team));
+
+  // Build epic data: epic → { piMap: { PI# → { pts, done, total, tickets } }, team, title }
+  const epicData = [];
+  epics.forEach(e => {
+    const eTickets = allPool.filter(t => t.epic === e.id && (!e.team || activeTeams.includes(t.team)));
+    if (!eTickets.length) return;
+    const piMap = {};
+    eTickets.forEach(t => {
+      let pi = _piFromTicket(t);
+      if (pi === null) pi = currentPI; // default: current PI for active sprint tickets
+      if (pi < currentPI) return; // Skip past PIs
+      if (!piMap[pi]) piMap[pi] = { pts: 0, donePts: 0, total: 0, done: 0, blocked: 0, inprog: 0, tickets: [] };
+      piMap[pi].pts += (t.points || 0);
+      piMap[pi].total++;
+      piMap[pi].tickets.push(t);
+      if (isDone(t.status)) { piMap[pi].donePts += (t.points || 0); piMap[pi].done++; }
+      if (t.status === 'blocked') piMap[pi].blocked++;
+      if (t.status === 'inprog' || t.status === 'review') piMap[pi].inprog++;
+    });
+    if (!Object.keys(piMap).length) return;
+    const totalPts = Object.values(piMap).reduce((a, p) => a + p.pts, 0);
+    const donePts = Object.values(piMap).reduce((a, p) => a + p.donePts, 0);
+    const pct = totalPts ? Math.round(donePts / totalPts * 100) : 0;
+    const totalTickets = Object.values(piMap).reduce((a, p) => a + p.total, 0);
+    const doneTickets = Object.values(piMap).reduce((a, p) => a + p.done, 0);
+    const blockedTickets = Object.values(piMap).reduce((a, p) => a + p.blocked, 0);
+    const inprogTickets = Object.values(piMap).reduce((a, p) => a + p.inprog, 0);
+    const piNums = Object.keys(piMap).map(Number).sort((a, b) => a - b);
+    epicData.push({
+      id: e.id, title: e.title || e.id, team: e.team, color: e.color || '#7C3AED',
+      piMap, totalPts, donePts, pct, totalTickets, doneTickets, blockedTickets, inprogTickets,
+      minPI: piNums[0], maxPI: piNums[piNums.length - 1],
+    });
+  });
+
+  if (!epicData.length) return '';
+
+  // Group epics by team
+  const teamEpics = {};
+  epicData.forEach(e => {
+    const t = e.team || 'Autre';
+    (teamEpics[t] = teamEpics[t] || []).push(e);
+  });
+
+  // Helper: render a bar cell
+  function _vrBarCell(e, pi) {
+    if (pi < e.minPI || pi > e.maxPI) return `<div class="rm-vr-cell"></div>`;
+    const d = e.piMap[pi];
+    const isStart = pi === e.minPI;
+    const isEnd   = pi === e.maxPI;
+    const hasPts = d && d.pts > 0;
+    const barCls = `rm-vr-bar${isStart ? ' rm-vr-bar-start' : ''}${isEnd ? ' rm-vr-bar-end' : ''}`;
+    const pctColor = e.pct === 100 ? '#16A34A' : e.pct > 50 ? '#2563EB' : e.pct > 0 ? '#F59E0B' : '#94A3B8';
+    return `<div class="rm-vr-cell">
+      <div class="${barCls}" style="background:${e.color}18;border-color:${e.color};cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
+        ${isStart ? `<span class="rm-vr-bar-title" style="color:${e.color};">${e.id}</span>` : ''}
+        ${hasPts ? `<span class="rm-vr-bar-pts">${d.pts}pts</span>` : ''}
+        <span class="rm-vr-bar-pct" style="background:${pctColor}">${e.pct}%</span>
+      </div>
+    </div>`;
+  }
+
+  // Build swimlanes: grouped by GROUPS → teams
+  const renderedTeams = new Set();
+  let swimlanesHtml = '';
+
+  GROUPS.forEach(g => {
+    const groupTeams = g.teams.filter(t => activeTeams.includes(t) && teamEpics[t]);
+    if (!groupTeams.length) return;
+
+    // Group header spanning all columns
+    swimlanesHtml += `<div class="rm-vr-group-header" style="border-left:4px solid ${g.color};background:${g.color}0D;">
+      <span class="rm-vr-group-name" style="color:${g.color};">${g.name}</span>
+    </div>`;
+
+    groupTeams.forEach(tid => {
+      renderedTeams.add(tid);
+      const teamColor = CONFIG.teams[tid]?.color || _teamColor(tid);
+      const epicsForTeam = teamEpics[tid].sort((a, b) => a.minPI - b.minPI || b.totalPts - a.totalPts);
+
+      // Team sub-header
+      swimlanesHtml += `<div class="rm-vr-team-header" style="background:${teamColor}0A;border-left:3px solid ${teamColor};">
+        <span class="rm-vr-team-name" style="color:${teamColor};">${tid}</span>
+        <span class="rm-vr-team-count">${epicsForTeam.length} epic${epicsForTeam.length > 1 ? 's' : ''} · ${epicsForTeam.reduce((a, e) => a + e.totalPts, 0)} pts</span>
+      </div>`;
+
+      // Epic rows
+      epicsForTeam.forEach(e => {
+        const cells = piColumns.map(pi => _vrBarCell(e, pi)).join('');
+        swimlanesHtml += `<div class="rm-vr-row">
+          <div class="rm-vr-label" title="${e.title}\n${e.totalPts} pts · ${e.pct}%" style="cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
+            <span class="rm-vr-feat-id" style="color:${e.color};">${e.id}</span>
+            <span class="rm-vr-feat-title">${(e.title).slice(0, 30)}${e.title.length > 30 ? '…' : ''}</span>
+          </div>
+          ${cells}
+        </div>`;
+      });
+    });
+  });
+
+  // Teams not in any group
+  Object.keys(teamEpics).filter(t => !renderedTeams.has(t) && activeTeams.includes(t)).forEach(tid => {
+    const teamColor = CONFIG.teams[tid]?.color || '#475569';
+    const epicsForTeam = teamEpics[tid].sort((a, b) => a.minPI - b.minPI || b.totalPts - a.totalPts);
+
+    swimlanesHtml += `<div class="rm-vr-team-header" style="background:${teamColor}0A;border-left:3px solid ${teamColor};">
+      <span class="rm-vr-team-name" style="color:${teamColor};">${tid}</span>
+      <span class="rm-vr-team-count">${epicsForTeam.length} epic${epicsForTeam.length > 1 ? 's' : ''}</span>
+    </div>`;
+
+    epicsForTeam.forEach(e => {
+      const cells = piColumns.map(pi => _vrBarCell(e, pi)).join('');
+      swimlanesHtml += `<div class="rm-vr-row">
+        <div class="rm-vr-label" title="${e.title}\n${e.totalPts} pts · ${e.pct}%" style="cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
+          <span class="rm-vr-feat-id" style="color:${e.color};">${e.id}</span>
+          <span class="rm-vr-feat-title">${(e.title).slice(0, 30)}${e.title.length > 30 ? '…' : ''}</span>
+        </div>
+        ${cells}
+      </div>`;
+    });
+  });
+
+  // PI column headers
+  const colHeaders = piColumns.map(pi => {
+    const isCurrent = pi === currentPI;
+    return `<div class="rm-vr-col-header${isCurrent ? ' rm-vr-col-current' : ''}">
+      <div class="rm-vr-col-pi">PI ${pi}</div>
+      <div class="rm-vr-col-name">${isCurrent ? 'En cours' : 'Futur'}</div>
+    </div>`;
+  }).join('');
+
+  return `<div class="rm-vr-wrap">
+    <div class="section-header" style="margin-bottom:12px;">
+      <div class="section-title">🗺️ Roadmap Visuelle</div>
+      <span style="font-size:12px;color:var(--text-muted);">Groupes × Équipes × Epics par PI · Story Points</span>
+    </div>
+    <div class="rm-vr-grid" style="grid-template-columns: 200px repeat(${piColumns.length}, 1fr);">
+      <div class="rm-vr-corner"></div>
+      ${colHeaders}
+      ${swimlanesHtml}
+    </div>
+  </div>`;
+}
+
+// ============================================================
+// Visual Roadmap - Epic detail popin
+// ============================================================
+function _showVrEpicDetail(epicId) {
+  const activeTeams = getActiveTeams();
+  const _bl = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
+  const allPool = [...(getTickets()), ..._bl];
+  const epics = typeof EPICS !== 'undefined' ? EPICS : [];
+  const epic = epics.find(e => e.id === epicId);
+  if (!epic) return;
+
+  const eTickets = allPool.filter(t => t.epic === epicId && (!epic.team || activeTeams.includes(t.team)));
+  if (!eTickets.length) return;
+
+  const totalPts = eTickets.reduce((a, t) => a + (t.points || 0), 0);
+  const donePts = eTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
+  const pct = totalPts ? Math.round(donePts / totalPts * 100) : 0;
+  const done = eTickets.filter(t => isDone(t.status)).length;
+  const blocked = eTickets.filter(t => t.status === 'blocked').length;
+  const inprog = eTickets.filter(t => t.status === 'inprog' || t.status === 'review').length;
+  const todo = eTickets.filter(t => t.status === 'todo' || t.status === 'backlog').length;
+  const remaining = totalPts - donePts;
+  const color = epic.color || '#7C3AED';
+  const pctColor = pct === 100 ? '#16A34A' : pct > 50 ? '#2563EB' : pct > 0 ? '#F59E0B' : '#94A3B8';
+  const teamColor = CONFIG.teams[epic.team]?.color || '#64748B';
+
+  // Group tickets by PI
+  const piRegex = /(\d{2,3})\.(\d+)/;
+  const piGroups = {};
+  eTickets.forEach(t => {
+    let piLabel = 'Sprint actif';
+    // Try piSprint first (ex: "PI#29"), then sprintName (ex: "Fuego - Ité 29.1")
+    if (t.piSprint) {
+      const m = t.piSprint.match(/(\d{2,3})/);
+      if (m) piLabel = 'PI ' + m[1];
+    } else if (t.sprintName) {
+      const m = t.sprintName.match(piRegex);
+      if (m) piLabel = 'PI ' + m[1];
+    }
+    (piGroups[piLabel] = piGroups[piLabel] || []).push(t);
+  });
+
+  // Status breakdown donut (CSS)
+  const total = eTickets.length;
+  const donePctR = total ? Math.round(done / total * 100) : 0;
+  const inprogPctR = total ? Math.round(inprog / total * 100) : 0;
+  const blockedPctR = total ? Math.round(blocked / total * 100) : 0;
+  const todoPctR = 100 - donePctR - inprogPctR - blockedPctR;
+
+  // Header card
+  const header = `
+    <div style="display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;">
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+          <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0;"></span>
+          <span style="font-size:11px;font-weight:700;color:${color};">${_jiraBrowse(epic.id)}</span>
+          ${epic.team ? `<span style="font-size:10px;font-weight:600;color:${teamColor};background:${teamColor}15;padding:1px 6px;border-radius:4px;">${epic.team}</span>` : ''}
+        </div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px;">${epic.title || epic.id}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
+          <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${pctColor};border-radius:4px;transition:width .3s;"></div>
+          </div>
+          <span style="font-size:14px;font-weight:800;color:${pctColor};min-width:40px;text-align:right;">${pct}%</span>
+        </div>
+      </div>
+    </div>`;
+
+  // Stats cards
+  const stats = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;">
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:var(--text);">${totalPts}</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Story Points</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#16A34A;">${donePts}</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Terminés</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:#F59E0B;">${remaining}</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Restants</div>
+      </div>
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
+        <div style="font-size:20px;font-weight:800;color:var(--text);">${total}</div>
+        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Tickets</div>
+      </div>
+    </div>`;
+
+  // Status breakdown bar
+  const statusBar = `
+    <div style="margin-bottom:20px;">
+      <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px;">
+        ${donePctR > 0 ? `<div style="width:${donePctR}%;background:#16A34A;" title="Terminé ${donePctR}%"></div>` : ''}
+        ${inprogPctR > 0 ? `<div style="width:${inprogPctR}%;background:#2563EB;" title="En cours ${inprogPctR}%"></div>` : ''}
+        ${blockedPctR > 0 ? `<div style="width:${blockedPctR}%;background:#DC2626;" title="Bloqué ${blockedPctR}%"></div>` : ''}
+        ${todoPctR > 0 ? `<div style="width:${todoPctR}%;background:var(--border);" title="A faire ${todoPctR}%"></div>` : ''}
+      </div>
+      <div style="display:flex;gap:12px;font-size:10px;color:var(--text-muted);">
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#16A34A;margin-right:3px;"></span>Terminé ${done}</span>
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#2563EB;margin-right:3px;"></span>En cours ${inprog}</span>
+        ${blocked > 0 ? `<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#DC2626;margin-right:3px;"></span>Bloqué ${blocked}</span>` : ''}
+        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--border);margin-right:3px;"></span>A faire ${todo}</span>
+      </div>
+    </div>`;
+
+  // Ticket list grouped by PI
+  const piKeys = Object.keys(piGroups).sort();
+  const ticketSections = piKeys.map(piLabel => {
+    const tickets = piGroups[piLabel].sort((a, b) => {
+      const statusOrder = { blocked: 0, inprog: 1, review: 1, todo: 2, backlog: 3, done: 4 };
+      return (statusOrder[a.status] ?? 2) - (statusOrder[b.status] ?? 2) || (b.points || 0) - (a.points || 0);
+    });
+    const piPts = tickets.reduce((a, t) => a + (t.points || 0), 0);
+    const piDone = tickets.filter(t => isDone(t.status)).length;
+    const rows = tickets.map(t => {
+      const _tkDone = isDone(t.status);
+      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+      const tColor = CONFIG.teams[t.team]?.color || '#64748B';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);${_tkDone ? 'opacity:.5;' : ''}cursor:pointer;" onclick="closeModalDirect();openModal('${t.id}')">
+        <span style="flex-shrink:0;width:18px;text-align:center;font-size:12px;">${priorityIcon(t.priority)}</span>
+        <span class="badge badge-${t.status}" style="font-size:9px;padding:1px 5px;flex-shrink:0;">${statusLabel(t.status)}</span>
+        <span class="badge badge-${t.type}" style="font-size:9px;padding:1px 5px;flex-shrink:0;">${typeName(t.type)}</span>
+        <span style="flex:1;font-size:12px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} ${t.title}</span>
+        ${ptsBadge(t.points)}
+        <span class="avatar" style="background:${avatarColor};flex-shrink:0;width:22px;height:22px;font-size:9px;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+      </div>`;
+    }).join('');
+
+    return `<div style="margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:2px solid var(--border);">
+        <span style="font-size:12px;font-weight:700;color:var(--text);">${piLabel}</span>
+        <span style="font-size:10px;color:var(--text-muted);">${piDone}/${tickets.length} tickets · ${piPts} pts</span>
+      </div>
+      ${rows}
+    </div>`;
+  }).join('');
+
+  document.getElementById('modal-title').innerHTML = `${_jiraBrowse(epic.id, { style: 'color:' + color + ';font-weight:700;text-decoration:none;' })} <span style="font-weight:400;color:var(--text-muted);font-size:14px;">- ${(epic.title || '').slice(0, 50)}</span>`;
+  document.getElementById('modal-body').innerHTML = header + stats + statusBar + ticketSections;
+
+  window._modalTicketList = eTickets.map(t => t.id);
+  window._modalCurrentIdx = 0;
+  if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+async function renderRoadmap() {
   _capTicketsMode = null;
   document.getElementById('topbar-title').textContent = '🗺️ Roadmap & Planification';
   const el = document.getElementById('roadmap-content');
   if (!el) return;
 
-  const velRef = _roadmapVelocity();
-  const cap80  = Math.round(velRef.avg * 0.8);
-  const cap20  = velRef.avg - cap80;
+  // Charger les données PI Prep (async)
+  if (typeof _ppLoad === 'function') await _ppLoad();
 
-  // Backlog : BACKLOG_TICKETS (tickets sprints futurs JIRA) + fallback sprint:0 dans TICKETS (démo)
-  const pOrder      = { critical: 0, high: 1, medium: 2, low: 3 };
+  const tickets     = getTickets();
   const activeTeams = getActiveTeams();
+  const velRef      = _roadmapVelocity();
+  const cap80       = Math.round(velRef.avg * 0.8);
+  const cap20       = velRef.avg - cap80;
+  const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
+
+  // Backlog : BACKLOG_TICKETS + fallback sprint:0 dans TICKETS (démo)
+  const pOrder      = { critical: 0, high: 1, medium: 2, low: 3 };
   const _filterBacklog = t =>
     t.type !== 'support' && t.type !== 'incident' &&
-    t.status !== 'done' &&
+    !isDone(t.status) &&
     (!activeTeams.length || activeTeams.includes(t.team));
 
   const fromBacklog = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
     .filter(_filterBacklog);
   const seenIds     = new Set(fromBacklog.map(t => t.id));
-  const fromSprint  = getTickets()
+  const fromSprint  = tickets
     .filter(t =>
       (t.status === 'backlog' || !t.sprint || t.sprint === 0) &&
       _filterBacklog(t) && !seenIds.has(t.id)
@@ -74,17 +496,150 @@ function renderRoadmap() {
   const ipInfo     = _detectIPSprint();
   const sprintPlan = _roadmapSimulateSprints(backlog, cap80, ipInfo);
 
-  el.innerHTML = `
+  // ---- Données par Epic (remplace l'ancien featureData basé sur F-1) ----
+  const epics = (typeof EPICS !== 'undefined' ? EPICS : []).filter(e => !e.team || activeTeams.includes(e.team));
+  const epicData = epics.map(e => {
+    const eTickets = tickets.filter(t => t.epic === e.id);
+    const totalPts = eTickets.reduce((a, t) => a + (t.points || 0), 0);
+    const donePts = eTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
+    const pct = totalPts ? Math.round(donePts / totalPts * 100) : 0;
+    const total = eTickets.length;
+    const done = eTickets.filter(t => isDone(t.status)).length;
+    const blocked = eTickets.filter(t => t.status === 'blocked').length;
+    const inprog = eTickets.filter(t => t.status === 'inprog' || t.status === 'review').length;
+    return { ...e, tickets: eTickets, totalPts, donePts, pct, total, done, blocked, inprog, epics: [] };
+  }).filter(e => e.tickets.length > 0);
+
+  const velHistory = [];
+  _allTeams().forEach(t => {
+    const hist = CONFIG.teams[t]?.velocityHistory || [];
+    hist.forEach((h, i) => {
+      if (!velHistory[i]) velHistory[i] = { name: h.name, velocity: 0 };
+      velHistory[i].velocity += h.velocity || 0;
+    });
+  });
+  const currentVel = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
+  const avgVelocity = velHistory.length
+    ? Math.round(velHistory.reduce((a, v) => a + v.velocity, 0) / velHistory.length)
+    : (currentVel || 40);
+  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  const projections = epicData.map(e => {
+    const remaining = e.totalPts - e.donePts;
+    const epicShare = e.totalPts / Math.max(1, epicData.reduce((a, x) => a + x.totalPts, 0));
+    const epicVel = Math.max(1, Math.round(avgVelocity * epicShare));
+    const sprintsNeeded = remaining > 0 ? Math.ceil(remaining / epicVel) : 0;
+    return { ...e, remaining, sprintsNeeded };
+  });
+  const totalPtsAll = tickets.reduce((a, t) => a + (t.points || 0), 0);
+  const donePtsAll = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
+  const pctAll = totalPtsAll ? Math.round(donePtsAll / totalPtsAll * 100) : 0;
+  const remainingPts = totalPtsAll - donePtsAll;
+  const sprintsToComplete = avgVelocity > 0 ? Math.ceil(remainingPts / avgVelocity) : '?';
+
+  // ---- Données PI Prep ----
+  const unpointed    = backlog.filter(t => !t.points);
+  const readiness    = typeof _ppReadiness === 'function' ? _ppReadiness(backlog, activeTeams) : null;
+  const membersByTeam = typeof _ppMembersByTeam === 'function' ? _ppMembersByTeam(activeTeams) : {};
+  const piCalendar   = typeof _roadmapPICalendar === 'function' ? _roadmapPICalendar(cap80) : '';
+
+  // ---- KPIs releases (intégrés dans le header) ----
+  const relKpis = epicData.length ? `
+    <div class="rel-header" style="margin-top:0;">
+      <div class="rel-kpi"><div class="rel-kpi-val">${pctAll}%</div><div class="rel-kpi-label">Avancement global</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-val">${donePtsAll}<small>/${totalPtsAll} pts</small></div><div class="rel-kpi-label">Points terminés</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-val">${avgVelocity}<small> pts/sprint</small></div><div class="rel-kpi-label">Vélocité moyenne</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-val">${sprintsToComplete}<small> sprints</small></div><div class="rel-kpi-label">Estimation restante</div></div>
+      <div class="rel-kpi"><div class="rel-kpi-val">${epicData.length}</div><div class="rel-kpi-label">Epics actifs</div></div>
+    </div>` : '';
+
+  // ============================================================
+  // RENDU - sections thématiques collapsibles
+  // ============================================================
+
+  // 1. VISION & AVANCEMENT
+  const secVision = `
     <div class="rm-top-grid">
       ${_roadmapVelocityCard(velRef, cap80, cap20)}
       ${_roadmapBufferCard(velRef.avg, cap20)}
       ${_roadmapPresentielCard(velRef, sprintPlan)}
     </div>
+    ${relKpis}
+    ${_roadmapVisual(epicData, sprintPlan, s)}
+    ${epicData.length ? `<div class="rel-gantt-wrap" style="margin-top:16px;">${_relGanttChart(epicData)}</div>` : ''}
+    ${epicData.length ? `<div class="rel-projection-table" style="margin-top:16px;">${_relProjectionTable(projections, avgVelocity, s)}</div>` : ''}
+    ${_roadmapCrossTeamFeatures()}
+  `;
+
+  // 2. PLANIFICATION
+  const ppPISelector = typeof _ppPISelector === 'function' ? _ppPISelector() : '';
+  const ppObjectives = typeof _ppObjectivesSection === 'function' ? _ppObjectivesSection(activeTeams) : '';
+  const secPlanification = `
+    ${ppPISelector}
+    ${piCalendar}
     ${_roadmapTimeline(velRef, cap80, sprintPlan)}
     ${_roadmapSprintPlan(sprintPlan, cap80, cap20)}
-    ${_roadmapBacklogHealth(backlog)}
-    ${_roadmapBacklogTable(backlog, cap80)}
+    ${ppObjectives}
   `;
+
+  // 3. CAPACITÉ & CHARGE
+  const ppReadinessHtml = readiness && typeof _ppSectionHeader === 'function' ? `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start;margin-bottom:16px;">
+      <div id="pp-readiness-wrap">${_ppSectionHeader(readiness)}</div>
+      <div id="pp-unpointed">${typeof _ppUnpointedBanner === 'function' ? _ppUnpointedBanner(unpointed) : ''}</div>
+    </div>` : '';
+  const ppLoadMatrix = typeof _ppLoadMatrix === 'function' ? `<div id="pp-load-wrap">${_ppLoadMatrix(activeTeams, sprintsPerPI, backlog)}</div>` : '';
+  const ppCapacity = typeof _ppCapacitySection === 'function' ? _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) : '';
+  const ppMultiPI = typeof _ppMultiPICapacity === 'function' ? _ppMultiPICapacity(activeTeams, sprintsPerPI) : '';
+  const secCapacite = `
+    ${ppReadinessHtml}
+    ${ppLoadMatrix}
+    ${ppCapacity}
+    ${ppMultiPI}
+  `;
+
+  // 4. RISQUES & QUALITÉ
+  const ppROAM = typeof _ppROAMSection === 'function' ? _ppROAMSection(activeTeams) : '';
+  const ppDeps = typeof _ppDepsSection === 'function' ? _ppDepsSection(activeTeams) : '';
+  const secRisques = `
+    ${ppROAM}
+    ${ppDeps}
+    ${_roadmapBacklogHealth(backlog)}
+  `;
+
+  // 5. RITUELS
+  const ppFist = typeof _ppFistSection === 'function' ? _ppFistSection(activeTeams) : '';
+  const secRituels = ppFist;
+
+  // 6. BACKLOG
+  const secBacklog = _roadmapBacklogTable(backlog, cap80);
+
+  // ---- Sommaire navigation ----
+  const _rmTabs = [
+    { id: 'vision',        icon: '📊', label: 'Vision' },
+    { id: 'planification', icon: '📅', label: 'Planification' },
+    { id: 'capacite',      icon: '⚡', label: 'Capacité' },
+    { id: 'risques',       icon: '⚠️', label: 'Risques' },
+    { id: 'rituels',       icon: '🤝', label: 'Rituels', hide: !secRituels },
+    { id: 'backlog',       icon: '📋', label: 'Backlog' },
+  ].filter(t => !t.hide);
+
+  const tabsHtml = `<div class="rm-tabs" id="rm-tabs">
+    ${_rmTabs.map(t => `<button class="rm-tab" data-sec="${t.id}" onclick="_rmScrollTo('${t.id}')">${t.icon} ${t.label}</button>`).join('')}
+  </div>`;
+
+  // ---- Assemblage final ----
+  el.innerHTML = `
+    ${tabsHtml}
+    ${_rmSection('vision',       '📊', 'Vision & Avancement',    secVision)}
+    ${_rmSection('planification','📅', 'Planification',           secPlanification)}
+    ${_rmSection('capacite',     '⚡', 'Capacité & Charge',       secCapacite)}
+    ${_rmSection('risques',      '⚠️', 'Risques & Qualité',      secRisques)}
+    ${secRituels ? _rmSection('rituels', '🤝', 'Rituels',         secRituels) : ''}
+    ${_rmSection('backlog',      '📋', 'Backlog',                 secBacklog, false)}
+  `;
+
+  // Active tab tracking on scroll
+  _rmInitScrollSpy();
 }
 
 // ============================================================
@@ -156,7 +711,7 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
       <div class="rm-card-title">⚡ Vélocité de référence</div>
       <div class="rm-vel-main">
         <div class="rm-vel-big">${vel.avg}<small> pts/sprint</small></div>
-        <div class="rm-vel-sub">${vel.hasHistory ? `Min: <b>${vel.min}</b> — Max: <b>${vel.max}</b>` : 'Cible config (pas d\'historique)'}</div>
+        <div class="rm-vel-sub">${vel.hasHistory ? `Min: <b>${vel.min}</b> - Max: <b>${vel.max}</b>` : 'Cible config (pas d\'historique)'}</div>
       </div>
       ${vel.history.length ? `<div class="rm-hist-bars">${bars}</div>` : ''}
       <div class="rm-cap-split">
@@ -212,7 +767,7 @@ function _toggleCapTickets(mode) {
   filtered.sort((a, b) => (b.points || 0) - (a.points || 0) || a.title.localeCompare(b.title));
   const totalPts = filtered.reduce((s, t) => s + (t.points || 0), 0);
   const rows = filtered.map(t => {
-    const done = t.status === 'done';
+    const done = isDone(t.status);
     return `<div class="rm-cap-row${done ? ' rm-cap-done' : ''}" onclick="openModal('${t.id}')">
       <span class="badge badge-${t.type}" style="font-size:9px;flex-shrink:0;">${typeName(t.type)}</span>
       <span style="font-size:10px;color:var(--text-muted);font-weight:600;flex-shrink:0;">${t.id}</span>
@@ -223,7 +778,7 @@ function _toggleCapTickets(mode) {
 
   el.innerHTML = `<div class="rm-cap-tickets">
     <div style="padding:6px 10px;font-size:10px;color:var(--text-muted);font-weight:600;border-bottom:1px solid var(--border);">
-      ${mode === 'buf' ? '🛡️ Buffer' : '📦 Features & Stories'} — ${filtered.length} ticket${filtered.length > 1 ? 's' : ''} · ${totalPts} pts
+      ${mode === 'buf' ? '🛡️ Buffer' : '📦 Features & Stories'} - ${filtered.length} ticket${filtered.length > 1 ? 's' : ''} · ${totalPts} pts
     </div>
     ${rows}
   </div>`;
@@ -339,7 +894,7 @@ function _roadmapPresentielCard(velRef, sprintPlan) {
 }
 
 // ============================================================
-// Helper — ticket rows pour timeline avec expand + onclick modal
+// Helper - ticket rows pour timeline avec expand + onclick modal
 // ============================================================
 
 let _rmTlUid = 0;
@@ -377,7 +932,7 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
     ? CONFIG.teams[_activeTeams[0]].sprintName
     : CONFIG.sprint.label || `Sprint ${CONFIG.sprint.current || 'Actif'}`;
   const tickets  = getTickets();
-  const ptsDone  = tickets.filter(t => t.status === 'done').reduce((a, t) => a + (t.points || 0), 0);
+  const ptsDone  = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
   const ptsTotal = tickets.reduce((a, t) => a + (t.points || 0), 0) || 1;
   const pctDone  = Math.round(ptsDone / ptsTotal * 100);
 
@@ -610,7 +1165,7 @@ function _roadmapSprintPlan(plan, cap80, cap20) {
       return `<div class="rm-sprint-card" style="opacity:.5;border:1.5px dashed var(--border)">
         <div class="rm-sprint-header">
           <span class="rm-sprint-label">Sprint +${i + 1}</span>
-          <span class="rm-sprint-pts" style="color:var(--text-muted)">— / ${cap80} pts</span>
+          <span class="rm-sprint-pts" style="color:var(--text-muted)">- / ${cap80} pts</span>
         </div>
         <div style="font-size:11px;color:var(--text-muted);margin-top:8px">Backlog insuffisant</div>
       </div>`;
@@ -642,7 +1197,7 @@ function _roadmapSprintPlan(plan, cap80, cap20) {
     </div>`;
   }).join('');
 
-  // Sprint 5 — Innovation & Planning (IP sprint SAFe)
+  // Sprint 5 - Innovation & Planning (IP sprint SAFe)
   const ipRows = _BUFFER_CATS.map(cat => {
     const pts = Math.round((cap20 || 0) * cat.pct / 20); // pct sur les 20% du buffer
     return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 0;border-bottom:1px solid #D1FAE5">
@@ -669,7 +1224,7 @@ function _roadmapSprintPlan(plan, cap80, cap20) {
   return `
     <div style="margin-bottom:20px;">
       <div class="section-header">
-        <div class="section-title">📋 Simulation — PI Suivant</div>
+        <div class="section-title">📋 Simulation - PI Suivant</div>
         <span style="font-size:12px;color:var(--text-muted)">${subtitle}</span>
       </div>
       <div class="rm-sprint-grid">${featureCards}${ipCard}</div>
@@ -677,7 +1232,7 @@ function _roadmapSprintPlan(plan, cap80, cap20) {
 }
 
 // ============================================================
-// Calendrier PI Suivant — jours ouvrés & présentiels
+// Calendrier PI Suivant - jours ouvrés & présentiels
 // ============================================================
 
 // Détecte automatiquement la date de début du PI Suivant depuis les données JIRA
@@ -688,7 +1243,7 @@ function _detectNextPIStart() {
   const durationDays   = (CONFIG.sprint && CONFIG.sprint.durationDays)                               || 14;
   const sprintStartDay = (CONFIG.sprint && CONFIG.sprint.sprintStartDay != null ? CONFIG.sprint.sprintStartDay : 5);
 
-  // Priorité 1 — sprints nommés "PI#xx" / "#PIxx" / "PI xx" dans BACKLOG_TICKETS
+  // Priorité 1 - sprints nommés "PI#xx" / "#PIxx" / "PI xx" dans BACKLOG_TICKETS
   const _bl = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
   const piSprintNames = new Map(); // sprintName → sprintStart
   _bl.forEach(t => {
@@ -716,7 +1271,7 @@ function _detectNextPIStart() {
     return { date: null, source: `Sprint JIRA "${[...piSprintNames.keys()][0]}" (date non disponible)` };
   }
 
-  // Priorité 2 — parse "Ité 28.4" depuis CONFIG.teams[X].sprintName
+  // Priorité 2 - parse "Ité 28.4" depuis CONFIG.teams[X].sprintName
   const endDate = CONFIG.sprint && CONFIG.sprint.endDate;
   if (!endDate) return null;
 
@@ -746,7 +1301,7 @@ function _detectNextPIStart() {
 // Handlers globaux pour les inputs du calendrier (appelés depuis les attributs onchange)
 function _setPIStart(v) {
   localStorage.setItem('rm_pi_start', v);
-  renderPIPrep();
+  _ppRefresh();
 }
 function _setPISprintPres(v, i) {
   try {
@@ -755,7 +1310,7 @@ function _setPISprintPres(v, i) {
     a[i] = Math.max(0, parseInt(v, 10) || 0);
     localStorage.setItem('rm_pi_pres', JSON.stringify(a));
   } catch (e) { /* ignore */ }
-  renderPIPrep();
+  _ppRefresh();
 }
 
 // Calcul de la date de Pâques (algorithme Meeus/Jones/Butcher)
@@ -967,7 +1522,7 @@ function _roadmapPICalendar(cap80) {
             <span style="font-size:11px;color:${storedStart ? 'var(--primary)' : '#16A34A'};font-style:italic;white-space:nowrap;" title="Source de la date">
               ${autoLabel}
             </span>
-            ${storedStart ? `<button onclick="localStorage.removeItem('rm_pi_start');renderPIPrep();" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text-muted);cursor:pointer;" title="Revenir à la détection automatique">↺ auto</button>` : ''}
+            ${storedStart ? `<button onclick="localStorage.removeItem('rm_pi_start');_ppRefresh();" style="font-size:11px;padding:2px 8px;border:1px solid var(--border);border-radius:6px;background:var(--card);color:var(--text-muted);cursor:pointer;" title="Revenir à la détection automatique">↺ auto</button>` : ''}
           </div>
           <span style="font-size:12px;color:var(--text-muted);">${totalWorkDays} j ouvrés · <strong>${totalCap} pts</strong> cap. feature · <strong style="color:${presColor}">${totalPres} j présentiel${totalPres !== 1 ? 's' : ''}</strong></span>
         </div>
@@ -1013,8 +1568,15 @@ function _roadmapBacklogHealth(backlog) {
   const healthBg    = healthPct >= 80 ? '#F0FDF4' : healthPct >= 50 ? '#FFFBEB' : '#FEF2F2';
   const healthIcon  = healthPct >= 80 ? '✅' : healthPct >= 50 ? '⚠️' : '🔴';
 
-  const kpi = (icon, label, count, color) => count > 0 ? `
-    <div style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:${color}11;border:1px solid ${color}33;border-radius:8px;">
+  // Store lists globally for the detail popin
+  window._bhNoEpic     = noEpic;
+  window._bhNoPoints   = noPoints;
+  window._bhNoPriority = noPriority;
+  window._bhAging      = aging;
+  window._bhAgingSprints = agingSprints;
+
+  const kpi = (icon, label, count, color, filter) => count > 0 ? `
+    <div class="rm-health-kpi" onclick="_showBacklogHealthDetail('${filter}')" title="Voir le détail" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:${color}11;border:1px solid ${color}33;border-radius:8px;cursor:pointer;transition:box-shadow .15s,transform .15s;">
       <span style="font-size:14px">${icon}</span>
       <span style="font-size:20px;font-weight:800;color:${color}">${count}</span>
       <span style="font-size:11px;color:var(--text-muted)">${label}</span>
@@ -1031,19 +1593,274 @@ function _roadmapBacklogHealth(backlog) {
         </div>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
-        ${kpi('📭', 'sans Epic', noEpic.length, '#DC2626')}
-        ${kpi('🔢', 'sans points', noPoints.length, '#F59E0B')}
-        ${kpi('⚖️', 'sans priorité', noPriority.length, '#D97706')}
-        ${kpi('⏳', `inactif >${agingSprints} sprints`, aging.length, '#64748B')}
+        ${kpi('📭', 'sans Epic', noEpic.length, '#DC2626', 'noEpic')}
+        ${kpi('🔢', 'sans points', noPoints.length, '#F59E0B', 'noPoints')}
+        ${kpi('⚖️', 'sans priorité', noPriority.length, '#D97706', 'noPriority')}
+        ${kpi('⏳', `inactif >${agingSprints} sprints`, aging.length, '#64748B', 'aging')}
       </div>
     </div>`;
+}
+
+// Detail popin for backlog health KPI cards
+function _showBacklogHealthDetail(filter) {
+  const cfg = {
+    noEpic:     { icon: '📭', label: 'Tickets sans Epic',     color: '#DC2626', list: window._bhNoEpic     || [] },
+    noPoints:   { icon: '🔢', label: 'Tickets sans points',   color: '#F59E0B', list: window._bhNoPoints   || [] },
+    noPriority: { icon: '⚖️', label: 'Tickets sans priorité', color: '#D97706', list: window._bhNoPriority || [] },
+    aging:      { icon: '⏳', label: `Tickets inactifs (>${window._bhAgingSprints || 3} sprints)`, color: '#64748B', list: window._bhAging || [] },
+  }[filter];
+  if (!cfg || !cfg.list.length) return;
+
+  const totalPts = cfg.list.reduce((a, t) => a + (t.points || 0), 0);
+
+  // Group by type
+  const byType = {};
+  cfg.list.forEach(t => { (byType[t.type] = byType[t.type] || []).push(t); });
+  const typeOrder = Object.keys(byType).sort((a, b) => byType[b].length - byType[a].length);
+  const typePills = typeOrder.map(type => {
+    const c = CONFIG.typeColors[type] || '#475569';
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;background:${c}18;border:1px solid ${c}40;font-size:11px;font-weight:700;color:${c};margin:2px;">${typeName(type)} ×${byType[type].length}</span>`;
+  }).join('');
+
+  document.getElementById('modal-title').innerHTML = `${cfg.icon} ${cfg.label} <span style="font-size:14px;font-weight:400;color:#94A3B8;">(${cfg.list.length} · ${totalPts} pts)</span>`;
+  document.getElementById('modal-body').innerHTML = `
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #E2E8F0;">${typePills}</div>
+    ${cfg.list.map(t => {
+      const epic        = EPICS.find(e => e.id === t.epic);
+      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+      const highlight   = filter === 'noEpic' && !t.epic ? 'background:#FEF2F2;'
+                        : filter === 'noPoints' && !t.points ? 'background:#FFFBEB;'
+                        : filter === 'noPriority' ? 'background:#FFF7ED;'
+                        : filter === 'aging' ? 'background:#F8FAFC;' : '';
+      // Extra info depending on filter
+      let extra = '';
+      if (filter === 'aging' && t.updatedAt) {
+        const days = Math.floor((Date.now() - new Date(t.updatedAt).getTime()) / 86400000);
+        extra = `<span style="font-size:10px;color:#64748B;white-space:nowrap;flex-shrink:0;">${days}j inactif</span>`;
+      }
+      return `<div style="display:flex;align-items:center;gap:8px;${highlight}padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;" onclick="closeModalDirect();openModal('${t.id}')">
+        <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
+        <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
+        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_jiraBrowse(t.id)} - ${t.title}</span>
+        ${epic ? epicTag(epic, t.epic) : '<span style="font-size:10px;color:#DC2626;font-weight:600;flex-shrink:0;">Ø epic</span>'}
+        ${ptsBadge(t.points)}
+        ${extra}
+        <span class="avatar" style="background:${avatarColor};flex-shrink:0;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+      </div>`;
+    }).join('')}`;
+
+  window._modalTicketList = [];
+  window._modalCurrentIdx = 0;
+  if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ============================================================
+// Epics cross-équipes
+// ============================================================
+
+function _roadmapCrossTeamFeatures() {
+  const activeTeams = getActiveTeams();
+  const _bl         = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
+  const allPool     = [...TICKETS, ..._bl];
+
+  const selectedTeam = currentTeam && currentTeam !== 'all' ? currentTeam : null;
+  const selectedGroupTeams = currentGroup
+    ? (GROUPS.find(g => g.id === currentGroup)?.teams || [])
+    : [];
+
+  // ── Collect cross-team epics (2+ teams) ──
+  const crossEpics = [];
+  const epics = typeof EPICS !== 'undefined' ? EPICS : [];
+  epics.forEach(e => {
+    const eTickets = allPool.filter(t => t.epic === e.id);
+    if (!eTickets.length) return;
+
+    const teamSet = new Set();
+    eTickets.forEach(t => { if (t.team) teamSet.add(t.team); });
+    if (teamSet.size < 2) return;
+
+    // Must have tickets from the selected team/group
+    if (selectedTeam) {
+      if (!teamSet.has(selectedTeam)) return;
+    } else if (selectedGroupTeams.length) {
+      if (!selectedGroupTeams.some(tid => teamSet.has(tid))) return;
+    }
+
+    crossEpics.push({ epic: e, tickets: eTickets, teamSet });
+  });
+
+  if (!crossEpics.length) return '';
+
+  // ── Axes: teams × teams ──
+  const allTeamIds = new Set();
+  crossEpics.forEach(ce => ce.teamSet.forEach(tid => allTeamIds.add(tid)));
+  const teamList = [...allTeamIds].sort();
+
+  // ── Build pair data: teamRow × teamCol → { epics shared, tickets per team } ──
+  const pairData = {}; // key = `${rowTid}|${colTid}`
+  crossEpics.forEach(ce => {
+    const teams = [...ce.teamSet];
+    // For each pair of teams in this epic
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = 0; j < teams.length; j++) {
+        const key = teams[i] + '|' + teams[j];
+        if (!pairData[key]) pairData[key] = { epicIds: new Set(), count: 0, done: 0, pts: 0 };
+        pairData[key].epicIds.add(ce.epic.id);
+      }
+      // Also count tickets for this team across all cross-epics (for diagonal)
+      const diagKey = teams[i] + '|' + teams[i];
+      ce.tickets.filter(t => t.team === teams[i]).forEach(t => {
+        pairData[diagKey].count++;
+        if (isDone(t.status)) pairData[diagKey].done++;
+        pairData[diagKey].pts += t.points || 0;
+      });
+    }
+  });
+
+  // For off-diagonal cells: count tickets from BOTH teams in shared epics
+  crossEpics.forEach(ce => {
+    const teams = [...ce.teamSet];
+    for (let i = 0; i < teams.length; i++) {
+      for (let j = 0; j < teams.length; j++) {
+        if (i === j) continue;
+        const key = teams[i] + '|' + teams[j];
+        ce.tickets.filter(t => t.team === teams[i]).forEach(t => {
+          pairData[key].count++;
+          if (isDone(t.status)) pairData[key].done++;
+          pairData[key].pts += t.points || 0;
+        });
+      }
+    }
+  });
+
+  // ── Header ──
+  const thTeams = teamList.map(tid => {
+    const tc  = CONFIG.teams[tid];
+    const col = tc?.color || '#64748B';
+    const isSel = tid === selectedTeam;
+    return `<th class="rm-cx-th-team${isSel ? ' rm-cx-sel' : ''}" style="--team-c:${col};">
+      <span class="rm-cx-dot" style="background:${col};"></span>${tid}
+    </th>`;
+  }).join('');
+
+  // ── Rows ──
+  const trs = teamList.map(rowTid => {
+    const rowTc  = CONFIG.teams[rowTid];
+    const rowCol = rowTc?.color || '#64748B';
+    const isRowSel = rowTid === selectedTeam;
+
+    const cells = teamList.map(colTid => {
+      const key = rowTid + '|' + colTid;
+      const d   = pairData[key];
+
+      // Diagonal = team itself
+      if (rowTid === colTid) {
+        if (!d) return '<td class="rm-cx-cell rm-cx-diag"></td>';
+        return `<td class="rm-cx-cell rm-cx-diag" title="${rowTid}: ${d.count} tickets cross · ${d.pts} pts">
+          <span class="rm-cx-pct" style="color:${rowCol};opacity:.5;">${d.count}</span>
+          <span class="rm-cx-ratio">${d.pts} pts</span>
+        </td>`;
+      }
+
+      if (!d || !d.epicIds.size) return '<td class="rm-cx-cell rm-cx-empty"></td>';
+
+      const nEpic  = d.epicIds.size;
+      const pct    = d.count ? Math.round(d.done / d.count * 100) : 0;
+      const txtCol = pct === 100 ? '#16A34A' : rowCol;
+      const intensity = Math.min(nEpic * 6, 20);
+      const bg     = pct === 100 ? '#F0FDF4' : `${rowCol}${intensity.toString(16).padStart(2, '0')}`;
+      return `<td class="rm-cx-cell" style="background:${bg};cursor:pointer;" onclick="_showCrossPairDetail('${rowTid}','${colTid}')" title="${rowTid} × ${colTid}: ${nEpic} epic${nEpic > 1 ? 's' : ''} · ${d.done}/${d.count} tickets · ${d.pts} pts">
+        <span class="rm-cx-pct" style="color:${txtCol};">${nEpic}e</span>
+        <span class="rm-cx-ratio">${d.done}/${d.count}</span>
+      </td>`;
+    }).join('');
+
+    return `<tr class="${isRowSel ? 'rm-cx-row-sel' : ''}">
+      <td class="rm-cx-grp" style="--grp-c:${rowCol};">
+        <span class="rm-cx-dot" style="background:${rowCol};"></span>
+        <span class="rm-cx-grp-name">${rowTid}</span>
+      </td>
+      ${cells}
+    </tr>`;
+  }).join('');
+
+  return `
+    <div style="margin-bottom:16px;">
+      <div class="section-header">
+        <div class="section-title">🔀 Epics cross-équipes</div>
+        <span style="font-size:12px;color:var(--text-muted);">${crossEpics.length} epic${crossEpics.length > 1 ? 's' : ''} · ${teamList.length} équipes</span>
+      </div>
+      <div class="card" style="overflow-x:auto;padding:0;">
+        <table class="rm-cx-table">
+          <thead><tr><th class="rm-cx-th-grp"></th>${thTeams}</tr></thead>
+          <tbody>${trs}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// Detail popin: epics shared between two teams
+function _showCrossPairDetail(teamA, teamB) {
+  const _bl     = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
+  const allPool = [...TICKETS, ..._bl];
+  const colA    = CONFIG.teams[teamA]?.color || '#64748B';
+  const colB    = CONFIG.teams[teamB]?.color || '#64748B';
+
+  const epics = typeof EPICS !== 'undefined' ? EPICS : [];
+  const sections = [];
+  epics.forEach(e => {
+    const eTickets = allPool.filter(t => t.epic === e.id);
+    const hasA = eTickets.some(t => t.team === teamA);
+    const hasB = eTickets.some(t => t.team === teamB);
+    if (!hasA || !hasB) return;
+
+    const relevant = eTickets.filter(t => t.team === teamA || t.team === teamB);
+    const done     = relevant.filter(t => isDone(t.status)).length;
+    const pts      = relevant.reduce((a, t) => a + (t.points || 0), 0);
+    const pct      = relevant.length ? Math.round(done / relevant.length * 100) : 0;
+
+    const rows = relevant.map(t => {
+      const _tkDone     = isDone(t.status);
+      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+      const tColor      = CONFIG.teams[t.team]?.color || '#64748B';
+      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
+        <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
+        <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:${tColor};flex-shrink:0;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:50%;background:${tColor};"></span>${t.team}</span>
+        <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
+        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} - ${t.title}</span>
+        <span class="badge badge-${t.status}" style="white-space:nowrap;font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
+        ${ptsBadge(t.points)}
+        <span class="avatar" style="background:${avatarColor};flex-shrink:0;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+      </div>`;
+    }).join('');
+
+    sections.push(`<div style="margin-bottom:12px;">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+        <span style="width:8px;height:8px;border-radius:50%;background:${e.color || '#7C3AED'};flex-shrink:0;"></span>
+        <span style="font-size:13px;font-weight:700;">${e.title}</span>
+        <span style="font-size:11px;color:var(--text-muted);">${done}/${relevant.length} · ${pct}% · ${pts} pts</span>
+      </div>
+      ${rows}
+    </div>`);
+  });
+
+  if (!sections.length) return;
+
+  document.getElementById('modal-title').innerHTML = `🔀 <span style="color:${colA};font-weight:700;">${teamA}</span> × <span style="color:${colB};font-weight:700;">${teamB}</span> <span style="font-size:14px;font-weight:400;color:#94A3B8;">(${sections.length} epic${sections.length > 1 ? 's' : ''} en commun)</span>`;
+  document.getElementById('modal-body').innerHTML = sections.join('');
+
+  window._modalTicketList = [];
+  window._modalCurrentIdx = 0;
+  if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
+  document.getElementById('modal-overlay').classList.add('open');
 }
 
 function _roadmapBacklogTable(backlog, cap80) {
   if (!backlog.length) return '';
 
   const totalPts  = backlog.reduce((s, t) => s + (t.points || 0), 0);
-  const sprintEst = cap80 ? Math.ceil(totalPts / cap80) : '—';
+  const sprintEst = cap80 ? Math.ceil(totalPts / cap80) : '-';
   const unpointed = backlog.filter(t => !t.points).length;
 
   const rows = backlog.map(t => {
@@ -1051,13 +1868,13 @@ function _roadmapBacklogTable(backlog, cap80) {
     const tc   = CONFIG.typeColors[t.type] || '#475569';
     const sn = t.sprintName || '';
     // Short sprint label: remove team prefix (e.g. "Fuego - Ité. 28.4" → "Ité. 28.4")
-    const snShort = sn.replace(/^[^-]+-\s*/, '') || '—';
+    const snShort = sn.replace(/^[^-]+-\s*/, '') || '-';
     return `<tr class="rm-backlog-row" onclick="openModal('${t.id}')" style="cursor:pointer">
       <td style="width:28px">${priorityIcon(t.priority)}</td>
       <td style="white-space:nowrap">${_jiraBrowse(t.id)}</td>
-      <td class="rm-bt-title">${t.title || '—'}</td>
+      <td class="rm-bt-title">${t.title || '-'}</td>
       <td><span class="badge" style="background:${tc}22;color:${tc};border:1px solid ${tc}44">${typeName(t.type)}</span></td>
-      <td>${epic ? `<span style="background:${epic.color || '#2563eb'}22;color:${epic.color || '#2563eb'};padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block">${epic.title}</span>` : '<span style="color:var(--text-muted)">—</span>'}</td>
+      <td>${epic ? `<span style="background:${epic.color || '#2563eb'}22;color:${epic.color || '#2563eb'};padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block">${epic.title}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
       <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)" title="${sn}">${snShort}</td>
       <td style="text-align:right">${ptsBadge(t.points, {size:'small'})}</td>
     </tr>`;
@@ -1066,7 +1883,7 @@ function _roadmapBacklogTable(backlog, cap80) {
   return `
     <div>
       <div class="section-header">
-        <div class="section-title">📋 Backlog non planifié — ${backlog.length} ticket${backlog.length > 1 ? 's' : ''} · ${totalPts} pts · ~${sprintEst} sprint${sprintEst > 1 ? 's' : ''}</div>
+        <div class="section-title">📋 Backlog non planifié - ${backlog.length} ticket${backlog.length > 1 ? 's' : ''} · ${totalPts} pts · ~${sprintEst} sprint${sprintEst > 1 ? 's' : ''}</div>
         ${unpointed ? `<span style="font-size:12px;color:var(--amber)">⚠ ${unpointed} ticket${unpointed > 1 ? 's' : ''} sans points</span>` : ''}
       </div>
       <div class="card" style="overflow-x:auto;padding:0">

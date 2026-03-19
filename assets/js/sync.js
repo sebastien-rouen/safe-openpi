@@ -1,7 +1,7 @@
 // ============================================================
-// SYNC — Bouton "Synchroniser" → chargement des données JIRA
-//        Sync diff — changelog visuel après synchronisation
-//        Incremental sync — seuil 6h, checkbox full/partial
+// SYNC - Bouton "Synchroniser" → chargement des données JIRA
+//        Sync diff - changelog visuel après synchronisation
+//        Incremental sync - seuil 6h, checkbox full/partial
 // ============================================================
 
 // --- Snapshot before sync for diff computation ---
@@ -14,6 +14,7 @@ function _takeSnapshot() {
     points:  Object.fromEntries(TICKETS.map(t => [t.id, t.points])),
     flagged: new Set(TICKETS.filter(t => t.flagged).map(t => t.id)),
     titles:  Object.fromEntries(TICKETS.map(t => [t.id, t.title])),
+    teams:   Object.fromEntries(TICKETS.map(t => [t.id, t.team || ''])),
   };
 }
 
@@ -26,7 +27,7 @@ function _computeDiff(before, after) {
   // New tickets
   TICKETS.forEach(t => {
     if (!before.ids.has(t.id)) {
-      changes.push({ type: 'new', icon: '🆕', label: `${_link(t.id)} — ${t.title}`, color: '#16A34A' });
+      changes.push({ type: 'new', icon: '🆕', label: `${_link(t.id)} - ${t.title}`, color: '#16A34A', team: t.team || '' });
     }
   });
 
@@ -35,7 +36,7 @@ function _computeDiff(before, after) {
     if (before.ids.has(t.id) && before.status[t.id] !== t.status) {
       const from = statusLabel(before.status[t.id]);
       const to   = statusLabel(t.status);
-      changes.push({ type: 'status', icon: '🔄', label: `${_link(t.id)} : ${from} → ${to}`, color: '#3B82F6' });
+      changes.push({ type: 'status', icon: '🔄', label: `${_link(t.id)} : ${from} → ${to}`, color: '#3B82F6', team: t.team || '' });
     }
   });
 
@@ -44,21 +45,21 @@ function _computeDiff(before, after) {
     if (before.ids.has(t.id) && before.points[t.id] !== t.points) {
       const from = before.points[t.id] || 0;
       const to   = t.points || 0;
-      changes.push({ type: 'points', icon: '🎯', label: `${_link(t.id)} : ${from} → ${to} pts`, color: '#F59E0B' });
+      changes.push({ type: 'points', icon: '🎯', label: `${_link(t.id)} : ${from} → ${to} pts`, color: '#F59E0B', team: t.team || '' });
     }
   });
 
   // Newly flagged
   TICKETS.forEach(t => {
     if (t.flagged && !before.flagged.has(t.id)) {
-      changes.push({ type: 'flag', icon: '🚩', label: `${_link(t.id)} flaggé`, color: '#DC2626' });
+      changes.push({ type: 'flag', icon: '🚩', label: `${_link(t.id)} flaggé`, color: '#DC2626', team: t.team || '' });
     }
   });
 
   // Removed tickets
   before.ids.forEach(id => {
     if (!afterIds.has(id)) {
-      changes.push({ type: 'removed', icon: '🗑', label: `${_link(id)} — ${before.titles[id] || '?'} retiré`, color: '#94A3B8' });
+      changes.push({ type: 'removed', icon: '🗑', label: `${_link(id)} - ${before.titles[id] || '?'} retiré`, color: '#94A3B8', team: before.teams[id] || '' });
     }
   });
 
@@ -86,14 +87,14 @@ function _showSyncDiff(changes) {
   if (groups.flag)    summary.push(`${groups.flag.length} flaggé${groups.flag.length > 1 ? 's' : ''}`);
   if (groups.removed) summary.push(`${groups.removed.length} retiré${groups.removed.length > 1 ? 's' : ''}`);
 
-  const rows = changes.slice(0, 20).map(c =>
+  const rows = changes.map(c =>
     `<div class="sync-diff-row">
       <span class="sync-diff-icon">${c.icon}</span>
       <span class="sync-diff-label">${c.label}</span>
+      ${c.team ? `<span class="sync-diff-team">${c.team}</span>` : ''}
       <span class="sync-diff-dot" style="background:${c.color}"></span>
     </div>`
   ).join('');
-  const moreText = changes.length > 20 ? `<div style="padding:4px 12px;font-size:11px;color:var(--text-muted);text-align:center;">+${changes.length - 20} autres changements</div>` : '';
 
   panel.innerHTML = `
     <div class="sync-diff-header">
@@ -101,14 +102,10 @@ function _showSyncDiff(changes) {
       <button class="sync-diff-close" onclick="this.closest('#sync-diff-panel').remove()">✕</button>
     </div>
     <div class="sync-diff-summary">${summary.join(' · ')}</div>
-    <div class="sync-diff-body">${rows}${moreText}</div>
+    <div class="sync-diff-body">${rows}</div>
   `;
 
   document.body.appendChild(panel);
-
-  // Auto-dismiss after 15s
-  setTimeout(() => { if (panel.parentNode) panel.classList.add('sync-diff-fade'); }, 12000);
-  setTimeout(() => { if (panel.parentNode) panel.remove(); }, 15000);
 }
 
 // --- Incremental sync ---
@@ -169,7 +166,7 @@ function doSync() {
       _setBtnReady(btn);
       _syncSnapshot = null;
       const hint = err.message.includes('fetch') || err.message.includes('network')
-        ? ' — proxy démarré ? (python scripts/proxy.py)'
+        ? ' - proxy démarré ? (python scripts/proxy.py)'
         : '';
       showToast(`❌ JIRA : ${err.message}${hint}`, 'error');
     });

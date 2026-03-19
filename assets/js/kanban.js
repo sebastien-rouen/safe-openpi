@@ -1,21 +1,17 @@
 // ============================================================
-// KANBAN VIEW — Flux continu, limites WIP, répartition, cycle time
+// KANBAN VIEW - Flux continu, limites WIP, répartition, cycle time
 // ============================================================
 
 function renderKanban() {
   const tickets = getTickets();
 
-  const cols = [
-    { key: 'backlog', label: 'Backlog',   wip: CONFIG.wip.backlog, color: '#94A3B8' },
-    { key: 'todo',    label: 'À faire',   wip: CONFIG.wip.todo,    color: '#64748B' },
-    { key: 'inprog',  label: 'En cours',  wip: CONFIG.wip.inprog,  color: '#3B82F6' },
-    { key: 'review',  label: 'En review', wip: CONFIG.wip.review,  color: '#06B6D4' },
-    { key: 'test',    label: 'En test',   wip: CONFIG.wip.test,    color: '#F59E0B' },
-    { key: 'done',    label: 'Terminé',   wip: CONFIG.wip.done,    color: '#10B981' },
-  ];
+  // Build columns dynamically from JIRA board configuration
+  const cols = getBoardColumns(tickets).map(c => ({
+    ...c, wip: CONFIG.wip[c.key] || 0,
+  }));
 
   // Métriques réelles
-  const doneCnt    = tickets.filter(t => t.status === 'done').length;
+  const doneCnt    = tickets.filter(t => isDone(t.status)).length;
   const inprogCnt  = tickets.filter(t => t.status === 'inprog').length;
   const reviewCnt  = tickets.filter(t => t.status === 'review').length;
   const blockedCnt = blocked_count(tickets);
@@ -38,28 +34,62 @@ function renderKanban() {
   // Set modal navigation context to all visible kanban tickets
   window._modalTicketList = tickets.map(t => t.id);
 
-  document.getElementById('kanban-board').innerHTML = cols.map(col => {
-    const colT   = tickets.filter(t => t.status === col.key);
-    const over   = col.wip > 0 && colT.length > col.wip;
+  const kanbanEl = document.getElementById('kanban-board');
+  kanbanEl.className = 'kanban-wrap';
+
+  // Pre-compute ticket counts per column
+  const _kanbanColTickets = {};
+  cols.forEach(col => { _kanbanColTickets[col.key] = tickets.filter(t => t.status === col.key); });
+
+  // Sticky header bar
+  const stickyHtml = `<div class="kanban-sticky-bar">${cols.map(col => {
+    const colT    = _kanbanColTickets[col.key];
+    const empty   = !colT.length;
+    const over    = col.wip > 0 && colT.length > col.wip;
     const wipCls  = col.wip === 0 ? 'wip-ok' : (over ? 'wip-over' : 'wip-ok');
     const wipText = col.wip > 0 ? `${colT.length}/${col.wip}` : '∞';
-    return `<div class="kanban-col">
-      <div class="col-header">
-        <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;"></span>${col.label}</div>
+    const cat = statusCat(col.key);
+    return `<div class="col-header${empty ? ' col-empty-state' : ''}" data-cat="${cat}" title="${col.label}">
+      <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
+      <span class="wip-indicator ${wipCls}">${wipText}</span>
+    </div>`;
+  }).join('')}</div>`;
+
+  // Column bodies
+  const bodyHtml = `<div class="kanban-board-body">${cols.map(col => {
+    const colT    = _kanbanColTickets[col.key];
+    const empty   = !colT.length;
+    const over    = col.wip > 0 && colT.length > col.wip;
+    const wipCls  = col.wip === 0 ? 'wip-ok' : (over ? 'wip-over' : 'wip-ok');
+    const wipText = col.wip > 0 ? `${colT.length}/${col.wip}` : '∞';
+    const cat = statusCat(col.key);
+    return `<div class="kanban-col${empty ? ' col-empty-state' : ''}">
+      <div class="col-header" data-cat="${cat}" title="${col.label}">
+        <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
         <span class="wip-indicator ${wipCls}">${wipText}</span>
       </div>
       <div class="col-body">${colT.map(t => ticketCard(t)).join('')}</div>
     </div>`;
-  }).join('');
+  }).join('')}</div>`;
 
-  // CFD — Répartition actuelle par statut (données réelles)
+  kanbanEl.innerHTML = stickyHtml + bodyHtml;
+
+  // Sync sticky bar horizontal scroll with body
+  const stickyBar = kanbanEl.querySelector('.kanban-sticky-bar');
+  const bodyEl    = kanbanEl.querySelector('.kanban-board-body');
+  if (stickyBar && bodyEl) {
+    bodyEl.addEventListener('scroll', () => { stickyBar.scrollLeft = bodyEl.scrollLeft; });
+  }
+
+  // CFD - Répartition actuelle par statut (données réelles)
   setTimeout(() => {
     const ctx = document.getElementById('cfdChart');
     if (!ctx) return;
     if (ctx._chart) ctx._chart.destroy();
 
     const statuses = ['backlog', 'todo', 'inprog', 'review', 'test', 'blocked', 'done'];
-    const labels   = ['Backlog', 'À faire', 'En cours', 'En review', 'En test', 'Bloqué', 'Terminé'];
+    const _colMap  = Object.fromEntries(cols.map(c => [c.key, c.label]));
+    const labels   = statuses.map(s => _colMap[s] || s);
     const colors   = ['#94A3B8', '#64748B', '#3B82F6', '#06B6D4', '#F59E0B', '#EF4444', '#10B981'];
     const counts   = statuses.map(s => tickets.filter(t => t.status === s).length);
     const points   = statuses.map(s => tickets.filter(t => t.status === s).reduce((a, t) => a + t.points, 0));
@@ -106,12 +136,12 @@ function renderKanban() {
     if (!typeGroups[t.type]) typeGroups[t.type] = { count: 0, points: 0, done: 0 };
     typeGroups[t.type].count++;
     typeGroups[t.type].points += t.points;
-    if (t.status === 'done') typeGroups[t.type].done++;
+    if (isDone(t.status)) typeGroups[t.type].done++;
   });
 
   // Cycle time / Lead time metrics
-  const doneWithCT = tickets.filter(t => t.status === 'done' && t.cycleTimeDays != null);
-  const doneWithLT = tickets.filter(t => t.status === 'done' && t.leadTimeDays != null);
+  const doneWithCT = tickets.filter(t => isDone(t.status) && t.cycleTimeDays != null);
+  const doneWithLT = tickets.filter(t => isDone(t.status) && t.leadTimeDays != null);
   const avgCT = doneWithCT.length ? (doneWithCT.reduce((a, t) => a + t.cycleTimeDays, 0) / doneWithCT.length).toFixed(1) : null;
   const avgLT = doneWithLT.length ? (doneWithLT.reduce((a, t) => a + t.leadTimeDays, 0) / doneWithLT.length).toFixed(1) : null;
 
@@ -129,7 +159,7 @@ function renderKanban() {
       const color  = CONFIG.typeColors[type] || '#94A3B8';
       const donePct = g.count ? Math.round(g.done / g.count * 100) : 0;
       // Per-type cycle time
-      const typeDone = tickets.filter(t => t.type === type && t.status === 'done' && t.cycleTimeDays != null);
+      const typeDone = tickets.filter(t => t.type === type && isDone(t.status) && t.cycleTimeDays != null);
       const typeCT = typeDone.length ? (typeDone.reduce((a, t) => a + t.cycleTimeDays, 0) / typeDone.length).toFixed(1) : null;
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
         <span style="display:flex;align-items:center;gap:6px;">

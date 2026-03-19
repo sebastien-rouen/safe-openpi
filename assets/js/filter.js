@@ -1,5 +1,5 @@
 // ============================================================
-// FILTER — Filtrage équipes / groupes
+// FILTER - Filtrage équipes / groupes
 // ============================================================
 
 // Liste dynamique des équipes présentes dans les données
@@ -84,9 +84,6 @@ function selectTeam(team) {
   }
   if (currentView === 'support') renderSupport();
   if (currentView === 'roadmap')  renderRoadmap();
-  if (currentView === 'piprep')   renderPIPrep();
-  if (currentView === 'standup')  renderStandup();
-  if (currentView === 'releases') renderReleases();
   _pushHash();
 }
 
@@ -112,9 +109,6 @@ function selectGroup(gid) {
   }
   if (currentView === 'support') renderSupport();
   if (currentView === 'roadmap')  renderRoadmap();
-  if (currentView === 'piprep')   renderPIPrep();
-  if (currentView === 'standup')  renderStandup();
-  if (currentView === 'releases') renderReleases();
   _pushHash();
 }
 

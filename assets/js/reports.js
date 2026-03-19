@@ -1,5 +1,5 @@
 // ============================================================
-// REPORTS VIEW — Rapports multi-vues Slack / Confluence
+// REPORTS VIEW - Rapports multi-vues Slack / Confluence
 // ============================================================
 
 const _RPT_SECTIONS = [
@@ -166,8 +166,8 @@ function _rptSprint(el, isSlack) {
 
   const team      = reportTeam;
   const tickets   = _rptTeamTickets(team);
-  const done      = tickets.filter(t => t.status === 'done');
-  const notDone   = tickets.filter(t => t.status !== 'done');
+  const done      = tickets.filter(t => isDone(t.status));
+  const notDone   = tickets.filter(t => !isDone(t.status));
   const bugs      = tickets.filter(t => t.type === 'bug');
   const incidents = tickets.filter(t => t.type === 'incident');
   const blocked   = tickets.filter(t => t.status === 'blocked');
@@ -176,38 +176,38 @@ function _rptSprint(el, isSlack) {
   const pct       = ptsTotal > 0 ? Math.round(ptsDone / ptsTotal * 100) : 0;
   const velTarget = CONFIG.teams[team]?.velocity || CONFIG.sprint.velocityTarget || 80;
   const trend     = ptsDone >= velTarget ? `📈 +${ptsDone - velTarget}` : `📉 -${velTarget - ptsDone}`;
-  const members   = (MEMBERS[team] || []).join(', ') || '—';
+  const members   = (MEMBERS[team] || []).join(', ') || '-';
 
   if (isSlack) {
-    let t = `🚀 *Rapport de Fin de Sprint — ${CONFIG.sprint.label} — ${team}*\n`;
+    let t = `🚀 *Rapport de Fin de Sprint - ${CONFIG.sprint.label} - ${team}*\n`;
     t += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
-    t += `📅 *Période :* ${CONFIG.sprint.startDate || '—'} → ${CONFIG.sprint.endDate || '—'}\n`;
-    t += `👥 *Équipe :* ${team}${members !== '—' ? ` (${members})` : ''}\n\n`;
+    t += `📅 *Période :* ${CONFIG.sprint.startDate || '-'} → ${CONFIG.sprint.endDate || '-'}\n`;
+    t += `👥 *Équipe :* ${team}${members !== '-' ? ` (${members})` : ''}\n\n`;
     t += `📊 *Résumé Sprint*\n`;
     t += `> Vélocité : *${ptsDone} pts* / *${ptsTotal} pts* engagés (${pct}%)\n`;
     t += `> Cible : ${velTarget} pts | Tendance : ${trend} pts\n\n`;
-    t += `✅ *Stories Terminées (${done.length} — ${ptsDone} pts)*\n`;
-    t += done.length ? done.map(x => { const u = _jiraBrowseUrl(x.id); return `> • *${x.id}* — ${x.title} _(${x.points} pts)_ @${x.assignee || '?'} ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '> _Aucune_';
+    t += `✅ *Stories Terminées (${done.length} - ${ptsDone} pts)*\n`;
+    t += done.length ? done.map(x => { const u = _jiraBrowseUrl(x.id); return `> • *${x.id}* - ${x.title} _(${x.points} pts)_ @${x.assignee || '?'} ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '> _Aucune_';
     t += `\n\n⏳ *Non Terminées (${notDone.length})*\n`;
-    t += notDone.length ? notDone.map(x => { const u = _jiraBrowseUrl(x.id); return `> • *${x.id}* — ${x.title} _(${x.points} pts)_ ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '> _Aucune — Félicitations ! 🎉_';
+    t += notDone.length ? notDone.map(x => { const u = _jiraBrowseUrl(x.id); return `> • *${x.id}* - ${x.title} _(${x.points} pts)_ ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '> _Aucune - Félicitations ! 🎉_';
     t += `\n\n🐛 *Bugs (${bugs.length})*\n`;
-    t += bugs.length ? bugs.map(x => `> • *${x.id}* — ${x.title} — ${x.status === 'done' ? '✅' : '⚠️'}`).join('\n') : '> _Aucun_';
+    t += bugs.length ? bugs.map(x => `> • *${x.id}* - ${x.title} - ${isDone(x.status) ? '✅' : '⚠️'}`).join('\n') : '> _Aucun_';
     t += `\n\n⚡ *Incidents (${incidents.length})*\n`;
-    t += incidents.length ? incidents.map(x => `> • *${x.id}* — ${x.title} — ${x.status === 'done' ? '✅' : '🔴'}`).join('\n') : '> _Aucun_';
+    t += incidents.length ? incidents.map(x => `> • *${x.id}* - ${x.title} - ${isDone(x.status) ? '✅' : '🔴'}`).join('\n') : '> _Aucun_';
     t += `\n\n🚫 *Bloquants (${blocked.length})*\n`;
-    t += blocked.length ? blocked.map(x => `> • *${x.id}* — ${x.title} — ⚠️ BLOQUÉ`).join('\n') : '> _Aucun_';
-    t += `\n\n_Rapport généré le ${_rptDate()} — JIRA Dashboard_`;
+    t += blocked.length ? blocked.map(x => `> • *${x.id}* - ${x.title} - ⚠️ BLOQUÉ`).join('\n') : '> _Aucun_';
+    t += `\n\n_Rapport généré le ${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>🚀 Rapport ${CONFIG.sprint.label} — ${team}</h1>`;
-    h += `<p><em>${CONFIG.sprint.startDate || '—'} → ${CONFIG.sprint.endDate || '—'} | ${_rptDate()}</em></p>`;
+    let h = `<h1>🚀 Rapport ${CONFIG.sprint.label} - ${team}</h1>`;
+    h += `<p><em>${CONFIG.sprint.startDate || '-'} → ${CONFIG.sprint.endDate || '-'} | ${_rptDate()}</em></p>`;
     h += `<h2>📊 Résumé</h2><table><tr><th>Métrique</th><th>Valeur</th><th>Tendance</th></tr>`;
     h += `<tr><td>Vélocité</td><td><strong>${ptsDone} pts</strong></td><td>${trend}</td></tr>`;
     h += `<tr><td>Engagement</td><td>${ptsTotal} pts</td><td>${pct}%</td></tr>`;
-    h += `<tr><td>Done</td><td>${done.length}</td><td>—</td></tr>`;
-    h += `<tr><td>Reportées</td><td>${notDone.length}</td><td>—</td></tr></table>`;
+    h += `<tr><td>Done</td><td>${done.length}</td><td>-</td></tr>`;
+    h += `<tr><td>Reportées</td><td>${notDone.length}</td><td>-</td></tr></table>`;
     h += `<h2>✅ Terminées</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th><th>Statut</th></tr>`;
-    h += done.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points}</td><td>${x.assignee||'—'}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
+    h += done.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points}</td><td>${x.assignee||'-'}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
     h += done.length ? '' : '<tr><td colspan="5"><em>Aucune</em></td></tr>';
     h += `</table><h2>⏳ Non terminées</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Statut</th></tr>`;
     h += notDone.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
@@ -215,8 +215,8 @@ function _rptSprint(el, isSlack) {
     h += `</table>`;
     if (bugs.length || incidents.length) {
       h += `<h2>🐛 Bugs & Incidents</h2><ul>`;
-      bugs.forEach(x => { h += `<li><strong>${x.id}</strong> — ${x.title} ${x.status==='done'?'✅':'⚠️'}</li>`; });
-      incidents.forEach(x => { h += `<li><strong>${x.id}</strong> — ${x.title} (Incident) ${x.status==='done'?'✅':'🔴'}</li>`; });
+      bugs.forEach(x => { h += `<li><strong>${x.id}</strong> - ${x.title} ${x.status==='done'?'✅':'⚠️'}</li>`; });
+      incidents.forEach(x => { h += `<li><strong>${x.id}</strong> - ${x.title} (Incident) ${x.status==='done'?'✅':'🔴'}</li>`; });
       h += `</ul>`;
     }
     _rptSetConf(el, h);
@@ -229,29 +229,29 @@ function _rptSprintGroup(el, isSlack) {
   const g = GROUPS.find(x => x.id === currentGroup);
   if (!g) return;
   const tickets = TICKETS.filter(t => g.teams.includes(t.team));
-  const done    = tickets.filter(t => t.status === 'done');
+  const done    = tickets.filter(t => isDone(t.status));
   const blocked = tickets.filter(t => t.status === 'blocked');
   const ptsDone = done.reduce((a, t) => a + (t.points||0), 0);
   const ptsTotal= tickets.reduce((a, t) => a + (t.points||0), 0);
   const pct     = ptsTotal > 0 ? Math.round(ptsDone/ptsTotal*100) : 0;
 
   if (isSlack) {
-    let t = `📊 *Rapport Groupe — ${g.name} — ${CONFIG.sprint.label}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+    let t = `📊 *Rapport Groupe - ${g.name} - ${CONFIG.sprint.label}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
     t += `👥 *Équipes :* ${g.teams.join(', ')}\n\n`;
     t += `📊 *Résumé* : *${ptsDone}/${ptsTotal} pts* (${pct}%) | Bloquants : ${blocked.length}\n\n`;
     g.teams.forEach(team => {
       const tt = TICKETS.filter(x => x.team === team);
-      const td = tt.filter(x => x.status === 'done');
+      const td = tt.filter(x => isDone(x.status));
       const tpd = td.reduce((a,x) => a+(x.points||0), 0);
       const tpt = tt.reduce((a,x) => a+(x.points||0), 0);
-      t += `*${team}:* ${tpd}/${tpt} pts (${tpt?Math.round(tpd/tpt*100):0}%) — ${td.length}/${tt.length}\n`;
+      t += `*${team}:* ${tpd}/${tpt} pts (${tpt?Math.round(tpd/tpt*100):0}%) - ${td.length}/${tt.length}\n`;
     });
     t += `\n🚫 *Bloquants*\n`;
-    t += blocked.length ? blocked.map(x => `> • *${x.id}* [${x.team}] — ${x.title}`).join('\n') : '> _Aucun_';
-    t += `\n\n_${_rptDate()} — JIRA Dashboard_`;
+    t += blocked.length ? blocked.map(x => `> • *${x.id}* [${x.team}] - ${x.title}`).join('\n') : '> _Aucun_';
+    t += `\n\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>📊 Rapport Groupe ${g.name} — ${CONFIG.sprint.label}</h1>`;
+    let h = `<h1>📊 Rapport Groupe ${g.name} - ${CONFIG.sprint.label}</h1>`;
     h += `<p><em>${g.teams.join(', ')} | ${_rptDate()}</em></p>`;
     h += `<h2>📊 Résumé</h2><table><tr><th>Métrique</th><th>Valeur</th></tr>`;
     h += `<tr><td>Points</td><td><strong>${ptsDone}/${ptsTotal} (${pct}%)</strong></td></tr>`;
@@ -259,7 +259,7 @@ function _rptSprintGroup(el, isSlack) {
     h += `<h2>📋 Par équipe</h2><table><tr><th>Équipe</th><th>Done</th><th>Total</th><th>%</th></tr>`;
     g.teams.forEach(team => {
       const tt = TICKETS.filter(x => x.team === team);
-      const td = tt.filter(x => x.status === 'done');
+      const td = tt.filter(x => isDone(x.status));
       const tpd = td.reduce((a,x) => a+(x.points||0), 0);
       const tpt = tt.reduce((a,x) => a+(x.points||0), 0);
       h += `<tr><td><strong>${team}</strong></td><td>${tpd}</td><td>${tpt}</td><td>${tpt?Math.round(tpd/tpt*100):0}%</td></tr>`;
@@ -287,27 +287,27 @@ function _rptKanban(el, isSlack) {
   ];
 
   if (isSlack) {
-    let t = `🗂️ *Rapport Kanban — ${team} — ${CONFIG.sprint.label}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let t = `🗂️ *Rapport Kanban - ${team} - ${CONFIG.sprint.label}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     cols.forEach(c => {
       const items = tickets.filter(x => x.status === c.id);
       if (!items.length) return;
       const pts = items.reduce((s,x) => s+(x.points||0), 0);
       const wip = CONFIG.wip?.[c.id];
       const warn = wip && items.length > wip ? ' ⚠️ *WIP dépassé*' : '';
-      t += `${c.l} — ${items.length} tickets, ${pts} pts${wip ? ` (WIP ${items.length}/${wip})` : ''}${warn}\n`;
-      items.forEach(x => { t += `> • *${x.id}* — ${x.title} _(${x.points||0} pts)_ @${x.assignee||'?'} ${statusLabel(x.status)}\n`; });
+      t += `${c.l} - ${items.length} tickets, ${pts} pts${wip ? ` (WIP ${items.length}/${wip})` : ''}${warn}\n`;
+      items.forEach(x => { t += `> • *${x.id}* - ${x.title} _(${x.points||0} pts)_ @${x.assignee||'?'} ${statusLabel(x.status)}\n`; });
       t += `\n`;
     });
-    t += `_${_rptDate()} — JIRA Dashboard_`;
+    t += `_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>🗂️ Kanban — ${team} — ${CONFIG.sprint.label}</h1><p><em>${_rptDate()}</em></p>`;
+    let h = `<h1>🗂️ Kanban - ${team} - ${CONFIG.sprint.label}</h1><p><em>${_rptDate()}</em></p>`;
     cols.forEach(c => {
       const items = tickets.filter(x => x.status === c.id);
       if (!items.length) return;
       const pts = items.reduce((s,x) => s+(x.points||0), 0);
-      h += `<h2>${c.l} (${items.length} — ${pts} pts)</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th><th>Statut</th></tr>`;
-      items.forEach(x => { h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'—'}</td><td>${statusLabel(x.status)}</td></tr>`; });
+      h += `<h2>${c.l} (${items.length} - ${pts} pts)</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th><th>Statut</th></tr>`;
+      items.forEach(x => { h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td><td>${statusLabel(x.status)}</td></tr>`; });
       h += `</table>`;
     });
     _rptSetConf(el, h);
@@ -325,34 +325,34 @@ function _rptPI(el, isSlack) {
   if (!team) { el.textContent = 'Aucune équipe disponible.'; return; }
   const tickets = _rptTeamTickets(team);
   const epics   = typeof EPICS !== 'undefined' ? EPICS : [];
-  const done    = tickets.filter(t => t.status === 'done');
+  const done    = tickets.filter(t => isDone(t.status));
   const pts     = tickets.reduce((s,t) => s+(t.points||0), 0);
   const ptsDone = done.reduce((s,t) => s+(t.points||0), 0);
   const vel     = CONFIG.teams[team]?.velocity || 0;
   const teamEpics = epics.filter(e => e.team === team);
 
   if (isSlack) {
-    let t = `🗓️ *Rapport PI Planning — ${team}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let t = `🗓️ *Rapport PI Planning - ${team}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     t += `📊 *Résumé*\n`;
     t += `> Vélocité : ${vel} pts | Charge : ${pts} pts | Done : ${ptsDone} pts (${done.length} tickets)\n\n`;
     if (teamEpics.length) {
       t += `📦 *Epics (${teamEpics.length})*\n`;
       teamEpics.forEach(e => {
         const et = tickets.filter(x => x.epic === e.id);
-        const ed = et.filter(x => x.status === 'done').length;
-        t += `> • *${e.id}* ${e.title} — ${ed}/${et.length} tickets\n`;
+        const ed = et.filter(x => isDone(x.status)).length;
+        t += `> • *${e.id}* ${e.title} - ${ed}/${et.length} tickets\n`;
       });
       t += `\n`;
     }
     const blocked = tickets.filter(x => x.status === 'blocked');
     if (blocked.length) {
       t += `🚫 *Bloquants (${blocked.length})*\n`;
-      blocked.forEach(x => { t += `> • *${x.id}* — ${x.title}\n`; });
+      blocked.forEach(x => { t += `> • *${x.id}* - ${x.title}\n`; });
     }
-    t += `\n_${_rptDate()} — JIRA Dashboard_`;
+    t += `\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>🗓️ PI Planning — ${team}</h1><p><em>${_rptDate()}</em></p>`;
+    let h = `<h1>🗓️ PI Planning - ${team}</h1><p><em>${_rptDate()}</em></p>`;
     h += `<h2>📊 Résumé</h2><table><tr><th>Métrique</th><th>Valeur</th></tr>`;
     h += `<tr><td>Vélocité</td><td>${vel} pts</td></tr>`;
     h += `<tr><td>Charge totale</td><td>${pts} pts</td></tr>`;
@@ -361,7 +361,7 @@ function _rptPI(el, isSlack) {
       h += `<h2>📦 Epics</h2><table><tr><th>Epic</th><th>Titre</th><th>Avancement</th></tr>`;
       teamEpics.forEach(e => {
         const et = tickets.filter(x => x.epic === e.id);
-        const ed = et.filter(x => x.status === 'done').length;
+        const ed = et.filter(x => isDone(x.status)).length;
         h += `<tr><td><strong>${e.id}</strong></td><td>${e.title}</td><td>${ed}/${et.length}</td></tr>`;
       });
       h += `</table>`;
@@ -380,28 +380,28 @@ function _rptSupport(el, isSlack) {
   const priorities = ['critical','high','medium','low'];
 
   if (isSlack) {
-    let t = `🎫 *Rapport Support — ${st.length} tickets*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let t = `🎫 *Rapport Support - ${st.length} tickets*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     priorities.forEach(p => {
       const items = st.filter(x => x.priority === p);
       if (!items.length) return;
       t += `${pLabels[p]} *(${items.length})*\n`;
       items.forEach(x => {
-        const icon = x.status === 'done' ? '✅' : x.status === 'inprog' ? '⏳' : '📭';
-        t += `> ${icon} *${x.id}* — ${x.title} @${x.assignee||'?'} [${x.team||'?'}]\n`;
+        const icon = isDone(x.status) ? '✅' : x.status === 'inprog' ? '⏳' : '📭';
+        t += `> ${icon} *${x.id}* - ${x.title} @${x.assignee||'?'} [${x.team||'?'}]\n`;
       });
       t += `\n`;
     });
-    const open = st.filter(x => x.status !== 'done').length;
-    const resolved = st.filter(x => x.status === 'done').length;
+    const open = st.filter(x => !isDone(x.status)).length;
+    const resolved = st.filter(x => isDone(x.status)).length;
     t += `📊 *Résumé* : ${open} ouverts · ${resolved} résolus\n`;
-    t += `\n_${_rptDate()} — JIRA Dashboard_`;
+    t += `\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
     let h = `<h1>🎫 Rapport Support</h1><p><em>${st.length} tickets | ${_rptDate()}</em></p>`;
     h += `<table><tr><th>ID</th><th>Titre</th><th>Priorité</th><th>Statut</th><th>Assigné</th><th>Équipe</th><th>Date</th></tr>`;
     st.forEach(x => {
-      const sIcon = x.status === 'done' ? '✅' : x.status === 'inprog' ? '⏳' : '📭';
-      h += `<tr><td><strong>${x.id}</strong></td><td>${x.title}</td><td>${pLabels[x.priority]||x.priority}</td><td>${sIcon}</td><td>${x.assignee||'—'}</td><td>${x.team||'—'}</td><td>${x.date||'—'}</td></tr>`;
+      const sIcon = isDone(x.status) ? '✅' : x.status === 'inprog' ? '⏳' : '📭';
+      h += `<tr><td><strong>${x.id}</strong></td><td>${x.title}</td><td>${pLabels[x.priority]||x.priority}</td><td>${sIcon}</td><td>${x.assignee||'-'}</td><td>${x.team||'-'}</td><td>${x.date||'-'}</td></tr>`;
     });
     h += `</table>`;
     _rptSetConf(el, h);
@@ -425,7 +425,7 @@ function _rptRoadmap(el, isSlack) {
   const sorted  = [...bl].sort((a,b) => (pOrder[a.priority]??2) - (pOrder[b.priority]??2));
 
   if (isSlack) {
-    let t = `🗺️ *Rapport Roadmap — ${team}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let t = `🗺️ *Rapport Roadmap - ${team}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     t += `📊 *Résumé*\n`;
     t += `> Backlog : ${bl.length} tickets · ${pts} pts\n`;
     t += `> Vélocité 80% : ${cap80} pts/sprint\n`;
@@ -437,22 +437,22 @@ function _rptRoadmap(el, isSlack) {
     Object.entries(byPrio).forEach(([p, items]) => {
       if (!items.length) return;
       const ipts = items.reduce((s,x) => s+(x.points||0), 0);
-      t += `${pIcons[p]} *${p.charAt(0).toUpperCase()+p.slice(1)} (${items.length} — ${ipts} pts)*\n`;
-      items.slice(0, 10).forEach(x => { t += `> • *${x.id}* — ${x.title} _(${x.points||0} pts)_\n`; });
+      t += `${pIcons[p]} *${p.charAt(0).toUpperCase()+p.slice(1)} (${items.length} - ${ipts} pts)*\n`;
+      items.slice(0, 10).forEach(x => { t += `> • *${x.id}* - ${x.title} _(${x.points||0} pts)_\n`; });
       if (items.length > 10) t += `> _… et ${items.length - 10} autres_\n`;
       t += `\n`;
     });
-    t += `_${_rptDate()} — JIRA Dashboard_`;
+    t += `_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>🗺️ Roadmap — ${team}</h1><p><em>${_rptDate()}</em></p>`;
+    let h = `<h1>🗺️ Roadmap - ${team}</h1><p><em>${_rptDate()}</em></p>`;
     h += `<h2>📊 Résumé</h2><table><tr><th>Métrique</th><th>Valeur</th></tr>`;
     h += `<tr><td>Backlog</td><td>${bl.length} tickets · ${pts} pts</td></tr>`;
     h += `<tr><td>Vélocité 80%</td><td>${cap80} pts/sprint</td></tr>`;
     h += `<tr><td>Estimation</td><td>~${sprints} sprints</td></tr></table>`;
     h += `<h2>📋 Backlog priorisé</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Priorité</th><th>Epic</th></tr>`;
     sorted.slice(0, 30).forEach(x => {
-      h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.priority}</td><td>${x.epic||'—'}</td></tr>`;
+      h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.priority}</td><td>${x.epic||'-'}</td></tr>`;
     });
     if (sorted.length > 30) h += `<tr><td colspan="5"><em>… et ${sorted.length-30} autres tickets</em></td></tr>`;
     h += `</table>`;
@@ -481,7 +481,7 @@ function _rptPIPrep(el, isSlack) {
     if (objs.length) {
       objs.forEach(o => {
         const type = o.type === 'committed' ? '📌 Committed' : '🎯 Stretch';
-        t += `> • [BV ${o.bv||'?'}] *${o.title}* — ${_rptName(o.team)} — ${type}\n`;
+        t += `> • [BV ${o.bv||'?'}] *${o.title}* - ${_rptName(o.team)} - ${type}\n`;
       });
     } else { t += `> _Aucun objectif défini_\n`; }
     t += `\n`;
@@ -492,7 +492,7 @@ function _rptPIPrep(el, isSlack) {
       const items = roam.filter(x => x.cat === cat);
       if (!items.length) return;
       t += `*${label} (${items.length})*\n`;
-      items.forEach(x => { t += `> • ${x.title}${x.note ? ` — _${x.note}_` : ''}\n`; });
+      items.forEach(x => { t += `> • ${x.title}${x.note ? ` - _${x.note}_` : ''}\n`; });
     });
     if (!roam.length) t += `> _Aucun risque identifié_\n`;
     t += `\n`;
@@ -524,7 +524,7 @@ function _rptPIPrep(el, isSlack) {
       if (fv.length) { const avg = Math.round(fv.reduce((s,v)=>s+v,0)/fv.length*10)/10; t += `> ${_rptName(tid)} : ${avg}/5 (${fv.length} votes)\n`; hasFist = true; }
     });
     if (!hasFist) t += `> _Non voté_\n`;
-    t += `\n_${_rptDate()} — JIRA Dashboard_`;
+    t += `\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
     let h = `<h1>📋 Préparation PI Planning</h1><p><em>${_rptDate()}</em></p>`;
@@ -533,7 +533,7 @@ function _rptPIPrep(el, isSlack) {
     h += `<h2>🎯 Objectifs PI (${objs.length})</h2>`;
     if (objs.length) {
       h += `<table><tr><th>Objectif</th><th>Équipe</th><th>Type</th><th>BV</th><th>Statut</th></tr>`;
-      objs.forEach(o => { h += `<tr><td>${o.title}</td><td>${_rptName(o.team)}</td><td>${o.type==='committed'?'📌 Committed':'🎯 Stretch'}</td><td>${o.bv||'—'}</td><td>${o.status||'—'}</td></tr>`; });
+      objs.forEach(o => { h += `<tr><td>${o.title}</td><td>${_rptName(o.team)}</td><td>${o.type==='committed'?'📌 Committed':'🎯 Stretch'}</td><td>${o.bv||'-'}</td><td>${o.status||'-'}</td></tr>`; });
       h += `</table>`;
     } else { h += `<p><em>Aucun objectif défini</em></p>`; }
 
@@ -541,7 +541,7 @@ function _rptPIPrep(el, isSlack) {
     h += `<h2>⚠️ ROAM (${roam.length})</h2>`;
     if (roam.length) {
       h += `<table><tr><th>Catégorie</th><th>Risque</th><th>Note</th></tr>`;
-      roam.forEach(r => { h += `<tr><td>${roamCats[r.cat]||r.cat}</td><td>${r.title}</td><td>${r.note||'—'}</td></tr>`; });
+      roam.forEach(r => { h += `<tr><td>${roamCats[r.cat]||r.cat}</td><td>${r.title}</td><td>${r.note||'-'}</td></tr>`; });
       h += `</table>`;
     } else { h += `<p><em>Aucun</em></p>`; }
 
@@ -549,7 +549,7 @@ function _rptPIPrep(el, isSlack) {
     h += `<h2>🔗 Dépendances (${deps.length})</h2>`;
     if (deps.length) {
       h += `<table><tr><th>De</th><th>Livrable</th><th>→</th><th>Vers</th><th>Attend</th></tr>`;
-      deps.forEach(d => { h += `<tr><td>${_rptName(d.fromTeam)}</td><td>${d.fromTitle||'—'}</td><td>→</td><td>${_rptName(d.toTeam)}</td><td>${d.toTitle||'—'}</td></tr>`; });
+      deps.forEach(d => { h += `<tr><td>${_rptName(d.fromTeam)}</td><td>${d.fromTitle||'-'}</td><td>→</td><td>${_rptName(d.toTeam)}</td><td>${d.toTitle||'-'}</td></tr>`; });
       h += `</table>`;
     } else { h += `<p><em>Aucune</em></p>`; }
 
@@ -573,7 +573,7 @@ function _rptPIPrep(el, isSlack) {
 }
 
 // ============================================================
-// 7. SONDAGE — Message Slack d'humeur de sprint
+// 7. SONDAGE - Message Slack d'humeur de sprint
 // ============================================================
 
 const _SONDAGE_TEMPLATES = [
@@ -591,20 +591,20 @@ const _SONDAGE_TEMPLATES = [
   {
     theme: ':crystal_ball: Si ce sprint était un film, ce serait… ?',
     responses: [
-      { emoji: ':one:', text: `"Titanic" — on a foncé droit dans l'iceberg :iceberg:` },
-      { emoji: ':two:', text: `"Survivor" — j'ai tenu mais à quel prix :desert_island:` },
-      { emoji: ':three:', text: `"Groundhog Day" — j'ai l'impression d'avoir fait la même chose en boucle :arrows_counterclockwise:` },
-      { emoji: ':four:', text: `"Ocean's Eleven" — plan exécuté, objectif atteint :dark_sunglasses:` },
-      { emoji: ':five:', text: `"Avengers Endgame" — ÉPIQUE. On a tout déchiré :zap:` },
+      { emoji: ':one:', text: `"Titanic" - on a foncé droit dans l'iceberg :iceberg:` },
+      { emoji: ':two:', text: `"Survivor" - j'ai tenu mais à quel prix :desert_island:` },
+      { emoji: ':three:', text: `"Groundhog Day" - j'ai l'impression d'avoir fait la même chose en boucle :arrows_counterclockwise:` },
+      { emoji: ':four:', text: `"Ocean's Eleven" - plan exécuté, objectif atteint :dark_sunglasses:` },
+      { emoji: ':five:', text: `"Avengers Endgame" - ÉPIQUE. On a tout déchiré :zap:` },
     ],
     footer: `Répondez par un chiffre ! Le pop-corn est offert :popcorn:`,
   },
   {
     theme: ':space_invader: Votre niveau d\'énergie en fin de sprint ?',
     responses: [
-      { emoji: ':one:', text: `Batterie 1% — "Quelqu'un a un chargeur ?" :low_battery:` },
+      { emoji: ':one:', text: `Batterie 1% - "Quelqu'un a un chargeur ?" :low_battery:` },
       { emoji: ':two:', text: `Mode veille activé :zzz: "Je fonctionne en automatique"` },
-      { emoji: ':three:', text: `50/50 — "Ça dépend des jours (et du café)" :coffee:` },
+      { emoji: ':three:', text: `50/50 - "Ça dépend des jours (et du café)" :coffee:` },
       { emoji: ':four:', text: `Bien chargé ! :battery: "On refait un tour ?"` },
       { emoji: ':five:', text: `OVER 9000 :zap::muscle: "Qui veut un sprint de plus ?!"` },
     ],
@@ -613,66 +613,66 @@ const _SONDAGE_TEMPLATES = [
   {
     theme: ':cook: Si ce sprint était un plat, ce serait… ?',
     responses: [
-      { emoji: ':one:', text: `"Des pâtes trop cuites" — c'est passé, mais c'était pas ouf :spaghetti:` },
-      { emoji: ':two:', text: `"Un sandwich triangle" — ça fait le taf, sans plus :sandwich:` },
-      { emoji: ':three:', text: `"Un kebab" — un peu de tout, pas sûr de ce qu'il y a dedans :stuffed_flatbread:` },
-      { emoji: ':four:', text: `"Un bon burger maison" — solide, bien garni :hamburger:` },
-      { emoji: ':five:', text: `"Un repas étoilé" — exceptionnel, chef ! :star2::kissing_chef:` },
+      { emoji: ':one:', text: `"Des pâtes trop cuites" - c'est passé, mais c'était pas ouf :spaghetti:` },
+      { emoji: ':two:', text: `"Un sandwich triangle" - ça fait le taf, sans plus :sandwich:` },
+      { emoji: ':three:', text: `"Un kebab" - un peu de tout, pas sûr de ce qu'il y a dedans :stuffed_flatbread:` },
+      { emoji: ':four:', text: `"Un bon burger maison" - solide, bien garni :hamburger:` },
+      { emoji: ':five:', text: `"Un repas étoilé" - exceptionnel, chef ! :star2::kissing_chef:` },
     ],
     footer: `Bon appétit et bon vote ! :fork_and_knife:`,
   },
   {
     theme: ':musical_note: La bande-son de ce sprint ?',
     responses: [
-      { emoji: ':one:', text: `"Highway to Hell" — AC/DC savait :guitar::fire:` },
-      { emoji: ':two:', text: `"Bohemian Rhapsody" — du chaos, mais artistique :art:` },
-      { emoji: ':three:', text: `"Hotel California" — tu peux entrer mais jamais sortir :hotel:` },
-      { emoji: ':four:', text: `"Don't Stop Me Now" — Queen mode activé :crown:` },
-      { emoji: ':five:', text: `"We Are The Champions" — pas besoin d'expliquer :trophy:` },
+      { emoji: ':one:', text: `"Highway to Hell" - AC/DC savait :guitar::fire:` },
+      { emoji: ':two:', text: `"Bohemian Rhapsody" - du chaos, mais artistique :art:` },
+      { emoji: ':three:', text: `"Hotel California" - tu peux entrer mais jamais sortir :hotel:` },
+      { emoji: ':four:', text: `"Don't Stop Me Now" - Queen mode activé :crown:` },
+      { emoji: ':five:', text: `"We Are The Champions" - pas besoin d'expliquer :trophy:` },
     ],
     footer: `Montez le volume et votez ! :loud_sound:`,
   },
   {
     theme: ':video_game: Ce sprint en mode jeu vidéo ?',
     responses: [
-      { emoji: ':one:', text: `"Dark Souls" — j'ai ragequit 3 fois :skull:` },
-      { emoji: ':two:', text: `"Tetris en mode expert" — les blocs tombent trop vite :bricks:` },
-      { emoji: ':three:', text: `"Minecraft" — j'ai crafté des trucs, mais j'sais pas trop quoi :pick:` },
-      { emoji: ':four:', text: `"Mario Kart" — quelques carapaces bleues mais on s'en sort :racing_car:` },
-      { emoji: ':five:', text: `"GG EZ" — speed run validé, pas de game over :joystick::tada:` },
+      { emoji: ':one:', text: `"Dark Souls" - j'ai ragequit 3 fois :skull:` },
+      { emoji: ':two:', text: `"Tetris en mode expert" - les blocs tombent trop vite :bricks:` },
+      { emoji: ':three:', text: `"Minecraft" - j'ai crafté des trucs, mais j'sais pas trop quoi :pick:` },
+      { emoji: ':four:', text: `"Mario Kart" - quelques carapaces bleues mais on s'en sort :racing_car:` },
+      { emoji: ':five:', text: `"GG EZ" - speed run validé, pas de game over :joystick::tada:` },
     ],
     footer: `Insert coin et votez ! :coin:`,
   },
   {
     theme: ':sun_behind_rain_cloud: La météo de ce sprint ?',
     responses: [
-      { emoji: ':one:', text: `"Tempête de catégorie 5" — sortez les gilets de sauvetage :tornado:` },
-      { emoji: ':two:', text: `"Pluie fine et continue" — pas dramatique mais déprimant :cloud_with_rain:` },
-      { emoji: ':three:', text: `"Nuageux avec éclaircies" — on a vu le soleil… 2 fois :partly_sunny:` },
-      { emoji: ':four:', text: `"Beau temps !" — lunettes de soleil requises :sunny:` },
-      { emoji: ':five:', text: `"Arc-en-ciel permanent" :rainbow: — un sprint magique !" :sparkles:` },
+      { emoji: ':one:', text: `"Tempête de catégorie 5" - sortez les gilets de sauvetage :tornado:` },
+      { emoji: ':two:', text: `"Pluie fine et continue" - pas dramatique mais déprimant :cloud_with_rain:` },
+      { emoji: ':three:', text: `"Nuageux avec éclaircies" - on a vu le soleil… 2 fois :partly_sunny:` },
+      { emoji: ':four:', text: `"Beau temps !" - lunettes de soleil requises :sunny:` },
+      { emoji: ':five:', text: `"Arc-en-ciel permanent" :rainbow: - un sprint magique !" :sparkles:` },
     ],
     footer: `Donnez-nous la météo du sprint ! :thermometer:`,
   },
   {
     theme: ':clapper: Ce sprint résumé en un GIF ?',
     responses: [
-      { emoji: ':one:', text: `"This is fine" :fire::dog: — tout brûle mais je souris` },
-      { emoji: ':two:', text: `"Confused Travolta" :man_in_tuxedo: — j'ai cherché des specs qui n'existent pas` },
-      { emoji: ':three:', text: `"Shrug" :person_shrugging: — ni bien ni mal, ça existe` },
-      { emoji: ':four:', text: `"Thumbs up kid" :+1: — solide, je recommande` },
-      { emoji: ':five:', text: `"Leonardo DiCaprio champagne" :champagne::raised_hands: — on fête ça !"` },
+      { emoji: ':one:', text: `"This is fine" :fire::dog: - tout brûle mais je souris` },
+      { emoji: ':two:', text: `"Confused Travolta" :man_in_tuxedo: - j'ai cherché des specs qui n'existent pas` },
+      { emoji: ':three:', text: `"Shrug" :person_shrugging: - ni bien ni mal, ça existe` },
+      { emoji: ':four:', text: `"Thumbs up kid" :+1: - solide, je recommande` },
+      { emoji: ':five:', text: `"Leonardo DiCaprio champagne" :champagne::raised_hands: - on fête ça !"` },
     ],
     footer: `Votez avec votre GIF intérieur ! :frame_with_picture:`,
   },
   {
     theme: ':racing_car: Ce sprint sur un circuit ?',
     responses: [
-      { emoji: ':one:', text: `"Panne sèche au premier virage" :fuelpump: — on n'est pas allés loin` },
-      { emoji: ':two:', text: `"Crevaison au 3e tour" — ça roulait… puis non :tire:` },
-      { emoji: ':three:', text: `"Milieu de peloton" — régulier, pas spectaculaire :checkered_flag:` },
-      { emoji: ':four:', text: `"Podium !" :sports_medal: — top 3, on prend` },
-      { emoji: ':five:', text: `"Pole position + meilleur tour" :trophy: — Hamilton qui ?" :racing_car::dash:` },
+      { emoji: ':one:', text: `"Panne sèche au premier virage" :fuelpump: - on n'est pas allés loin` },
+      { emoji: ':two:', text: `"Crevaison au 3e tour" - ça roulait… puis non :tire:` },
+      { emoji: ':three:', text: `"Milieu de peloton" - régulier, pas spectaculaire :checkered_flag:` },
+      { emoji: ':four:', text: `"Podium !" :sports_medal: - top 3, on prend` },
+      { emoji: ':five:', text: `"Pole position + meilleur tour" :trophy: - Hamilton qui ?" :racing_car::dash:` },
     ],
     footer: `Gentlemen, start your votes ! :traffic_light:`,
   },
@@ -680,10 +680,10 @@ const _SONDAGE_TEMPLATES = [
     theme: ':airplane: Ce sprint en classe de vol ?',
     responses: [
       { emoji: ':one:', text: `"Siège du milieu, pas de hublot, bébé qui pleure" :baby::cry:` },
-      { emoji: ':two:', text: `"Eco — les genoux dans le siège de devant" :leg:` },
-      { emoji: ':three:', text: `"Eco+ — un peu de place, un café tiède" :coffee:` },
-      { emoji: ':four:', text: `"Business — je gère, j'ai de la place" :briefcase:` },
-      { emoji: ':five:', text: `"First class + champagne" :champagne::airplane: — on plane !"` },
+      { emoji: ':two:', text: `"Eco - les genoux dans le siège de devant" :leg:` },
+      { emoji: ':three:', text: `"Eco+ - un peu de place, un café tiède" :coffee:` },
+      { emoji: ':four:', text: `"Business - je gère, j'ai de la place" :briefcase:` },
+      { emoji: ':five:', text: `"First class + champagne" :champagne::airplane: - on plane !"` },
     ],
     footer: `Attachez vos ceintures et votez ! :seat:`,
   },
@@ -745,10 +745,10 @@ function _rptSondage(el, isSlack) {
   const tpl = _SONDAGE_TEMPLATES[sprintNum % _SONDAGE_TEMPLATES.length];
 
   // Retirer le préfixe board du label ("Estafette - Ité 28.4" → "Ité 28.4")
-  const shortLabel = label.replace(/^.+?\s*[-–—]\s*/, '') || label;
+  const shortLabel = label.replace(/^.+?\s*[-–-]\s*/, '') || label;
 
   // Construire le message Slack brut (avec codes emoji Slack)
-  let slackMsg = `${tpl.theme}\n*[SONDAGE] ${shortLabel}${period} — ${teamLabel}*\n\n`;
+  let slackMsg = `${tpl.theme}\n*[SONDAGE] ${shortLabel}${period} - ${teamLabel}*\n\n`;
   tpl.responses.forEach(r => { slackMsg += `${r.emoji} = ${r.text}\n`; });
   slackMsg += `\n→ ${tpl.footer}`;
 
@@ -773,7 +773,7 @@ function _rptSondage(el, isSlack) {
       <div class="slack-preview-body">${previewText}</div>
     </div>`;
 
-  // Rendu — 2 colonnes : message brut | aperçu visuel
+  // Rendu - 2 colonnes : message brut | aperçu visuel
   el.className = 'sondage-wrap';
   if (isSlack) {
     el.innerHTML = `
@@ -796,7 +796,7 @@ function _rptSondage(el, isSlack) {
           <div class="sondage-col-label">Confluence</div>
           <div class="report-preview confluence-mode" style="margin:0;">
             <h1>${_slackToEmoji(tpl.theme)}</h1>
-            <p><strong>Sondage — ${shortLabel}${period} — ${teamLabel}</strong></p>
+            <p><strong>Sondage - ${shortLabel}${period} - ${teamLabel}</strong></p>
             <table><tr><th>Vote</th><th>Réponse</th></tr>
             ${tpl.responses.map((r, i) =>
               `<tr><td style="text-align:center;font-size:18px;font-weight:700;">${i+1}</td><td>${_slackToEmoji(r.text)}</td></tr>`
@@ -927,7 +927,7 @@ function _rptAppendSprintCharts(container, tickets, ptsDone, ptsTotal, velTarget
     }));
   }
 
-  // --- Donut — type distribution ---
+  // --- Donut - type distribution ---
   const types = {};
   tickets.forEach(t => { const ty = t.type || 'autre'; types[ty] = (types[ty] || 0) + 1; });
   const typeLabels = Object.keys(types).map(t => typeName ? typeName(t) : t);
@@ -950,8 +950,8 @@ function _rptAppendSprintCharts(container, tickets, ptsDone, ptsTotal, velTarget
     }));
   }
 
-  // --- Bar — velocity ---
-  const ptsNotDone = tickets.filter(t => t.status !== 'done').reduce((a, t) => a + (t.points || 0), 0);
+  // --- Bar - velocity ---
+  const ptsNotDone = tickets.filter(t => !isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
   const barCtx = document.getElementById('rpt-sprint-bar');
   if (barCtx) {
     _rptCharts.push(new Chart(barCtx, {
@@ -1038,7 +1038,7 @@ function _rptAppendKanbanCharts(container, tickets) {
 }
 
 // ============================================================
-// 8. MOOD / VÉLOCITÉ — Corrélation satisfaction × performance
+// 8. MOOD / VÉLOCITÉ - Corrélation satisfaction × performance
 // ============================================================
 
 function _rptMoodVelocity(el, isSlack) {
@@ -1093,7 +1093,7 @@ function _rptMoodVelocity(el, isSlack) {
     t += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     if (correlation !== null) {
-      t += `📊 *Corrélation globale :* r = ${correlation} — ${trend}\n\n`;
+      t += `📊 *Corrélation globale :* r = ${correlation} - ${trend}\n\n`;
     }
 
     t += `*Synthèse par équipe :*\n`;
@@ -1102,20 +1102,20 @@ function _rptMoodVelocity(el, isSlack) {
       const emoji = ts.avgMood >= 4 ? '😊' : ts.avgMood >= 3 ? '😐' : ts.avgMood !== null ? '😟' : '❓';
       const velDelta = ts.avgVel - ts.velTarget;
       const velEmoji = velDelta >= 0 ? '📈' : '📉';
-      t += `> ${emoji} *${ts.team}* — Mood: ${moodStr} | Vélocité: ${ts.avgVel} pts (cible ${ts.velTarget}) ${velEmoji} ${velDelta >= 0 ? '+' : ''}${velDelta}\n`;
+      t += `> ${emoji} *${ts.team}* - Mood: ${moodStr} | Vélocité: ${ts.avgVel} pts (cible ${ts.velTarget}) ${velEmoji} ${velDelta >= 0 ? '+' : ''}${velDelta}\n`;
     });
 
     if (withMood.length) {
       t += `\n*Détail par sprint :*\n`;
       withMood.slice(-10).forEach(r => {
         const moodBar = '█'.repeat(Math.round(r.mood)) + '░'.repeat(5 - Math.round(r.mood));
-        t += `> • *${r.team}* ${r.sprint} — Mood: ${moodBar} ${r.mood}/5 | Vélo: ${r.velocity} pts\n`;
+        t += `> • *${r.team}* ${r.sprint} - Mood: ${moodBar} ${r.mood}/5 | Vélo: ${r.velocity} pts\n`;
       });
     } else {
       t += `\n> _Aucune donnée mood disponible. Utilisez le mood meter (ROTI) en fin de sprint._\n`;
     }
 
-    t += `\n_Rapport généré le ${_rptDate()} — JIRA Dashboard_`;
+    t += `\n_Rapport généré le ${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
     let h = `<h1>😊 Rapport Mood / Vélocité</h1>`;
@@ -1123,14 +1123,14 @@ function _rptMoodVelocity(el, isSlack) {
     if (correlation !== null) {
       const corrColor = correlation > 0.3 ? '#16A34A' : correlation > -0.3 ? '#F59E0B' : '#DC2626';
       h += `<div style="margin:12px 0;padding:12px 16px;background:${corrColor}12;border:1px solid ${corrColor}33;border-radius:8px;">
-        <strong style="color:${corrColor}">Corrélation : r = ${correlation}</strong> — ${trend}
+        <strong style="color:${corrColor}">Corrélation : r = ${correlation}</strong> - ${trend}
       </div>`;
     }
 
     h += `<h2>Synthèse par équipe</h2>`;
     h += `<table><thead><tr><th>Équipe</th><th>Mood moy.</th><th>Vélocité moy.</th><th>Cible</th><th>Écart</th><th>Données</th></tr></thead><tbody>`;
     teamSummary.forEach(ts => {
-      const moodStr = ts.avgMood !== null ? `${ts.avgMood}/5` : '—';
+      const moodStr = ts.avgMood !== null ? `${ts.avgMood}/5` : '-';
       const delta = ts.avgVel - ts.velTarget;
       const deltaColor = delta >= 0 ? '#16A34A' : '#DC2626';
       h += `<tr><td><strong>${ts.team}</strong></td><td>${moodStr}</td><td>${ts.avgVel} pts</td><td>${ts.velTarget} pts</td><td style="color:${deltaColor};font-weight:700">${delta >= 0 ? '+' : ''}${delta}</td><td>${ts.dataPoints} sprints</td></tr>`;

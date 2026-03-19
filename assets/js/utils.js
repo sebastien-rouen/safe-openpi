@@ -1,6 +1,11 @@
 // ============================================================
-// UTILS — Fonctions utilitaires partagées
+// UTILS - Fonctions utilitaires partagées
 // ============================================================
+
+// Ticket considéré "terminé" et comptabilisé dans la vélocité (basé sur CONFIG.statuses)
+function isDone(status) {
+  return CONFIG.statuses[status]?.countsInVelocity === true;
+}
 
 // Initiales d'un nom complet (ex: "Martin Leclerc" → "ML", "Alice" → "AL")
 function initials(name) {
@@ -35,16 +40,16 @@ function blocked_count(tickets) {
   return tickets.filter(x => x.status === 'blocked').length;
 }
 
-// Uniform story-points badge — always visible, consistent style
+// Uniform story-points badge - always visible, consistent style
 function ptsBadge(points, opts = {}) {
   const size = opts.size || 'normal'; // 'small' | 'normal'
   const val  = points ? points + ' pts' : '– pts';
   const fs   = size === 'small' ? '10px' : '11px';
   const pad  = size === 'small' ? '1px 6px' : '2px 7px';
-  return `<span style="background:#F1F5F9;color:#475569;font-size:${fs};font-weight:700;padding:${pad};border-radius:99px;white-space:nowrap;flex-shrink:0">${val}</span>`;
+  return `<span style="background:#1E293B;color:#F8FAFC;font-size:${fs};font-weight:700;padding:${pad};border-radius:99px;white-space:nowrap;flex-shrink:0">${val}</span>`;
 }
 
-// Epic tag — shows truncated title, hover reveals key + title with JIRA link
+// Epic tag - shows truncated title, hover reveals key + title with JIRA link
 // opts.maxWidth: max width in px (default 120), set to 'none' for no truncation
 function epicTag(epic, ticketEpicId, opts = {}) {
   if (!epic) return '';
@@ -53,7 +58,7 @@ function epicTag(epic, ticketEpicId, opts = {}) {
   const color = epic.color || '#475569';
   const base  = (CONFIG.jira.url || '').replace(/\/$/, '');
   const url   = base && !base.includes('votre-jira') ? `${base}/browse/${id}` : '';
-  const tip   = `${id} — ${title}`;
+  const tip   = `${id} - ${title}`;
   const mw    = opts.maxWidth === 'none' ? '' : `max-width:${opts.maxWidth || 120}px;overflow:hidden;text-overflow:ellipsis;`;
   const inner = `<span class="epic-tag" style="background:${color};${mw}white-space:nowrap;display:inline-block;vertical-align:middle;" title="${tip.replace(/"/g, '&quot;')}">${title}</span>`;
   if (url) {
@@ -63,7 +68,7 @@ function epicTag(epic, ticketEpicId, opts = {}) {
   return inner;
 }
 
-// Lien cliquable vers un ticket JIRA — retourne juste l'id si URL non configurée
+// Lien cliquable vers un ticket JIRA - retourne juste l'id si URL non configurée
 function _jiraBrowse(id, opts = {}) {
   const base = (CONFIG.jira.url || '').replace(/\/$/, '');
   if (!base || base.includes('votre-jira')) return opts.text || id;
@@ -79,6 +84,84 @@ function _jiraBrowseUrl(id) {
   const base = (CONFIG.jira.url || '').replace(/\/$/, '');
   if (!base || base.includes('votre-jira')) return '';
   return `${base}/browse/${id}`;
+}
+
+// Internal status → CSS color variable
+const _STATUS_COLORS = {
+  backlog: '#94A3B8', todo: 'var(--todo)', inprog: 'var(--inprog)',
+  review: 'var(--review)', test: '#0891B2', done: 'var(--done)', blocked: 'var(--blocked)',
+};
+
+// Internal status → board category (todo / wip / blocked / done)
+function statusCat(key) {
+  if (key === 'done') return 'done';
+  if (key === 'blocked') return 'blocked';
+  if (key === 'backlog' || key === 'todo') return 'todo';
+  return 'wip'; // inprog, review, test
+}
+
+/**
+ * Build board columns from BOARD_COLUMNS for the active team(s).
+ * Returns array of { key (internal), label (JIRA name), color }.
+ * - Single team selected → exact JIRA columns in order
+ * - Multiple teams / all → merged unique columns, ordered by workflow
+ * - Fallback (demo / no config) → default columns
+ */
+function getBoardColumns(tickets) {
+  const teams = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+  const _defaultCols = [
+    { key: 'todo',   label: 'À faire',   color: _STATUS_COLORS.todo   },
+    { key: 'inprog', label: 'En cours',   color: _STATUS_COLORS.inprog },
+    { key: 'review', label: 'En review',  color: _STATUS_COLORS.review },
+    { key: 'done',   label: 'Terminé',    color: _STATUS_COLORS.done   },
+  ];
+
+  if (!BOARD_COLUMNS || !Object.keys(BOARD_COLUMNS).length) return _defaultCols;
+
+  // Collect relevant team configs
+  const teamConfigs = teams.length === 1 && BOARD_COLUMNS[teams[0]]
+    ? [BOARD_COLUMNS[teams[0]]]
+    : Object.values(BOARD_COLUMNS);
+
+  if (!teamConfigs.length) return _defaultCols;
+
+  // Single team → use its exact columns (preserving JIRA order)
+  if (teams.length === 1 && BOARD_COLUMNS[teams[0]]) {
+    const cols = BOARD_COLUMNS[teams[0]]
+      .filter(c => c.internal) // skip unmapped columns
+      .map(c => ({ key: c.internal, label: c.name, color: _STATUS_COLORS[c.internal] || '#94A3B8' }));
+    return cols.length ? cols : _defaultCols;
+  }
+
+  // Multiple teams → merge, deduplicate by internal key, keep canonical order
+  const _ORDER = ['backlog','todo','inprog','review','test','done'];
+  const seen = {};
+  for (const tc of teamConfigs) {
+    for (const c of tc) {
+      if (!c.internal) continue;
+      if (!seen[c.internal]) seen[c.internal] = c.name; // first name wins
+    }
+  }
+  const cols = _ORDER
+    .filter(k => seen[k])
+    .map(k => ({ key: k, label: seen[k], color: _STATUS_COLORS[k] || '#94A3B8' }));
+
+  // Add columns for statuses present in tickets but not in board config (e.g. blocked)
+  if (tickets) {
+    const statusSet = new Set(tickets.map(t => t.status));
+    for (const s of statusSet) {
+      if (!cols.find(c => c.key === s) && _STATUS_COLORS[s]) {
+        // Find insertion point based on order
+        const idx = _ORDER.indexOf(s);
+        const insertAt = idx >= 0 ? cols.findIndex(c => _ORDER.indexOf(c.key) > idx) : cols.length;
+        cols.splice(insertAt >= 0 ? insertAt : cols.length, 0, {
+          key: s, label: s === 'blocked' ? 'Bloqué' : s, color: _STATUS_COLORS[s],
+        });
+      }
+    }
+  }
+
+  return cols.length ? cols : _defaultCols;
 }
 
 function showToast(msg, type = 'success') {

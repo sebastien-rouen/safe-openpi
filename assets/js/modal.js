@@ -1,5 +1,5 @@
 // ============================================================
-// MODAL — Détail d'un ticket
+// MODAL - Détail d'un ticket
 // ============================================================
 
 // Context list for prev/next navigation (improvement #8)
@@ -18,7 +18,7 @@ function openModal(id) {
   const idx = window._modalTicketList.indexOf(id);
   window._modalCurrentIdx = idx >= 0 ? idx : 0;
   if (idx < 0) {
-    // ticket not in list (e.g. support ticket) — clear context
+    // ticket not in list (e.g. support ticket) - clear context
     window._modalTicketList = [];
   }
 
@@ -40,7 +40,7 @@ function _featureBadges(featureId, title) {
   const tokens = title.split(/,\s*/).filter(Boolean);
   const _grps  = typeof GROUPS !== 'undefined' ? GROUPS : [];
   const badges = tokens.map((tok, i) => {
-    // Group ID is built as "G-<projectKey>" in jira.js — direct lookup
+    // Group ID is built as "G-<projectKey>" in jira.js - direct lookup
     const grp = _grps.find(g => g.id === 'G-' + tok)
               || _grps.find(g => g.name && g.name.toUpperCase().includes(tok.toUpperCase()));
     let bg, color;
@@ -115,17 +115,17 @@ function _formatDescription(text) {
   s = s.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
   // Numbered lists
   s = s.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
-  // Links: [text](url) — markdown style
+  // Links: [text](url) - markdown style
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
   // Auto-link bare URLs (not already inside href)
   s = s.replace(/(?<!="|'>)(https?:\/\/[^\s<"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-  // JIRA ticket references (e.g. PROJ-123) — skip matches inside existing <a> tags
+  // JIRA ticket references (e.g. PROJ-123) - skip matches inside existing <a> tags
   s = s.replace(/(<a[^>]*>[\s\S]*?<\/a>)|\b([A-Z][A-Z0-9]+-\d+)\b/g, (match, link, key) => {
     if (link) return link; // already inside an anchor tag, keep as-is
     const url = CONFIG.jira?.url && !CONFIG.jira.url.includes('votre-jira') ? CONFIG.jira.url : null;
     return url ? `<a href="${url}/browse/${key}" target="_blank" rel="noopener" style="font-weight:600;">${key}</a>` : `<strong>${key}</strong>`;
   });
-  // @mentions — styled as inline badge
+  // @mentions - styled as inline badge
   s = s.replace(/@([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ0-9 ._-]*)/g,
     '<span class="mdl-mention">@$1</span>');
   // Status-like keywords
@@ -169,7 +169,7 @@ function _renderModalContent(t) {
     if (t.cycleTimeDays != null) chips.push(`<span class="mdl-time-chip mdl-time-cycle">${t.cycleTimeDays}j cycle</span>`);
     if (t.leadTimeDays != null)  chips.push(`<span class="mdl-time-chip mdl-time-lead">${t.leadTimeDays}j lead</span>`);
 
-    // Sprint progress mini-bar — use team-specific sprint context
+    // Sprint progress mini-bar - use team-specific sprint context
     let sprintBarHtml = '';
     const tc = t.team ? CONFIG.teams[t.team] : null;
     const sStart = tc?.sprintStart || CONFIG.sprint?.startDate;
@@ -184,10 +184,10 @@ function _renderModalContent(t) {
       const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((elapsed / total) * 100))) : 0;
       const remaining = Math.max(0, Math.ceil((e - now) / 86400000));
 
-      // Resolve start/end dates — use stored dates or estimate from cycle/lead time
+      // Resolve start/end dates - use stored dates or estimate from cycle/lead time
       let _started  = t.startedDate;
       let _resolved = t.resolvedDate;
-      if (!_started && !_resolved && t.status === 'done' && (t.cycleTimeDays != null || t.leadTimeDays != null)) {
+      if (!_started && !_resolved && isDone(t.status) && (t.cycleTimeDays != null || t.leadTimeDays != null)) {
         // Estimate: resolvedDate ≈ now (already done), startedDate = resolved - cycleTime
         const resolvedMs = now.getTime();
         _resolved = new Date(resolvedMs).toISOString().slice(0, 10);
@@ -260,11 +260,11 @@ function _renderModalContent(t) {
       const now  = new Date(); now.setHours(0,0,0,0);
       const diff = Math.ceil((dd - now) / 86400000);
       const dateStr = dd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
-      const overdue = diff < 0 && t.status !== 'done';
-      const soon    = diff >= 0 && diff <= 3 && t.status !== 'done';
+      const overdue = diff < 0 && !isDone(t.status);
+      const soon    = diff >= 0 && diff <= 3 && !isDone(t.status);
       const color   = overdue ? '#DC2626' : soon ? '#F59E0B' : '#64748B';
       const bg      = overdue ? '#FEE2E2' : soon ? '#FEF3C7' : 'var(--bg, #F8FAFC)';
-      const suffix  = overdue ? ` (${Math.abs(diff)}j en retard)` : diff === 0 ? ' (aujourd\'hui)' : diff <= 7 && t.status !== 'done' ? ` (J-${diff})` : '';
+      const suffix  = overdue ? ` (${Math.abs(diff)}j en retard)` : diff === 0 ? ' (aujourd\'hui)' : diff <= 7 && !isDone(t.status) ? ` (J-${diff})` : '';
       dueDateHtml = `<span class="mdl-pill" style="border-color:${color}44;background:${bg};color:${color};font-size:11px;font-weight:600;">📅 ${dateStr}${suffix}</span>`;
     }
   }
@@ -292,6 +292,16 @@ function _renderModalContent(t) {
     ? `<span class="mdl-sep">·</span><span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;border-radius:50%;background:${teamColor};flex-shrink:0;"></span><span style="font-size:11px;font-weight:600;color:${teamColor};">${t.team}</span></span>`
     : '';
 
+  // --- Sprint chips
+  const sprints = t.allSprints || (t.sprintName ? [t.sprintName] : []);
+  let sprintChipsHtml = '';
+  if (sprints.length) {
+    const last = sprints[sprints.length - 1];
+    const rest = sprints.slice(0, -1);
+    const uid  = 'mdl-sp-' + Date.now();
+    sprintChipsHtml = `<span class="mdl-sep">·</span><span class="mdl-sprint-chips"><span class="mdl-sprint-chip-main">🏃 ${last}</span>${rest.length ? `<button class="mdl-sprint-chip-toggle" onclick="document.getElementById('${uid}').classList.toggle('mdl-sprint-chips-open');this.textContent=this.textContent.trim()==='+${rest.length}'?'−':'+${rest.length}'" title="${rest.join(', ')}">+${rest.length}</button><span class="mdl-sprint-chips-rest" id="${uid}">${rest.map(s => `<span class="mdl-sprint-chip-item">${s}</span>`).join('')}</span>` : ''}</span>`;
+  }
+
   // --- Epic chip (line 2 right)
   const epicChip = epic ? epicTag(epic, epic.id, {maxWidth: 260}) : '';
 
@@ -299,7 +309,7 @@ function _renderModalContent(t) {
     <div class="mdl-meta">
       <div class="mdl-meta-row">
         <div class="mdl-meta-left">
-          <span class="mdl-pill mdl-pill-sm">${priorityIcon(t.priority || 'medium')}<span style="font-size:11px;font-weight:600;text-transform:capitalize;">${t.priority || '—'}</span></span>
+          <span class="mdl-pill mdl-pill-sm">${priorityIcon(t.priority || 'medium')}<span style="font-size:11px;font-weight:600;text-transform:capitalize;">${t.priority || '-'}</span></span>
           <span class="badge badge-${t.type}">${typeName(t.type || 'support')}</span>
           <span class="badge badge-${t.status || 'open'}">${statusLabel(t.status || 'open')}</span>
           ${ptsBadge(t.points)}
@@ -311,12 +321,15 @@ function _renderModalContent(t) {
           <span class="avatar" style="background:${avatarColor};width:20px;height:20px;font-size:9px;flex-shrink:0;">${initials(t.assignee)}</span>
           <span style="font-size:12px;font-weight:600;">${t.assignee || 'Non assigné'}</span>
           ${teamChip}
+          ${sprintChipsHtml}
         </div>
         <div class="mdl-meta-right">${epicChip}</div>
       </div>
       ${timeRowHtml}
     </div>
-    ${t.description ? `<div class="mdl-desc">${_formatDescription(t.description)}</div>` : ''}
+    ${t.description
+      ? `<div class="mdl-desc">${_formatDescription(t.description)}</div>`
+      : `<div class="mdl-desc mdl-desc-empty"><span style="display:flex;align-items:center;gap:8px;justify-content:center;padding:20px 0;color:var(--text-muted);font-size:13px;font-style:italic;opacity:.7;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Pas de description pour le moment</span></div>`}
     ${commentHtml}
   `;
 }

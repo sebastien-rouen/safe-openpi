@@ -1,5 +1,5 @@
 // ============================================================
-// CHARTS — Graphiques Chart.js (burndown, velocity, donut type)
+// CHARTS - Graphiques Chart.js (burndown, velocity, donut type)
 // Données réelles depuis TICKETS + CONFIG.sprint
 // ============================================================
 
@@ -122,10 +122,11 @@ function _renderSprintSelector() {
     <span class="sprint-sel-label">Comparer :</span>
     <button class="sprint-sel-btn${_metricsSprintIdx === null ? ' active' : ''}" onclick="_selectMetricsSprint(null)">${currentLabel}</button>`;
 
-  history.forEach((entry, i) => {
+  for (let i = history.length - 1; i >= 0; i--) {
+    const entry = history[i];
     const label = (entry.name || `S-${history.length - i}`).replace(/sprint\s*/i, 'S');
     html += `<button class="sprint-sel-btn${_metricsSprintIdx === i ? ' active' : ''}" onclick="_selectMetricsSprint(${i})">${label}</button>`;
-  });
+  }
   html += '</div>';
 
   el.innerHTML     = html;
@@ -159,14 +160,14 @@ function _buildBurndown() {
     ptsTotal     = ptsDone;
     ticketsTotal = 0;
     ticketsDone  = 0;
-    chartTitle   = `📉 Sprint terminé · ${ptsDone} pts réalisés`;
+    chartTitle   = `📉 Burndown Chart · ${ptsDone} pts réalisés`;
   } else {
     const s       = _activeSprintCtx();
     const tickets = getTickets();
     ptsTotal     = tickets.reduce((a, t) => a + t.points, 0) || s.velocityTarget || 80;
-    ptsDone      = tickets.filter(t => t.status === 'done').reduce((a, t) => a + t.points, 0);
+    ptsDone      = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
     ticketsTotal = tickets.length;
-    ticketsDone  = tickets.filter(t => t.status === 'done').length;
+    ticketsDone  = tickets.filter(t => isDone(t.status)).length;
     chartTitle   = '📉 Burndown Chart';
   }
 
@@ -292,7 +293,7 @@ function _buildVelocity() {
   const history   = _getSprintHistory();
   const tickets   = getTickets();
   const ptsTotal  = tickets.reduce((a, t) => a + t.points, 0) || CONFIG.sprint.velocityTarget || 80;
-  const ptsDone   = tickets.filter(t => t.status === 'done').reduce((a, t) => a + t.points, 0);
+  const ptsDone   = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
   const s         = _activeSprintCtx();
   const sprintLbl = (s.label || `S${CONFIG.sprint.current}`).replace(/sprint\s*/i, 'S');
 
@@ -407,12 +408,12 @@ function _buildBurnup() {
       if (e) { ptsDone += e.velocity || 0; if (!sprintName) sprintName = e.name; }
     });
     ptsScope   = ptsDone;
-    chartTitle = `📈 Sprint terminé · ${ptsDone} pts réalisés`;
+    chartTitle = `📈 Burnup Chart · ${ptsDone} pts réalisés`;
   } else {
     const s      = _activeSprintCtx();
     const tickets = getTickets();
     ptsScope   = tickets.reduce((a, t) => a + t.points, 0) || s.velocityTarget || 80;
-    ptsDone    = tickets.filter(t => t.status === 'done').reduce((a, t) => a + t.points, 0);
+    ptsDone    = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
     chartTitle = '📈 Burnup Chart';
   }
 
@@ -482,7 +483,7 @@ function _buildBurnup() {
   });
 }
 
-// ---- CFD Scrum — Flux Cumulatif Sprint (simulation) -----------
+// ---- CFD Scrum - Flux Cumulatif Sprint (simulation) -----------
 
 function _buildCFDScrum() {
   const canvas = document.getElementById('cmdChart');
@@ -520,14 +521,16 @@ function _buildCFDScrum() {
     return Math.round(startVal + (now[status] - startVal) * t);
   };
 
-  // Layers de bas en haut (stacked area)
+  // Layers de bas en haut (stacked area) — use JIRA column names
+  const _bc = typeof getBoardColumns === 'function' ? getBoardColumns() : [];
+  const _cl = (k, fb) => { const c = _bc.find(x => x.key === k); return c ? c.label : fb; };
   const layers = [
-    { key: 'done',    label: 'Terminé',   color: '#10B981' },
-    { key: 'test',    label: 'En test',   color: '#06B6D4' },
-    { key: 'review',  label: 'Review',    color: '#3B82F6' },
-    { key: 'inprog',  label: 'En cours',  color: '#F59E0B' },
-    { key: 'blocked', label: 'Bloqué',    color: '#EF4444' },
-    { key: 'todo',    label: 'À faire',   color: '#94A3B8' },
+    { key: 'done',    label: _cl('done','Terminé'),     color: '#10B981' },
+    { key: 'test',    label: _cl('test','En test'),     color: '#06B6D4' },
+    { key: 'review',  label: _cl('review','Review'),    color: '#3B82F6' },
+    { key: 'inprog',  label: _cl('inprog','En cours'),  color: '#F59E0B' },
+    { key: 'blocked', label: 'Bloqué',                  color: '#EF4444' },
+    { key: 'todo',    label: _cl('todo','À faire'),     color: '#94A3B8' },
   ];
 
   const datasets = layers.map(l => ({

@@ -1,5 +1,5 @@
 // ============================================================
-// PIPREP — Préparation PI Planning
+// PIPREP - Préparation PI Planning
 // Données persistées dans data/piprep.json via le serveur
 // ============================================================
 
@@ -102,7 +102,7 @@ function _ppExportJSON() {
   showToast('✅ Export PI Prep téléchargé !', 'success');
 }
 
-// PI selector — switch between PIs, create new PI
+// PI selector - switch between PIs, create new PI
 function _ppPISelector() {
   const current = _ppCurrentPI();
   const pis = _ppListPIs();
@@ -111,7 +111,7 @@ function _ppPISelector() {
   ).join('');
   return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
     <span style="font-size:12px;font-weight:600;color:var(--text-muted)">PI :</span>
-    <select onchange="_ppSwitchPI(this.value);renderPIPrep();" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;background:#fff;color:var(--text);cursor:pointer">
+    <select onchange="_ppSwitchPI(this.value);_ppRefresh();" style="padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px;font-weight:600;background:#fff;color:var(--text);cursor:pointer">
       ${options}
     </select>
     <button onclick="_ppCreatePI()" style="padding:4px 10px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;background:#fff;color:var(--text)">+ Nouveau PI</button>
@@ -129,7 +129,7 @@ function _ppCreatePI() {
     _ppFile[piId] = { objectives: [], roam: [], deps: [], capacity: {} };
     _ppSwitchPI(piId);
   }
-  renderPIPrep();
+  _ppRefresh();
 }
 
 // ----------- PI Objectives ---------------------------------
@@ -142,7 +142,19 @@ function _ppObjAdd() {
   const bv = Math.max(1, 10 - a.length);
   a.push({ id: _ppId(), title: 'Nouvel objectif', team: teams[0] || 'A', bv, type: 'committed', status: 'todo' });
   _ppSet('objectives', a);
-  renderPIPrep();
+  _ppRefresh();
+}
+
+// ----------- Refresh context-aware -------------------------
+// Les sections ROAM/Deps/etc. sont intégrées dans la vue Roadmap.
+// renderPIPrep() cible view-piprep (n'existe pas) → noop.
+// _ppRefresh() appelle la bonne fonction de rendu selon la vue active.
+function _ppRefresh() {
+  if (typeof currentView !== 'undefined' && currentView === 'roadmap' && typeof renderRoadmap === 'function') {
+    renderRoadmap();
+  } else if (typeof renderPIPrep === 'function') {
+    _ppRefresh();
+  }
 }
 
 // ----------- ROAM ------------------------------------------
@@ -154,14 +166,14 @@ function _ppRoamAddCat(cat) {
   const a = _ppRoamList();
   a.push({ id: _ppId(), cat, team: teams[0] || 'A', title: 'Nouveau risque', note: '' });
   _ppSet('roam', a);
-  renderPIPrep();
+  _ppRefresh();
 }
 function _ppRoamImport(jiraId, title, team) {
   const a = _ppRoamList();
   if (a.some(r => r.jiraId === jiraId)) return;
-  a.push({ id: _ppId(), cat: 'O', team, title: `${jiraId} — ${title}`, jiraId, note: '' });
+  a.push({ id: _ppId(), cat: 'O', team, title: `${jiraId} - ${title}`, jiraId, note: '' });
   _ppSet('roam', a);
-  renderPIPrep();
+  _ppRefresh();
 }
 function _ppRoamField(id, f, val)  { _ppSet('roam', _ppRoamList().map(x => x.id === id ? { ...x, [f]: val } : x)); }
 
@@ -173,7 +185,7 @@ function _ppDepAdd() {
   const a = _ppDepList();
   a.push({ id: _ppId(), fromTeam: '', toTeam: '', fromTitle: '', toTitle: '', note: '' });
   _ppSet('deps', a);
-  renderPIPrep();
+  _ppRefresh();
 }
 
 // ----------- Capacity --------------------------------------
@@ -231,7 +243,7 @@ function _ppRefreshFromCapacity(changedTid) {
   if (loadWrap) {
     const pOrder = { critical: 0, high: 1, medium: 2, low: 3 };
     const _bl    = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
-    const _filter = t => t.type !== 'support' && t.type !== 'incident' && t.status !== 'done' &&
+    const _filter = t => t.type !== 'support' && t.type !== 'incident' && !isDone(t.status) &&
                          (!activeTeams.length || activeTeams.includes(t.team));
     const fromBL     = _bl.filter(_filter);
     const seenIds    = new Set(fromBL.map(t => t.id));
@@ -248,7 +260,7 @@ function _ppRefreshFromCapacity(changedTid) {
   if (readWrap) {
     const pOrder = { critical: 0, high: 1, medium: 2, low: 3 };
     const _bl    = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
-    const _filter = t => t.type !== 'support' && t.type !== 'incident' && t.status !== 'done' &&
+    const _filter = t => t.type !== 'support' && t.type !== 'incident' && !isDone(t.status) &&
                          (!activeTeams.length || activeTeams.includes(t.team));
     const fromBL     = _bl.filter(_filter);
     const seenIds    = new Set(fromBL.map(t => t.id));
@@ -292,19 +304,19 @@ function _ppFistSet(tid, val) {
   if (!Array.isArray(f[tid])) f[tid] = f[tid] ? [f[tid]] : [];
   f[tid].push(Math.max(1, Math.min(5, parseInt(val, 10) || 3)));
   if (typeof _moodSave === 'function') _moodSave();
-  renderPIPrep();
+  _ppRefresh();
 }
 function _ppFistUndo(tid) {
   const f = _ppFistGet();
   if (Array.isArray(f[tid]) && f[tid].length) f[tid].pop();
   if (typeof _moodSave === 'function') _moodSave();
-  renderPIPrep();
+  _ppRefresh();
 }
 function _ppFistReset(tid) {
   const f = _ppFistGet();
   f[tid] = [];
   if (typeof _moodSave === 'function') _moodSave();
-  renderPIPrep();
+  _ppRefresh();
 }
 
 function _ppFistNotes() {
@@ -348,7 +360,7 @@ function _ppReadiness(allBacklog, activeTeams) {
     ? Math.round(allBacklog.filter(t => t.points > 0).length / allBacklog.length * 100)
     : 100;
 
-  // 2. Objectifs PI définis (20%) — au moins 1 par équipe active
+  // 2. Objectifs PI définis (20%) - au moins 1 par équipe active
   const objCoverage = activeTeams.length
     ? Math.min(1, objs.length / activeTeams.length)
     : (objs.length > 0 ? 1 : 0);
@@ -397,7 +409,7 @@ async function renderPIPrep() {
   // Backlog (même logique que roadmap)
   const pOrder      = { critical: 0, high: 1, medium: 2, low: 3 };
   const _bl         = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
-  const _filter     = t => t.type !== 'support' && t.type !== 'incident' && t.status !== 'done' &&
+  const _filter     = t => t.type !== 'support' && t.type !== 'incident' && !isDone(t.status) &&
                            (!activeTeams.length || activeTeams.includes(t.team));
   const fromBL      = _bl.filter(_filter);
   const seenIds     = new Set(fromBL.map(t => t.id));
@@ -434,7 +446,7 @@ async function renderPIPrep() {
 }
 
 // ============================================================
-// En-tête — Score de readiness
+// En-tête - Score de readiness
 // ============================================================
 function _ppSectionHeader(readiness) {
   const { score, checks } = readiness;
@@ -475,7 +487,7 @@ function _ppSectionHeader(readiness) {
 function _ppUnpointedBanner(unpointed) {
   if (!unpointed.length) return `
     <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:8px;font-size:13px;color:#15803D;font-weight:600;height:100%;box-sizing:border-box;">
-      ✅ Tout le backlog est pointé — simulation précise
+      ✅ Tout le backlog est pointé - simulation précise
     </div>`;
 
   const chips = unpointed.slice(0, 10).map(t => {
@@ -486,7 +498,7 @@ function _ppUnpointedBanner(unpointed) {
 
   return `
     <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:10px;padding:12px 16px;height:100%;box-sizing:border-box;">
-      <div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:8px;">⚠️ ${unpointed.length} storie${unpointed.length > 1 ? 's' : ''} sans story points — cliquer pour renseigner</div>
+      <div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:8px;">⚠️ ${unpointed.length} storie${unpointed.length > 1 ? 's' : ''} sans story points - cliquer pour renseigner</div>
       <div style="display:flex;flex-wrap:wrap;align-items:center;">${chips}${more}</div>
     </div>`;
 }
@@ -529,11 +541,11 @@ function _ppObjectivesSection(activeTeams) {
             onchange="_ppObjUpdate('${o.id}','title',this.value)">
         </td>
         <td style="padding:7px 10px;white-space:nowrap;">
-          <select onchange="_ppObjUpdate('${o.id}','team',this.value);renderPIPrep();"
+          <select onchange="_ppObjUpdate('${o.id}','team',this.value);_ppRefresh();"
             style="border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:12px;background:${tc}22;color:${tc};font-weight:600;">${teamSel}</select>
         </td>
         <td style="padding:7px 10px;white-space:nowrap;">
-          <select onchange="_ppObjUpdate('${o.id}','type',this.value);renderPIPrep();"
+          <select onchange="_ppObjUpdate('${o.id}','type',this.value);_ppRefresh();"
             style="border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:12px;">${typeSel}</select>
         </td>
         <td style="padding:7px 10px;text-align:center;">
@@ -542,11 +554,11 @@ function _ppObjectivesSection(activeTeams) {
             onchange="_ppObjUpdate('${o.id}','bv',parseInt(this.value)||5)">
         </td>
         <td style="padding:7px 10px;white-space:nowrap;">
-          <select onchange="_ppObjUpdate('${o.id}','status',this.value);renderPIPrep();"
+          <select onchange="_ppObjUpdate('${o.id}','status',this.value);_ppRefresh();"
             style="border:1px solid var(--border);border-radius:6px;padding:3px 7px;font-size:12px;background:${st.bg};color:${st.c};font-weight:600;">${stSel}</select>
         </td>
         <td style="padding:7px 6px;text-align:center;">
-          <button onclick="_ppObjDel('${o.id}');renderPIPrep();" title="Supprimer"
+          <button onclick="_ppObjDel('${o.id}');_ppRefresh();" title="Supprimer"
             style="border:none;background:none;color:#DC2626;cursor:pointer;font-size:15px;padding:0 3px;">🗑</button>
         </td>
       </tr>`;
@@ -574,7 +586,7 @@ function _ppObjectivesSection(activeTeams) {
             <th style="${thStyle};width:32px;"></th>
           </tr></thead>
           <tbody>
-            ${rows || `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">Aucun objectif — cliquez sur "+ Ajouter"</td></tr>`}
+            ${rows || `<tr><td colspan="6" style="padding:20px;text-align:center;color:var(--text-muted);font-size:13px;">Aucun objectif - cliquez sur "+ Ajouter"</td></tr>`}
           </tbody>
         </table>
       </div>
@@ -670,7 +682,7 @@ function _ppLoadMatrix(activeTeams, sprintsPerPI, allBacklog) {
   return `
     <div style="margin-bottom:20px;">
       <div class="section-header">
-        <div class="section-title">📊 Charge par équipe — PI simulé</div>
+        <div class="section-title">📊 Charge par équipe - PI simulé</div>
         <span style="font-size:12px;color:var(--text-muted);">Répartition greedy du backlog sur les sprints feature (cap. 80%)</span>
       </div>
       <div class="card" style="padding:0;overflow-x:auto;">
@@ -792,7 +804,7 @@ function _ppROAMSection(activeTeams) {
 
   const suggestBanner = suggestions.length ? `
     <div style="margin-bottom:12px;padding:10px 14px;background:#FFF7ED;border:1.5px solid #FED7AA;border-radius:8px;">
-      <div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:6px;">💡 Tickets bloqués JIRA — importer comme risque "Owned"</div>
+      <div style="font-size:12px;font-weight:700;color:#92400E;margin-bottom:6px;">💡 Tickets bloqués JIRA - importer comme risque "Owned"</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${suggestions.map(t => `
           <button onclick="_ppRoamImport('${t.id}','${(t.title || '').replace(/'/g,"\\'")}','${t.team || activeTeams[0] || 'A'}');"
@@ -805,7 +817,7 @@ function _ppROAMSection(activeTeams) {
   const cols = CATS.map(cat => {
     const items = roam.filter(r => r.cat === cat.k);
     const moveBtns = (id) => CATS.filter(c => c.k !== cat.k).map(c =>
-      `<button onclick="_ppRoamMove('${id}','${c.k}');renderPIPrep();"
+      `<button onclick="_ppRoamMove('${id}','${c.k}');_ppRefresh();"
         style="font-size:10px;padding:1px 6px;border:1px solid var(--border);border-radius:4px;background:var(--card);cursor:pointer;margin:1px;">${c.emoji}</button>`
     ).join('');
 
@@ -816,14 +828,14 @@ function _ppROAMSection(activeTeams) {
           <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:4px;margin-bottom:4px;">
             <textarea rows="2" style="flex:1;border:none;background:transparent;font-size:12px;font-weight:600;color:var(--text);outline:none;resize:none;line-height:1.4;"
               onchange="_ppRoamField('${r.id}','title',this.value)">${r.title || ''}</textarea>
-            <button onclick="_ppRoamDel('${r.id}');renderPIPrep();"
+            <button onclick="_ppRoamDel('${r.id}');_ppRefresh();"
               style="border:none;background:none;color:#94A3B8;cursor:pointer;font-size:13px;padding:0 2px;flex-shrink:0;">✕</button>
           </div>
           <input placeholder="Note / plan d'action…" value="${(r.note || '').replace(/"/g,'&quot;')}"
             style="width:100%;border:none;background:transparent;font-size:11px;color:var(--text-muted);font-style:italic;outline:none;margin-bottom:5px;"
             onchange="_ppRoamField('${r.id}','note',this.value)">
           <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;flex-wrap:wrap;">
-            <select onchange="_ppRoamField('${r.id}','team',this.value);renderPIPrep();"
+            <select onchange="_ppRoamField('${r.id}','team',this.value);_ppRefresh();"
               style="border:1px solid var(--border);border-radius:5px;padding:2px 5px;font-size:10px;font-weight:700;color:${tc2};background:${tc2}18;">
               ${activeTeams.map(t => `<option value="${t}" ${r.team === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`).join('')}
             </select>
@@ -849,7 +861,7 @@ function _ppROAMSection(activeTeams) {
   return `
     <div id="pp-roam" style="margin-bottom:20px;">
       <div class="section-header">
-        <div class="section-title">⚡ ROAM Board — Risques</div>
+        <div class="section-title">⚡ ROAM Board - Risques</div>
         <span style="font-size:12px;color:var(--text-muted);">${roam.length} risque${roam.length !== 1 ? 's' : ''} · ${roam.filter(r => r.cat === 'R' || r.cat === 'M').length} traités</span>
       </div>
       ${suggestBanner}
@@ -864,11 +876,11 @@ function _ppDepsSection(activeTeams) {
   const deps = _ppDepList();
   const thStyle = 'padding:8px 10px;text-align:left;font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:.4px;border-bottom:1px solid var(--border);';
 
-  // Toutes les équipes connues (tickets + config) — pas seulement le filtre actif
+  // Toutes les équipes connues (tickets + config) - pas seulement le filtre actif
   const ticketTeams = typeof _allTeams === 'function' ? _allTeams() : [];
   const allTeams = (ticketTeams.length ? ticketTeams : Object.keys(CONFIG.teams || {})).sort();
   const teamSel = (id, field, cur) =>
-    `<option value="" ${!cur ? 'selected' : ''} disabled>— Équipe —</option>` +
+    `<option value="" ${!cur ? 'selected' : ''} disabled>- Équipe -</option>` +
     allTeams.map(t =>
       `<option value="${t}" ${cur === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`
     ).join('');
@@ -884,14 +896,14 @@ function _ppDepsSection(activeTeams) {
             onchange="_ppDepField('${d.id}','fromTitle',this.value)">
         </td>
         <td style="padding:7px 8px;white-space:nowrap;">
-          <select onchange="_ppDepField('${d.id}','fromTeam',this.value);renderPIPrep();"
+          <select onchange="_ppDepField('${d.id}','fromTeam',this.value);_ppRefresh();"
             style="border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-size:11px;background:${fc}22;color:${fc};font-weight:600;">
             ${teamSel(d.id,'fromTeam',d.fromTeam)}
           </select>
         </td>
         <td style="padding:7px 6px;text-align:center;font-size:14px;color:var(--text-muted);">→</td>
         <td style="padding:7px 8px;white-space:nowrap;">
-          <select onchange="_ppDepField('${d.id}','toTeam',this.value);renderPIPrep();"
+          <select onchange="_ppDepField('${d.id}','toTeam',this.value);_ppRefresh();"
             style="border:1px solid var(--border);border-radius:6px;padding:3px 6px;font-size:11px;background:${tc}22;color:${tc};font-weight:600;">
             ${teamSel(d.id,'toTeam',d.toTeam)}
           </select>
@@ -907,7 +919,7 @@ function _ppDepsSection(activeTeams) {
             onchange="_ppDepField('${d.id}','note',this.value)">
         </td>
         <td style="padding:7px 6px;text-align:center;">
-          <button onclick="_ppDepDel('${d.id}');renderPIPrep();" title="Supprimer"
+          <button onclick="_ppDepDel('${d.id}');_ppRefresh();" title="Supprimer"
             style="border:none;background:none;color:#DC2626;cursor:pointer;font-size:15px;padding:0 3px;">🗑</button>
         </td>
       </tr>`;
@@ -923,7 +935,7 @@ function _ppDepsSection(activeTeams) {
         </button>
       </div>
       ${!deps.length
-        ? `<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;background:var(--card);border-radius:10px;border:1.5px dashed var(--border);">Aucune dépendance — cliquez sur "+ Ajouter" pour en déclarer</div>`
+        ? `<div style="text-align:center;padding:24px;color:var(--text-muted);font-size:13px;background:var(--card);border-radius:10px;border:1.5px dashed var(--border);">Aucune dépendance - cliquez sur "+ Ajouter" pour en déclarer</div>`
         : `<div class="card" style="padding:0;overflow-x:auto;">
             <table style="width:100%;border-collapse:collapse;">
               <thead><tr style="background:#F8FAFC;">
@@ -969,7 +981,7 @@ function _ppDepsHeatmap(deps, allTeams) {
     const fc = CONFIG.teams[from]?.color || '#475569';
     const fn = CONFIG.teams[from]?.name || from;
     const cells = dTeams.map(to => {
-      if (from === to) return '<td style="padding:4px;text-align:center;background:var(--surface);"><span style="color:var(--text-muted);font-size:10px;">—</span></td>';
+      if (from === to) return '<td style="padding:4px;text-align:center;background:var(--surface);"><span style="color:var(--text-muted);font-size:10px;">-</span></td>';
       const k = `${from}→${to}`;
       const cnt = pairs[k] || 0;
       if (!cnt) return '<td style="padding:4px;text-align:center;"></td>';
@@ -1001,7 +1013,7 @@ function _ppDepsHeatmap(deps, allTeams) {
 }
 
 // ============================================================
-// Fist of Five — Vote de confiance
+// Fist of Five - Vote de confiance
 // ============================================================
 function _ppFistSection(activeTeams) {
   if (!activeTeams.length) return '';
@@ -1034,7 +1046,7 @@ function _ppFistSection(activeTeams) {
     const btns = [1,2,3,4,5].map(n => `
       <button onclick="_ppFistSet('${tid}',${n});"
         style="border:1.5px solid var(--border);border-radius:10px;background:var(--card);padding:10px 14px;font-size:26px;cursor:pointer;transition:all .15s;"
-        title="${n} — ${labels[n]}">${fingers[n-1]}</button>`
+        title="${n} - ${labels[n]}">${fingers[n-1]}</button>`
     ).join('');
 
     const voteCountBadge = count
@@ -1089,7 +1101,7 @@ function _ppFistSection(activeTeams) {
   return `
     <div id="pp-fist" style="margin-bottom:20px;">
       <div class="section-header">
-        <div class="section-title">✋ Fist of Five — Vote de confiance</div>
+        <div class="section-title">✋ Fist of Five - Vote de confiance</div>
         ${avgBadge}
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
@@ -1097,7 +1109,7 @@ function _ppFistSection(activeTeams) {
 }
 
 // ============================================================
-// Multi-PI Capacity Planning — simulation what-if sur 2-3 PIs
+// Multi-PI Capacity Planning - simulation what-if sur 2-3 PIs
 // ============================================================
 function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
   if (!activeTeams.length) return '';
@@ -1184,7 +1196,7 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
   return `
     <div style="margin-bottom:20px;">
       <div class="section-header">
-        <div class="section-title">📊 Capacité multi-PI — Simulation what-if</div>
+        <div class="section-title">📊 Capacité multi-PI - Simulation what-if</div>
         <span style="font-size:11px;color:var(--text-muted);">Impact sur ${piCount} PIs · ${sprintsPerPI} sprints/PI</span>
       </div>
       <div class="card" style="padding:0;overflow-x:auto;">

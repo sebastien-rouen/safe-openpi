@@ -1,7 +1,7 @@
 {
   "name": "jira-dashboard",
   "version": "1.0.0",
-  "description": "JIRA Dashboard — proxy local + serveur statique",
+  "description": "JIRA Dashboard - proxy local + serveur statique",
   "scripts": {
     "start": "node server.js",
     "env":   "node scripts/generate-env.js"
