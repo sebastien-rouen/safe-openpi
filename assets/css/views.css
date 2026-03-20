@@ -437,9 +437,76 @@
 .rm-tl-ticket-more  { font-size: 10px; color: var(--text-muted); font-style: italic; padding-top: 2px; }
 
 /* ===== PIPREP - Préparation PI Planning ===== */
+
+/* Sections piprep */
+.pp-section { margin-bottom: 20px; }
+.pp-sub     { font-size: 12px; color: var(--text-muted); }
+
+/* Tables piprep */
+.pp-table       { width: 100%; border-collapse: collapse; }
+.pp-table-sm    { width: 100%; border-collapse: collapse; font-size: 12px; }
+.pp-table-wrap  { padding: 0; overflow-x: auto; }
+.pp-thead       { background: #F8FAFC; }
+.pp-th          { padding: 8px 10px; text-align: left; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.pp-th-center   { text-align: center; }
+.pp-th-sm       { padding: 6px 10px; font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; border-bottom: 1px solid var(--border); text-align: center; }
+.pp-tr          { border-bottom: 1px solid var(--border); }
+.pp-td          { padding: 7px 10px; }
+.pp-td-nw       { padding: 7px 10px; white-space: nowrap; }
+.pp-td-center   { padding: 7px 6px; text-align: center; }
+.pp-td-lg       { padding: 8px 12px; white-space: nowrap; }
+
+/* Boutons piprep */
+.pp-btn-add     { font-size: 12px; padding: 4px 12px; border: 1.5px solid var(--primary); border-radius: 6px; background: transparent; color: var(--primary); cursor: pointer; font-weight: 600; }
+.pp-btn-del     { border: none; background: none; color: #DC2626; cursor: pointer; font-size: 15px; padding: 0 3px; }
+.pp-btn-move    { font-size: 10px; padding: 1px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--card); cursor: pointer; margin: 1px; }
+
+/* Inputs/selects piprep */
+.pp-input       { width: 100%; border: none; background: transparent; font-size: 12px; color: var(--text); outline: none; }
+.pp-input-title { width: 100%; border: none; background: transparent; font-size: 13px; color: var(--text); outline: none; padding: 2px 4px; border-radius: 4px; }
+.pp-input-note  { width: 100%; border: none; background: transparent; font-size: 11px; color: var(--text-muted); font-style: italic; outline: none; }
+.pp-input-bv    { width: 48px; border: 1.5px solid var(--border); border-radius: 6px; padding: 3px; font-size: 13px; font-weight: 700; text-align: center; }
+.pp-select      { border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px; font-size: 12px; }
+.pp-select-sm   { border: 1px solid var(--border); border-radius: 6px; padding: 3px 6px; font-size: 11px; }
+.pp-select-team { font-weight: 600; }
+
+/* Team dot */
+.pp-team-dot    { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+.pp-team-label  { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; }
+
+/* Empty state */
+.pp-empty       { text-align: center; padding: 24px; color: var(--text-muted); font-size: 13px; background: var(--card); border-radius: 10px; border: 1.5px dashed var(--border); }
+.pp-empty-row   { padding: 20px; text-align: center; color: var(--text-muted); font-size: 13px; }
+
+/* Totaux capacité */
+.pp-totals      { background: #F8FAFC; border-top: 2px solid var(--border); }
+.pp-total-cell  { padding: 6px 10px; text-align: center; font-weight: 800; font-size: 13px; color: var(--primary); }
+.pp-total-unit  { font-size: 10px; color: var(--text-muted); font-weight: 400; }
+
+/* ROAM grid */
 .pp-roam-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 @media (max-width: 1100px) { .pp-roam-grid { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 600px)  { .pp-roam-grid { grid-template-columns: 1fr; } }
+
+/* ROAM cards */
+.pp-roam-col    { border-radius: 10px; padding: 12px; min-height: 100px; border-width: 1.5px; border-style: solid; }
+.pp-roam-head   { font-size: 13px; font-weight: 700; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+.pp-roam-card   { background: var(--card); border-radius: 8px; padding: 10px; margin-bottom: 6px; border-width: 1px; border-style: solid; }
+.pp-roam-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 4px; margin-bottom: 4px; }
+.pp-roam-textarea { flex: 1; border: none; background: transparent; font-size: 12px; font-weight: 600; color: var(--text); outline: none; resize: none; line-height: 1.4; }
+.pp-roam-close  { border: none; background: none; color: #94A3B8; cursor: pointer; font-size: 13px; padding: 0 2px; flex-shrink: 0; }
+.pp-roam-footer { display: flex; align-items: center; justify-content: space-between; gap: 4px; flex-wrap: wrap; }
+.pp-roam-add    { width: 100%; border-radius: 6px; background: transparent; padding: 5px; font-size: 11px; cursor: pointer; font-weight: 600; margin-top: 2px; border-width: 1.5px; border-style: dashed; }
+.pp-roam-count  { font-size: 11px; background: var(--card); padding: 1px 8px; border-radius: 99px; border-width: 1px; border-style: solid; }
+.pp-roam-suggest { margin-bottom: 12px; padding: 10px 14px; background: #FFF7ED; border: 1.5px solid #FED7AA; border-radius: 8px; }
+.pp-roam-suggest-title { font-size: 12px; font-weight: 700; color: #92400E; margin-bottom: 6px; }
+.pp-roam-suggest-btn { border: 1px solid #FED7AA; border-radius: 6px; background: #FFFBEB; padding: 3px 10px; font-size: 11px; color: #92400E; cursor: pointer; font-weight: 600; }
+
+/* Deps arrow */
+.pp-dep-arrow   { padding: 7px 6px; text-align: center; font-size: 14px; color: var(--text-muted); }
+
+/* IP sprint cell */
+.pp-cell-ip     { padding: 8px 10px; text-align: center; background: #F0FDF4; font-size: 11px; color: #15803D; font-weight: 600; }
 
 /* ===== DAILY MODE ===== */
 .daily-toggle-btn { padding: 4px 12px; border-radius: 20px; border: 1.5px solid var(--border); background: #fff; color: var(--text); font-size: 11px; font-weight: 700; cursor: pointer; transition: all .15s; }

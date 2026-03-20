@@ -35,7 +35,7 @@ JIRA-Dashboard/
 │       ├── support.js      # renderSupport, renderSupportList, filterSupport
 │       ├── settings.js     # renderSettings, toggleGroupTeam, addGroup
 │       ├── roadmap.js      # renderRoadmap() - vélocité 80/20, chronologie, simulation sprints, calendrier PI, backlog
-│       ├── piprep.js       # renderPIPrep() - objectifs, ROAM, dépendances, capacité individuelle, calendrier PI, fist of five
+│       ├── piprep.js       # Bibliothèque piprep (pas de vue autonome) - _pp*Section() consommées par roadmap.js · refresh ciblé (_ppRefreshROAM/Deps/Obj/Fist)
 │       ├── releases.js     # renderReleases() - Gantt features, burnup par feature, projection
 │       └── navigation.js   # showView(), raccourcis clavier (1-0 / Échap / Ctrl+K), sidebar resize, recherche globale, init
 ```
@@ -221,9 +221,13 @@ La vue Roadmap (`roadmap.js`) affiche :
 
 **Sources de données :** `getTickets()` (respecte filtre équipe/groupe), `CONFIG.teams[t].velocityHistory`, `EPICS`.
 
-## Vue Prépa PI Planning
+## Prépa PI Planning (piprep.js)
 
-La vue Prépa PI (`piprep.js`) est un outil de planification PI complet, persisté dans `data/piprep.json` :
+`piprep.js` est une **bibliothèque de données et de rendu** (pas une vue autonome). Ses fonctions `_pp*Section()` sont consommées par `roadmap.js` qui les intègre dans les sections Roadmap. Il n'existe pas de `view-piprep` dans le HTML.
+
+**Refresh ciblé** : chaque section CRUD (ROAM, dépendances, objectifs, fist of five) utilise un refresh partiel (`_ppRefreshROAM()`, `_ppRefreshDeps()`, `_ppRefreshObj()`, `_ppRefreshFist()`) qui remplace uniquement le `outerHTML` de la section concernée via son ID (`pp-roam`, `pp-deps`, `pp-objectives`, `pp-fist`). Le fallback `_ppRefresh()` re-rend la roadmap complète (changement de PI, dates).
+
+Données persistées dans `data/piprep.json` :
 
 - **Score de readiness** - indicateur global avec critères pondérés, lignes cliquables → scroll vers la section concernée
 - **Calendrier PI suivant** - détection auto date début (JIRA ou manuelle), jours fériés français (algorithme Pâques), présentiels, badge PIP
