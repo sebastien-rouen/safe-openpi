@@ -241,7 +241,7 @@ function _roadmapVisual(_featureData, _sprintPlan, s) {
 
     groupTeams.forEach(tid => {
       renderedTeams.add(tid);
-      const teamColor = CONFIG.teams[tid]?.color || _teamColor(tid);
+      const teamColor = _teamColor(tid);
       const epicsForTeam = teamEpics[tid].sort((a, b) => a.minPI - b.minPI || b.totalPts - a.totalPts);
 
       // Team sub-header
@@ -266,7 +266,7 @@ function _roadmapVisual(_featureData, _sprintPlan, s) {
 
   // Teams not in any group
   Object.keys(teamEpics).filter(t => !renderedTeams.has(t) && activeTeams.includes(t)).forEach(tid => {
-    const teamColor = CONFIG.teams[tid]?.color || CLR.dark;
+    const teamColor = _teamColor(tid);
     const epicsForTeam = teamEpics[tid].sort((a, b) => a.minPI - b.minPI || b.totalPts - a.totalPts);
 
     swimlanesHtml += `<div class="rm-vr-team-header" style="background:${teamColor}0A;border-left:3px solid ${teamColor};">
@@ -332,7 +332,7 @@ function _showVrEpicDetail(epicId) {
   const remaining = totalPts - donePts;
   const color = epic.color || '#7C3AED';
   const pctColor = pct === 100 ? '#16A34A' : pct > 50 ? '#2563EB' : pct > 0 ? '#F59E0B' : '#94A3B8';
-  const teamColor = CONFIG.teams[epic.team]?.color || CLR.slate;
+  const teamColor = _teamColor(epic.team);
 
   // Group tickets by PI
   const piRegex = /(\d{2,3})\.(\d+)/;
@@ -1801,8 +1801,8 @@ function _roadmapCrossTeamFeatures() {
 function _showCrossPairDetail(teamA, teamB) {
   const _bl     = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
   const allPool = [...TICKETS, ..._bl];
-  const colA    = CONFIG.teams[teamA]?.color || CLR.slate;
-  const colB    = CONFIG.teams[teamB]?.color || CLR.slate;
+  const colA    = _teamColor(teamA);
+  const colB    = _teamColor(teamB);
 
   const epics = typeof EPICS !== 'undefined' ? EPICS : [];
   const sections = [];
@@ -1820,7 +1820,7 @@ function _showCrossPairDetail(teamA, teamB) {
     const rows = relevant.map(t => {
       const _tkDone     = isDone(t.status);
       const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
-      const tColor      = CONFIG.teams[t.team]?.color || CLR.slate;
+      const tColor      = _teamColor(t.team);
       return `<div class="rm-ticket-row" style="${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:${tColor};flex-shrink:0;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:50%;background:${tColor};"></span>${t.team}</span>

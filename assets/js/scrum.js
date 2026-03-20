@@ -72,23 +72,22 @@ function _renderSprintAlerts() {
   const daysToEnd     = Math.round((end - now)   / 86400000);
 
   const alerts = [];
-  const rKey   = _ritualsKey();
-  const rd     = _ritualsData();
 
   const ac = CONFIG.alerts || {};
   const voteDays  = ac.voteDays  ?? 1;
   const moodDays  = ac.moodDays  ?? 2;
   const demoDays  = ac.demoDays  ?? 1;
 
-  // J+N from sprint start → confidence vote
+  // J+N from sprint start → confidence vote (panel like ROTI)
   if (daysFromStart >= 0 && daysFromStart <= voteDays) {
-    const done = rd.vote?.[rKey];
+    const voteData = _voteData();
+    const hasVotes = _moodTeams().some(t => { const k = `${t}__${(CONFIG.teams[t]?.sprintName || CONFIG.sprint.label || 'sprint')}`; const v = voteData[k]; return Array.isArray(v) && v.length > 0; });
     alerts.push({
       type: 'vote',
       icon: '🗳️',
       label: 'Vote de confiance PI Objectives',
-      done,
-      onclick: `_toggleRitual('vote')`,
+      done: hasVotes,
+      onclick: `_toggleVotePanel()`,
     });
   }
 
@@ -401,6 +400,151 @@ function _renderMoodPanel() {
       <button onclick="_toggleMoodPanel()" style="margin-left:${gAvg !== null ? '8px' : 'auto'};border:none;background:none;font-size:16px;cursor:pointer;color:var(--text-muted);">✕</button>
     </div>
     ${trendHtml}
+    <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
+  </div>`;
+}
+
+// ----------- Vote de confiance panel (same UX as ROTI) -----------
+let _votePanelOpen = false;
+
+function _voteKey(teamId) {
+  const s = _activeSprintCtx();
+  return `${teamId}__${s.label || 'sprint'}`;
+}
+
+function _voteData() {
+  const md = _moodData();
+  if (!md.confidence) md.confidence = {};
+  return md.confidence;
+}
+
+window._toggleVotePanel = function() {
+  _votePanelOpen = !_votePanelOpen;
+  _renderVotePanel();
+};
+
+window._confVote = function(teamId, val) {
+  const vd = _voteData();
+  const key = _voteKey(teamId);
+  if (!Array.isArray(vd[key])) vd[key] = [];
+  vd[key].push(val);
+  _moodSave();
+  _renderVotePanel();
+  _renderSprintAlerts();
+};
+
+window._confUndo = function(teamId) {
+  const vd = _voteData();
+  const key = _voteKey(teamId);
+  if (Array.isArray(vd[key]) && vd[key].length) {
+    vd[key].pop();
+    _moodSave();
+    _renderVotePanel();
+    _renderSprintAlerts();
+  }
+};
+
+window._confReset = function(teamId) {
+  const vd = _voteData();
+  const key = _voteKey(teamId);
+  vd[key] = [];
+  _moodSave();
+  _renderVotePanel();
+  _renderSprintAlerts();
+};
+
+window._confNote = function(teamId, val) {
+  const md = _moodData();
+  if (!md.confNotes) md.confNotes = {};
+  md.confNotes[_voteKey(teamId)] = val;
+  _moodSave();
+};
+
+function _renderVotePanel() {
+  const el = document.getElementById('vote-panel');
+  if (!el) return;
+  if (!_votePanelOpen) { el.innerHTML = ''; return; }
+
+  const teams = _moodTeams();
+  const vd    = _voteData();
+  const md    = _moodData();
+  const fists = ['✊', '☝️', '✌️', '🤟', '🖖', '🖐️'];
+  const labels = ['Pas confiant', 'Très peu confiant', 'Peu confiant', 'Modérément confiant', 'Confiant', 'Très confiant'];
+
+  const cards = teams.map(tid => {
+    const tc    = CONFIG.teams[tid];
+    const color = tc?.color || CLR.dark;
+    const key   = _voteKey(tid);
+    const votes = Array.isArray(vd[key]) ? vd[key] : [];
+    const count = votes.length;
+    const avg   = count ? Math.round(votes.reduce((s, v) => s + v, 0) / count * 10) / 10 : 0;
+    const vColor = !count ? '#94A3B8' : avg < 2 ? '#DC2626' : avg < 3.5 ? '#D97706' : '#16A34A';
+    const borderColor = !count ? 'var(--border)' : avg >= 3.5 ? '#86EFAC' : avg >= 2 ? '#FCD34D' : '#FECACA';
+    const note = ((md.confNotes?.[key]) || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+
+    // Distribution bars (0-5)
+    const distrib = [0,1,2,3,4,5].map(n => votes.filter(v => v === n).length);
+    const maxD = Math.max(...distrib, 1);
+    const distribHtml = `<div style="display:flex;align-items:flex-end;gap:3px;height:36px;">
+      ${distrib.map((d, i) => `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
+        <div style="width:16px;height:${count ? Math.max(3, Math.round(d / maxD * 28)) : 3}px;background:${count && d ? (i < 2 ? '#FECACA' : i < 4 ? '#FEF3C7' : '#D1FAE5') : 'var(--border)'};border-radius:3px;${count ? '' : 'opacity:.4;'}"></div>
+        <span style="font-size:8px;color:var(--text-muted);">${d || ''}</span>
+      </div>`).join('')}
+    </div>`;
+
+    const btns = [0,1,2,3,4,5].map(n => `
+      <button onclick="_confVote('${tid}',${n})"
+        class="sc-mood-btn"
+        title="${n} - ${labels[n]}">${fists[n]}</button>`
+    ).join('');
+
+    const actions = count ? `
+      <button onclick="_confUndo('${tid}')" class="sc-action-btn-sm" title="Annuler le dernier vote">↩</button>
+      <button onclick="_confReset('${tid}')" class="sc-action-btn-sm" title="Réinitialiser">✕</button>` : '';
+
+    return `<div class="mood-card" style="border-left:3px solid ${color};border:1.5px solid ${borderColor};border-left:3px solid ${color};">
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <div style="font-weight:700;font-size:14px;color:${color};min-width:100px;display:flex;align-items:center;gap:6px;">
+          <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
+          ${tc?.name || tid}
+        </div>
+        <div style="display:flex;align-items:center;gap:4px;min-width:60px;">
+          <span style="font-size:28px;font-weight:900;color:${vColor};line-height:1;">${count ? avg : '?'}</span>
+          <span style="font-size:11px;color:${vColor};font-weight:600;">/5</span>
+        </div>
+        ${distribHtml}
+        <div style="display:flex;gap:4px;align-items:center;">${btns}</div>
+        ${count ? `<span style="font-size:11px;color:var(--text-muted);font-weight:600;">${count} vote${count > 1 ? 's' : ''}</span>` : ''}
+        <div style="display:flex;gap:4px;margin-left:auto;">${actions}</div>
+      </div>
+      <input type="text" value="${note}" placeholder="Commentaire / risque identifié…"
+        onchange="_confNote('${tid}',this.value)"
+        style="width:100%;border:none;border-top:1px solid var(--border);background:transparent;padding:5px 0 0;font-size:11px;color:var(--text-muted);font-style:italic;outline:none;margin-top:6px;">
+    </div>`;
+  }).join('');
+
+  // Global average
+  const allVotes = teams.flatMap(t => { const v = vd[_voteKey(t)]; return Array.isArray(v) ? v : []; });
+  const totalV   = allVotes.length;
+  const gAvg     = totalV ? Math.round(allVotes.reduce((s, v) => s + v, 0) / totalV * 10) / 10 : null;
+  const teamsV   = teams.filter(t => { const v = vd[_voteKey(t)]; return Array.isArray(v) && v.length; }).length;
+  const gColor   = gAvg === null ? 'var(--text-muted)' : gAvg < 2 ? '#DC2626' : gAvg < 3.5 ? '#D97706' : '#16A34A';
+  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2 ? '#FEF2F2' : gAvg < 3.5 ? '#FFFBEB' : '#F0FDF4';
+
+  const avgBadge = gAvg !== null
+    ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:8px;background:${gBg};margin-left:auto;">
+        <span style="font-size:16px;font-weight:900;color:${gColor};">${gAvg}</span><span style="font-size:10px;color:${gColor};font-weight:600;">/5</span>
+        <span style="font-size:10px;color:var(--text-muted);">${totalV} vote${totalV > 1 ? 's' : ''} · ${teamsV}/${teams.length} équipe${teams.length > 1 ? 's' : ''}</span>
+      </div>`
+    : '';
+
+  el.innerHTML = `<div class="mood-panel">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+      <span style="font-size:14px;font-weight:700;color:var(--text);">🗳️ Vote de confiance PI Objectives</span>
+      ${avgBadge}
+      <button onclick="_toggleVotePanel()" style="margin-left:${gAvg !== null ? '8px' : 'auto'};border:none;background:none;font-size:16px;cursor:pointer;color:var(--text-muted);">✕</button>
+    </div>
+    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Échelle : ✊ 0 (pas confiant) → 🖐️ 5 (très confiant)</div>
     <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
   </div>`;
 }
@@ -1065,15 +1209,58 @@ window._toggleTaskLane = function() {
   renderBoard(getTickets());
 };
 
+// Get support tickets for active teams, mapped to board-compatible status
+// Sources: SUPPORT_TICKETS + support-type tickets from TICKETS (deduped)
+function _getSupportTicketsForBoard() {
+  const teams = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+  const seen = new Set();
+  const result = [];
+  // 1) From SUPPORT_TICKETS (canonical source, status open/done)
+  const st = typeof SUPPORT_TICKETS !== 'undefined' ? SUPPORT_TICKETS : [];
+  st.filter(t => !teams.length || teams.includes(t.team)).forEach(t => {
+    if (seen.has(t.id)) return;
+    seen.add(t.id);
+    result.push({ ...t, _origStatus: t.status, status: t._boardStatus || (t.status === 'done' ? 'done' : 'todo'), points: t.points || 0 });
+  });
+  // 2) From TICKETS — support/incident type tickets that slipped into the sprint
+  TICKETS.filter(t => ['support','incident'].includes(t.type))
+    .filter(t => !teams.length || teams.includes(t.team)).forEach(t => {
+    if (seen.has(t.id)) return;
+    seen.add(t.id);
+    result.push({ ...t });
+  });
+  return result;
+}
+
+// Set of support ticket IDs currently shown in the support swimlane
+// Used to exclude them from the main board grid
+let _supportTicketIds = new Set();
+
+// Swimlane collapse state - support
+let _supportLaneCollapsed = localStorage.getItem('support_lane_collapsed') === 'true';
+
+window._toggleSupportLane = function() {
+  _supportLaneCollapsed = !_supportLaneCollapsed;
+  localStorage.setItem('support_lane_collapsed', _supportLaneCollapsed);
+  if (typeof currentView !== 'undefined' && currentView === 'kanban') { renderKanban(); return; }
+  renderBoard(getTickets());
+};
+
 function _renderBoardColumns(filtered) {
   // Build columns dynamically from JIRA board configuration
   const cols = getBoardColumns(filtered);
 
+  // Support tickets swimlane (collect first to exclude from main grid)
+  const supportTickets = _getSupportTicketsForBoard();
+  _supportTicketIds = new Set(supportTickets.map(t => t.id));
+
   // Separate task tickets with specific labels into their own swimlane
+  // Exclude support-type tickets from main grid (they go in the support swimlane)
   const _isSwimlaneTache = (t) => t.type === 'tache' && Array.isArray(t.labels) &&
     t.labels.some(l => l.includes('onboarding') || l.includes('actionretro'));
-  const taskTickets  = filtered.filter(_isSwimlaneTache);
-  const otherTickets = filtered.filter(t => !_isSwimlaneTache(t));
+  const _isSupport = (t) => _supportTicketIds.has(t.id) || ['support','incident'].includes(t.type);
+  const taskTickets  = filtered.filter(t => _isSwimlaneTache(t) && !_isSupport(t));
+  const otherTickets = filtered.filter(t => !_isSwimlaneTache(t) && !_isSupport(t));
 
   const board = document.getElementById('scrum-board');
   board.className = 'board board-with-lanes';
@@ -1086,32 +1273,11 @@ function _renderBoardColumns(filtered) {
     ).length;
   });
 
-  // Task swimlane
-  let taskLaneHtml = '';
-  if (taskTickets.length) {
-    const arrow = _taskLaneCollapsed ? '▶' : '▼';
-    taskLaneHtml = `<div class="board-swimlane">
-      <div class="swimlane-header" onclick="_toggleTaskLane()">
-        <span class="swimlane-arrow">${arrow}</span>
-        <span class="swimlane-icon" style="color:var(--tache);">●</span>
-        <span class="swimlane-title">Tâches</span>
-        <span class="col-count">${taskTickets.length}</span>
-        <span class="swimlane-hint">Rétros · Onboarding · Actions</span>
-      </div>
-      ${!_taskLaneCollapsed ? `<div class="board-swimlane-grid">${cols.map(col => {
-        const colT = taskTickets.filter(t =>
-          t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
-        );
-        const empty = !colCounts[col.key] && !colT.length;
-        return `<div class="board-col board-col-mini${empty ? ' col-empty-state' : ''}">
-          <div class="col-body">${colT.map(t => ticketCard(t)).join('') || '<div class="col-empty"></div>'}</div>
-        </div>`;
-      }).join('')}</div>` : ''}
-    </div>`;
-  }
+  // Build grid template: empty columns shrink, others fill equally
+  const gridCols = cols.map(col => colCounts[col.key] ? 'minmax(240px,1fr)' : 'minmax(110px,auto)').join(' ');
 
   // Sticky header bar
-  const stickyHtml = `<div class="board-sticky-bar">${cols.map(col => {
+  const stickyHtml = `<div class="board-sticky-bar" style="grid-template-columns:${gridCols}">${cols.map(col => {
     const empty = !colCounts[col.key];
     const cat = statusCat(col.key);
     return `<div class="col-header${empty ? ' col-empty-state' : ''}" data-cat="${cat}" title="${col.label}">
@@ -1136,7 +1302,54 @@ function _renderBoardColumns(filtered) {
     </div>`;
   }).join('');
 
-  board.innerHTML = taskLaneHtml + stickyHtml + `<div class="board-main-grid">${mainHtml}</div>`;
+  // Task swimlane (integrated inside main grid)
+  let taskLaneHtml = '';
+  if (taskTickets.length) {
+    const arrow = _taskLaneCollapsed ? '▶' : '▼';
+    taskLaneHtml = `<div class="board-lane-header" onclick="_toggleTaskLane()">
+        <span class="swimlane-arrow">${arrow}</span>
+        <span class="swimlane-icon" style="color:var(--tache);">●</span>
+        <span class="swimlane-title">Tâches</span>
+        <span class="col-count">${taskTickets.length}</span>
+        <span class="swimlane-hint">Rétros · Onboarding · Actions</span>
+      </div>`
+      + (!_taskLaneCollapsed ? (() => { const _seen = new Set(); return cols.map(col => {
+        const colT = taskTickets.filter(t => {
+          if (_seen.has(t.id)) return false;
+          if (t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')) { _seen.add(t.id); return true; }
+          return false;
+        });
+        return `<div class="board-col board-col-lane board-col-lane-task${!colT.length ? ' col-empty-state' : ''}">
+          <div class="col-body">${colT.map(t => ticketCard(t)).join('') || '<div class="col-empty"></div>'}</div>
+        </div>`;
+      }).join(''); })() : '');
+  }
+
+  // Support swimlane (integrated inside main grid)
+  let supportLaneHtml = '';
+  if (supportTickets.length) {
+    const arrow = _supportLaneCollapsed ? '▶' : '▼';
+    const openCnt = supportTickets.filter(t => !isDone(t.status)).length;
+    supportLaneHtml = `<div class="board-lane-header" onclick="_toggleSupportLane()">
+        <span class="swimlane-arrow">${arrow}</span>
+        <span class="swimlane-icon" style="color:var(--support, #F59E0B);">●</span>
+        <span class="swimlane-title">Support</span>
+        <span class="col-count">${supportTickets.length}</span>
+        <span class="swimlane-hint">${openCnt} ouvert${openCnt > 1 ? 's' : ''} · Incidents & demandes</span>
+      </div>`
+      + (!_supportLaneCollapsed ? (() => { const _seen = new Set(); return cols.map(col => {
+        const colT = supportTickets.filter(t => {
+          if (_seen.has(t.id)) return false;
+          if (t.status === col.key) { _seen.add(t.id); return true; }
+          return false;
+        });
+        return `<div class="board-col board-col-lane board-col-lane-support${!colT.length ? ' col-empty-state' : ''}">
+          <div class="col-body">${colT.map(t => ticketCard(t)).join('') || '<div class="col-empty"></div>'}</div>
+        </div>`;
+      }).join(''); })() : '');
+  }
+
+  board.innerHTML = stickyHtml + `<div class="board-main-grid" style="grid-template-columns:${gridCols}">${mainHtml}${taskLaneHtml}${supportLaneHtml}</div>`;
 
   // Sync sticky bar horizontal scroll with main grid
   const stickyBar = board.querySelector('.board-sticky-bar');

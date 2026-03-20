@@ -5,7 +5,12 @@
 
 function renderPI() {
   const tickets  = getTickets(); // respecte le filtre sidebar (équipe / groupe)
-  const allTeams = [...new Set(tickets.map(t => t.team).filter(Boolean))].sort();
+  // Include teams from backlog PI tickets too (e.g. teams with no active sprint tickets)
+  const activeTeamFilter = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+  const _blTeams = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
+    .filter(bt => !activeTeamFilter.length || activeTeamFilter.includes(bt.team))
+    .map(bt => bt.team).filter(Boolean);
+  const allTeams = [...new Set([...tickets.map(t => t.team).filter(Boolean), ..._blTeams])].sort();
   if (!allTeams.length) {
     document.getElementById('pi-table').innerHTML = '<tr><td colspan="4" style="padding:1rem;color:var(--text-muted)">Synchronisez les données JIRA pour afficher le PI Planning.</td></tr>';
     return;
@@ -375,67 +380,148 @@ function renderPI() {
   // ---- PI Objective Risk Alerts ----
   _renderPIObjRiskAlerts(_piObjStats, tickets, allTeams);
 
-  // Buffer tracking — combine sprint actif + backlog PI pour couvrir tout le PI
+  // Buffer tracking — combine sprint actif + backlog PI + sprints fermés du PI
   const _piMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
   const _piNum   = _piMatch ? _piMatch[1] : null;
+  const _piRe    = _piNum ? new RegExp(`(^|\\D)${_piNum}\\.\\d+`) : null;
+  const _activeIds = new Set(tickets.map(t => t.id));
+  // 1) Backlog PI tickets
   const _blAll   = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
-    .filter(bt => _piNum && (bt.piSprint || '').includes(_piNum))
-    .filter(bt => !tickets.find(t => t.id === bt.id));
-  const allPITickets = tickets.concat(_blAll);
+    .filter(bt => !_activeIds.has(bt.id))
+    .filter(bt => _piNum && (
+      (bt.piSprint || '').includes(_piNum) ||
+      (_piRe && _piRe.test(bt.sprintName || ''))
+    ));
+  // 2) Buffer tickets from closed sprints of the current PI (via velocityHistory)
+  const _closedBufferTickets = [];
+  const _activeTeamSet2 = new Set(allTeams);
+  if (_piRe) {
+    Object.entries(CONFIG.teams || {}).forEach(([tid, tc]) => {
+      if (!_activeTeamSet2.has(tid)) return;
+      (tc.velocityHistory || []).forEach(vh => {
+        if (!_piRe.test(vh.name || '')) return;
+        (vh.bufferTickets || []).forEach(bt => {
+          if (!_activeIds.has(bt.id) && !_closedBufferTickets.some(x => x.id === bt.id)) {
+            _closedBufferTickets.push(bt);
+          }
+        });
+      });
+    });
+  }
+  const allPITickets = tickets.concat(_blAll, _closedBufferTickets);
   _renderPIBuffer(allPITickets, allTeams);
 
-  // Capacity chart - données réelles (points planifiés vs vélocité cible)
+  // Capacity chart - par sprint du PI (stacked par équipe + ligne capacité)
   setTimeout(() => {
     const ctx = document.getElementById('piCapacityChart');
     if (!ctx) return;
     if (ctx._chart) ctx._chart.destroy();
 
-    const teamLabels = allTeams.map(t => CONFIG.teams[t]?.name || `Équipe ${t}`);
-    const teamColors = allTeams.map(t => CONFIG.teams[t]?.color || CLR.muted);
-    const capacity   = allTeams.map(t => CONFIG.teams[t]?.velocity || 80);
-    const planned    = allTeams.map(t =>
-      tickets.filter(x => x.team === t).reduce((a, x) => a + x.points, 0)
+    const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
+    const piRe = /(\d{2,3})\.(\d+)/;
+    const piMatch = (CONFIG.sprint.label || '').match(piRe);
+    const piNum = piMatch ? piMatch[1] : null;
+    const currentIdx = piMatch ? parseInt(piMatch[2]) - 1 : 0; // 0-based
+
+    // Sprint labels: "XX.1", "XX.2", …, "XX.N (IP)"
+    const sprintLabels = Array.from({ length: sprintsPerPI }, (_, i) => {
+      const label = piNum ? `${piNum}.${i + 1}` : `S${i + 1}`;
+      return i === sprintsPerPI - 1 ? `${label} (IP)` : label;
+    });
+
+    // Match each ticket to a sprint index within the PI
+    const _sprintIdx = (t) => {
+      // Check sprintName, allSprints, piSprint for "XX.Y" pattern
+      const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || ''];
+      for (const s of sources) {
+        if (!s) continue;
+        const m = s.match(piRe);
+        if (m && (!piNum || m[1] === piNum)) return parseInt(m[2]) - 1;
+      }
+      return null;
+    };
+
+    // Build per-sprint per-team points matrix
+    const teamColors = allTeams.map(t => _teamColor(t));
+    const perSprintTeam = allTeams.map(() => Array(sprintsPerPI).fill(0));
+
+    allPITickets.forEach(t => {
+      const ti = allTeams.indexOf(t.team);
+      if (ti < 0) return;
+      let si = _sprintIdx(t);
+      if (si === null) si = currentIdx; // fallback: current sprint
+      if (si < 0 || si >= sprintsPerPI) return;
+      perSprintTeam[ti][si] += (t.points || 0);
+    });
+
+    // Fill past sprints from velocityHistory when ticket data is missing
+    // velocityHistory entries have names like "Ité 28.1", "Team X - Ité 28.2", etc.
+    allTeams.forEach((t, ti) => {
+      const hist = CONFIG.teams[t]?.velocityHistory || [];
+      if (!hist.length) return;
+      for (let si = 0; si < currentIdx; si++) {
+        if (perSprintTeam[ti][si] > 0) continue; // already has ticket data
+        const sprintSuffix = piNum ? `${piNum}.${si + 1}` : null;
+        if (!sprintSuffix) continue;
+        const entry = hist.find(h => h.name && h.name.includes(sprintSuffix));
+        if (entry && entry.velocity > 0) perSprintTeam[ti][si] = entry.velocity;
+      }
+    });
+
+    // Capacity per sprint = sum of team velocities (IP sprint = 0)
+    const totalCap = allTeams.reduce((s, t) => s + (CONFIG.teams[t]?.velocity || 80), 0);
+    const capLine = Array.from({ length: sprintsPerPI }, (_, i) =>
+      i === sprintsPerPI - 1 ? 0 : totalCap
     );
+
+    // Stacked bar datasets (one per team) + capacity line
+    const datasets = allTeams.map((t, ti) => ({
+      label: CONFIG.teams[t]?.name || `Équipe ${t}`,
+      data: perSprintTeam[ti],
+      backgroundColor: teamColors[ti] + 'BB',
+      borderColor: teamColors[ti],
+      borderWidth: 1,
+      stack: 'load',
+    }));
+    datasets.push({
+      label: 'Capacité cible',
+      data: capLine,
+      type: 'line',
+      borderColor: '#94A3B8',
+      borderWidth: 2,
+      borderDash: [6, 3],
+      pointRadius: 3,
+      pointBackgroundColor: '#94A3B8',
+      fill: false,
+      stack: false,
+    });
 
     ctx._chart = new Chart(ctx.getContext('2d'), {
       type: 'bar',
-      data: {
-        labels: teamLabels,
-        datasets: [
-          {
-            label: 'Vélocité cible (pts)',
-            data: capacity,
-            backgroundColor: 'rgba(148,163,184,.4)',
-            borderColor: '#94A3B8', borderWidth: 2,
-          },
-          {
-            label: 'Points planifiés (sprint)',
-            data: planned,
-            backgroundColor: teamColors.map(c => c + 'BB'),
-            borderColor: teamColors, borderWidth: 2,
-          },
-        ],
-      },
+      data: { labels: sprintLabels, datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: {
           legend: { labels: { font: { size: 11 } } },
           tooltip: {
+            mode: 'index',
             callbacks: {
               afterBody: function(items) {
                 const idx = items[0]?.dataIndex;
                 if (idx == null) return '';
-                const cap = capacity[idx] || 0;
-                const plan = planned[idx] || 0;
-                const delta = plan - cap;
+                const load = allTeams.reduce((s, _, ti) => s + perSprintTeam[ti][idx], 0);
+                const cap = capLine[idx] || 0;
+                if (!cap) return '';
+                const delta = load - cap;
                 const sign = delta > 0 ? '+' : '';
-                return `\nÉcart : ${sign}${delta} pts (${cap ? Math.round(delta / cap * 100) : 0}%)`;
+                return `\nTotal : ${load} / ${cap} pts (${sign}${delta})`;
               }
             }
           },
         },
         scales: {
-          y: { beginAtZero: true, title: { display: true, text: 'Story Points' } },
+          x: { stacked: true },
+          y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Story Points' } },
         },
       },
     });
@@ -1077,9 +1163,14 @@ function _renderPIBuffer(tickets, allTeams) {
   const el = document.getElementById('pi-buffer');
   if (!el) return;
 
+  // PI context
+  const _bufPiMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  const _piNum      = _bufPiMatch ? _bufPiMatch[1] : null;
+  const _piRe       = _piNum ? new RegExp(`(^|\\D)${_piNum}\\.\\d+`) : null;
+
   const bufferTickets = tickets.filter(t => t.buffer);
   if (!bufferTickets.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">Aucun ticket buffer détecté dans le sprint actif.</p>';
+    el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">Aucun ticket buffer détecté dans le PI en cours.</p>';
     return;
   }
 
@@ -1088,8 +1179,24 @@ function _renderPIBuffer(tickets, allTeams) {
   const inprogPts    = bufferTickets.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
   const todoPts      = totalPts - donePts - inprogPts;
 
-  // Total sprint points for ratio
-  const sprintTotal  = tickets.reduce((s, t) => s + (t.points || 0), 0);
+  // PI context label (e.g. "PI 28 · 5 sprints")
+  const _piLabel = _piNum ? `PI ${_piNum}` : 'PI';
+  const _sprintNames = new Set(bufferTickets.map(t => t.sprintName || '').filter(Boolean));
+  const _sprintCount = _sprintNames.size || 1;
+
+  // Total PI points: current sprint tickets + velocity of past PI sprints
+  const _currentSprintPts = tickets.reduce((s, t) => s + (t.points || 0), 0);
+  let _pastPIVelocity = 0;
+  if (_piRe) {
+    const _activeTeamSet = new Set(allTeams);
+    Object.entries(CONFIG.teams || {}).forEach(([tid, tc]) => {
+      if (!_activeTeamSet.has(tid)) return;
+      (tc.velocityHistory || []).forEach(vh => {
+        if (_piRe.test(vh.name || '')) _pastPIVelocity += (vh.velocity || 0);
+      });
+    });
+  }
+  const sprintTotal  = _currentSprintPts + _pastPIVelocity;
   const bufferRatio  = sprintTotal ? Math.round(totalPts / sprintTotal * 100) : 0;
 
   // Status breakdown
@@ -1135,7 +1242,7 @@ function _renderPIBuffer(tickets, allTeams) {
     if (!tks.length) return '';
     const pts = tks.reduce((s, t) => s + (t.points || 0), 0);
     const rows = tks.map(t => {
-      const teamColor = CONFIG.teams[t.team]?.color || CLR.muted;
+      const teamColor = _teamColor(t.team);
       const teamName  = CONFIG.teams[t.team]?.name || t.team;
       return `<div class="pi-buf-row" onclick="openModal('${t.id}')">
         <span style="color:${cfg.color};flex-shrink:0">${cfg.icon}</span>
@@ -1161,11 +1268,12 @@ function _renderPIBuffer(tickets, allTeams) {
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
         <div class="pi-buf-kpi">
           <div class="pi-buf-kpi-val">${totalPts}<small> pts</small></div>
-          <div class="pi-buf-kpi-label">Buffer planifié</div>
+          <div class="pi-buf-kpi-label">Buffer total ${_piLabel}</div>
+          <div style="font-size:9px;color:var(--text-muted)">${bufferTickets.length} ticket${bufferTickets.length > 1 ? 's' : ''} · ${_sprintCount} sprint${_sprintCount > 1 ? 's' : ''}</div>
         </div>
         <div class="pi-buf-kpi">
           <div class="pi-buf-kpi-val" style="color:#22C55E">${donePts}<small> pts</small></div>
-          <div class="pi-buf-kpi-label">Buffer terminé</div>
+          <div class="pi-buf-kpi-label">Terminé sur le PI</div>
         </div>
         <div class="pi-buf-kpi">
           <div class="pi-buf-kpi-val" style="color:#3B82F6">${inprogPts}<small> pts</small></div>
@@ -1193,8 +1301,8 @@ function _renderPIBuffer(tickets, allTeams) {
         <thead><tr style="border-bottom:1px solid var(--border)">
           <th class="pi-table-th" style="text-align:left">Équipe</th>
           <th class="pi-table-th" style="text-align:center">Tickets</th>
-          <th class="pi-table-th" style="text-align:center">Planifié</th>
-          <th class="pi-table-th" style="text-align:center">Terminé</th>
+          <th class="pi-table-th" style="text-align:center">Total PI</th>
+          <th class="pi-table-th" style="text-align:center">Done PI</th>
           <th class="pi-table-th" style="text-align:center">Progression</th>
           <th class="pi-table-th" style="text-align:center">%</th>
         </tr></thead>
@@ -1231,7 +1339,7 @@ function _renderPIBuffer(tickets, allTeams) {
 
   const ratioTipHtml = `
     <div style="font-size:12px;line-height:1.7">
-      <div style="font-weight:700;margin-bottom:6px;font-size:13px">📊 Répartition Sprint</div>
+      <div style="font-weight:700;margin-bottom:6px;font-size:13px">📊 Répartition ${_piLabel}</div>
       <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:8px">
         <div style="width:${100 - bufferRatio}%;background:#3B82F6" title="Features"></div>
         <div style="width:${bufferRatio}%;background:#F59E0B" title="Buffer"></div>

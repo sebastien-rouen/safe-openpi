@@ -336,6 +336,23 @@ nav { flex: 1; padding: 4px 0; }
 .mdl-comment-date { font-size: 11px; color: var(--text-muted); margin-left: auto; }
 .mdl-comment-body { font-size: 12px; line-height: 1.6; color: var(--text); }
 .mdl-comment-body a { color: var(--primary); text-decoration: underline; }
+/* Modal extras (environment, labels, components, links) */
+.mdl-extras { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; }
+.mdl-extra-section { padding: 8px 0; border-top: 1px solid var(--border); }
+.mdl-extra-label { font-size: 11px; font-weight: 700; color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .3px; }
+.mdl-extra-content { font-size: 12px; line-height: 1.6; color: var(--text); }
+.mdl-extra-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.mdl-tag { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE; }
+[data-theme="dark"] .mdl-tag { background: #1E3A5F; color: #93C5FD; border-color: #1E40AF; }
+.mdl-component { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 500; background: #F0FDF4; color: #16A34A; border: 1px solid #BBF7D0; }
+[data-theme="dark"] .mdl-component { background: #14532D; color: #86EFAC; border-color: #166534; }
+.mdl-link-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+.mdl-link-type { font-size: 11px; color: var(--text-muted); font-style: italic; flex-shrink: 0; min-width: 80px; }
+.mdl-link-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+/* Modal comments section */
+.mdl-comments-section { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.mdl-comments-section .mdl-extra-label { margin-bottom: 8px; }
+.mdl-comments-section .mdl-comment { margin-bottom: 6px; }
 
 /* ===== TOAST ===== */
 #toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 2000; display: flex; flex-direction: column; gap: 8px; }

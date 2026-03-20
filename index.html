@@ -122,6 +122,7 @@
         <div class="si"><small>Restants</small><strong id="pts-rem">33 pts</strong></div>
         <div class="sprint-goal" id="sprint-goal"></div>
         <div id="mood-panel"></div>
+        <div id="vote-panel"></div>
       </div>
       <div class="sprint-alerts" id="sprint-alerts"></div>
       <div class="stats-row" id="scrum-stats"></div>
@@ -183,21 +184,23 @@
 
     <!-- VUE RAPPORTS -->
     <div class="view" id="view-reports">
-      <!-- Sélecteur de section + format -->
-      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
-        <div class="report-sections" id="report-sections" style="margin-bottom:0;padding-bottom:0;border-bottom:none;"></div>
-        <div class="format-toggle">
-          <button class="fmt-btn active" id="fmt-slack" onclick="setFormat('slack')">💬 Slack</button>
-          <button class="fmt-btn"        id="fmt-conf"  onclick="setFormat('confluence')">📝 Confluence</button>
+      <!-- Sélecteur de section + format + onglets équipes (sticky) -->
+      <div class="report-sticky-bar">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div class="report-sections" id="report-sections" style="margin-bottom:0;padding-bottom:0;border-bottom:none;"></div>
+          <div class="format-toggle">
+            <button class="fmt-btn active" id="fmt-slack" onclick="setFormat('slack')">💬 Slack</button>
+            <button class="fmt-btn"        id="fmt-conf"  onclick="setFormat('confluence')">📝 Confluence</button>
+          </div>
         </div>
+        <div class="report-tabs" id="report-tabs"></div>
       </div>
-      <!-- Onglets équipes -->
-      <div class="report-tabs" id="report-tabs" style="margin-bottom:10px;"></div>
       <div class="report-preview" id="report-preview"></div>
     </div>
 
     <!-- VUE SUPPORT -->
     <div class="view" id="view-support">
+      <div id="support-roster"></div>
       <div class="stats-row" id="support-stats"></div>
       <div class="support-filters" id="support-filters">
         <button class="filter-btn active" data-filter="all"      onclick="filterSupport('all')">Tous</button>

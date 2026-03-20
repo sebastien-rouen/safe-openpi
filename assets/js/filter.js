@@ -4,7 +4,10 @@
 
 // Liste dynamique des équipes présentes dans les données
 function _allTeams() {
-  const teams = [...new Set(TICKETS.map(t => t.team).filter(Boolean))].sort();
+  const fromTickets = TICKETS.map(t => t.team).filter(Boolean);
+  const fromConfig  = Object.keys(typeof CONFIG !== 'undefined' && CONFIG.teams || {})
+                        .filter(t => { const tc = CONFIG.teams[t] || {}; return !tc.inactive && tc.sprintName; });
+  const teams = [...new Set([...fromTickets, ...fromConfig])].sort();
   return teams.length ? teams : [];
 }
 

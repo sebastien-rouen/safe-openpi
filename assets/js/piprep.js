@@ -500,7 +500,7 @@ function _ppObjectivesSection(activeTeams) {
 
   const rows = objs.map(o => {
     const st   = ST.find(s => s.v === o.status) || ST[0];
-    const tc   = CONFIG.teams[o.team]?.color || CLR.dark;
+    const tc   = _teamColor(o.team);
     const teamSel = activeTeams.map(t =>
       `<option value="${t}" ${o.team === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`
     ).join('');
@@ -790,7 +790,7 @@ function _ppROAMSection(activeTeams) {
     ).join('');
 
     const cards = items.map(r => {
-      const tc2 = CONFIG.teams[r.team]?.color || CLR.dark;
+      const tc2 = _teamColor(r.team);
       return `
         <div class="pp-roam-card" style="border-color:${cat.border};">
           <div class="pp-roam-card-top">
@@ -851,8 +851,8 @@ function _ppDepsSection(_activeTeams) {
     ).join('');
 
   const rows = deps.map(d => {
-    const fc = CONFIG.teams[d.fromTeam]?.color || CLR.dark;
-    const tc = CONFIG.teams[d.toTeam]?.color   || CLR.dark;
+    const fc = _teamColor(d.fromTeam);
+    const tc = _teamColor(d.toTeam);
     return `
       <tr class="pp-tr">
         <td class="pp-td" style="max-width:200px;">
@@ -930,13 +930,13 @@ function _ppDepsHeatmap(deps, _allTeams) {
   const maxCount = Math.max(...Object.values(pairs), 1);
 
   const headerCells = dTeams.map(t => {
-    const c = CONFIG.teams[t]?.color || CLR.dark;
+    const c = _teamColor(t);
     const n = CONFIG.teams[t]?.name || t;
     return `<th style="padding:4px 6px;font-size:10px;font-weight:700;color:${c};text-align:center;writing-mode:vertical-lr;transform:rotate(180deg);height:60px;border-bottom:1px solid var(--border);">${n}</th>`;
   }).join('');
 
   const matrixRows = dTeams.map(from => {
-    const fc = CONFIG.teams[from]?.color || CLR.dark;
+    const fc = _teamColor(from);
     const fn = CONFIG.teams[from]?.name || from;
     const cells = dTeams.map(to => {
       if (from === to) return '<td style="padding:4px;text-align:center;background:var(--surface);"><span style="color:var(--text-muted);font-size:10px;">-</span></td>';

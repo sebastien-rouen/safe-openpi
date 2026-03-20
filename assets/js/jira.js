@@ -432,6 +432,38 @@ function _extractLastComment(commentField) {
   };
 }
 
+function _extractComments(commentField) {
+  if (!commentField) return [];
+  const comments = commentField.comments || commentField;
+  if (!Array.isArray(comments)) return [];
+  return comments.map(c => ({
+    author: c.author?.displayName || c.updateAuthor?.displayName || '?',
+    date:   (c.updated || c.created || '').slice(0, 10),
+    body:   _extractDescription(c.body) || (typeof c.body === 'string' ? c.body : ''),
+  })).filter(c => c.body);
+}
+
+function _extractLinks(issuelinks) {
+  if (!Array.isArray(issuelinks)) return [];
+  return issuelinks.map(l => {
+    const outward = l.outwardIssue;
+    const inward  = l.inwardIssue;
+    const linked  = outward || inward;
+    if (!linked) return null;
+    return {
+      type:    outward ? (l.type?.outward || 'relates to') : (l.type?.inward || 'relates to'),
+      id:      linked.key,
+      title:   linked.fields?.summary || '',
+      status:  linked.fields?.status?.name || '',
+    };
+  }).filter(Boolean);
+}
+
+function _extractComponents(fields) {
+  if (!Array.isArray(fields.components)) return [];
+  return fields.components.map(c => c.name).filter(Boolean);
+}
+
 // ============================================================
 // Transformation issues JIRA → objet cache (sans side-effects)
 // Chaque issue peut porter ._boardTeam (nom d'équipe issu du board)
@@ -550,6 +582,10 @@ function _transform(issues, project, sprintId) {
       labels,
       dueDate,
       lastComment,
+      comments:    _extractComments(f.comment),
+      components:  _extractComponents(f),
+      environment: _extractDescription(f.environment) || (typeof f.environment === 'string' ? f.environment : '') || '',
+      links:       _extractLinks(f.issuelinks),
       description: _extractDescription(f.description),
       updatedAt:   f.updated || null,
       recentChanges: _extractRecentChanges(i),
@@ -558,14 +594,25 @@ function _transform(issues, project, sprintId) {
 
   const support = supportIssues.map(i => {
     const f = i.fields;
+    const labels = (f.labels || []).map(l => l.toLowerCase());
     return {
       id:          i.key,
       title:       f.summary,
+      type:        _mapType(f.issuetype?.name) || 'support',
       priority:    _mapPriority(f.priority?.name),
       status:      isDone(_mapStatus(f.status?.name)) ? 'done' : 'open',
+      _jiraStatus: f.status?.name || '',
+      _boardStatus: _mapStatus(f.status?.name) || 'todo',
       assignee:    (f.assignee?.displayName || '').trim() || null,
       team:        i._boardTeam || 'A',
       date:        (f.created || '').slice(0, 10),
+      dueDate:     f.duedate || null,
+      labels,
+      components:  _extractComponents(f),
+      environment: _extractDescription(f.environment) || (typeof f.environment === 'string' ? f.environment : '') || '',
+      links:       _extractLinks(f.issuelinks),
+      lastComment: _extractLastComment(f.comment),
+      comments:    _extractComments(f.comment),
       description: _extractDescription(f.description),
     };
   });
@@ -584,6 +631,7 @@ function _transform(issues, project, sprintId) {
     sprint_id:       sprintId,
     sprint_label:    CONFIG.sprint.label,
     sprint_start:    CONFIG.sprint.startDate,
+    sprint_start_iso: CONFIG.sprint.startDateISO || '',
     sprint_end:      CONFIG.sprint.endDate,
     sprint_goal:     CONFIG.sprint.goal || '',
     features:        [{ id: 'F-1', title: project, color: '#2563EB' }],
@@ -698,9 +746,10 @@ async function _applyCache(cache) {
   Object.keys(MEMBER_COLORS).forEach(k => delete MEMBER_COLORS[k]);
   Object.assign(MEMBER_COLORS, cache.member_colors || {});
 
-  if (cache.sprint_label) CONFIG.sprint.label     = cache.sprint_label;
-  if (cache.sprint_start) CONFIG.sprint.startDate = cache.sprint_start;
-  if (cache.sprint_end)   CONFIG.sprint.endDate   = cache.sprint_end;
+  if (cache.sprint_label)     CONFIG.sprint.label        = cache.sprint_label;
+  if (cache.sprint_start)     CONFIG.sprint.startDate    = cache.sprint_start;
+  if (cache.sprint_start_iso) CONFIG.sprint.startDateISO = cache.sprint_start_iso;
+  if (cache.sprint_end)       CONFIG.sprint.endDate      = cache.sprint_end;
   if (cache.sprint_id)    CONFIG.sprint.current   = cache.sprint_id;
   if (cache.sprint_goal)  CONFIG.sprint.goal      = cache.sprint_goal;
 
@@ -775,7 +824,7 @@ async function loadJiraData(opts = {}) {
   const fields = [
     'summary', 'status', 'issuetype', 'priority', 'assignee',
     'labels', 'components', 'parent', 'description', 'created', 'updated',
-    'flagged', 'duedate', 'comment',
+    'flagged', 'duedate', 'comment', 'environment', 'issuelinks',
     CONFIG.sync.sprintField,
     'customfield_10014', 'customfield_10015',
     'customfield_10016', 'customfield_10028', 'customfield_10005',
@@ -902,16 +951,18 @@ async function loadJiraData(opts = {}) {
           }
           sprintId = sprint.id;
           // Stocker le sprint de chaque équipe (pour la sidebar par équipe)
-          teamConfigs[teamName].sprintName  = sprint.name;
-          teamConfigs[teamName].sprintStart = _fmtDate(sprint.startDate);
-          teamConfigs[teamName].sprintEnd   = _fmtDate(sprint.endDate);
-          teamConfigs[teamName].sprintGoal  = sprint.goal || '';
+          teamConfigs[teamName].sprintName    = sprint.name;
+          teamConfigs[teamName].sprintStart   = _fmtDate(sprint.startDate);
+          teamConfigs[teamName].sprintEnd     = _fmtDate(sprint.endDate);
+          teamConfigs[teamName].sprintStartISO = sprint.startDate || '';
+          teamConfigs[teamName].sprintGoal    = sprint.goal || '';
           if (!firstSprint) {
             firstSprint = sprint;
-            CONFIG.sprint.current   = sprint.id;
-            CONFIG.sprint.label     = sprint.name;
-            CONFIG.sprint.startDate = _fmtDate(sprint.startDate);
-            CONFIG.sprint.endDate   = _fmtDate(sprint.endDate);
+            CONFIG.sprint.current      = sprint.id;
+            CONFIG.sprint.label        = sprint.name;
+            CONFIG.sprint.startDate    = _fmtDate(sprint.startDate);
+            CONFIG.sprint.endDate      = _fmtDate(sprint.endDate);
+            CONFIG.sprint.startDateISO = sprint.startDate || '';
             CONFIG.sprint.goal      = sprint.goal || '';
             console.log(`[JIRA] Sprint référence : ${sprint.name} (id=${sprint.id})`);
           }
@@ -1047,7 +1098,7 @@ async function loadJiraData(opts = {}) {
         const closed = teamSprints.slice(-CONFIG.sync.velocityHistoryCount);
         const projKey = tc.projectKey || '';
 
-        // Phase 1 : fetcher les issues done de chaque sprint (en parallèle)
+        // Phase 1 : fetcher les issues de chaque sprint fermé (en parallèle)
         const sprintData = await Promise.all(closed.map(async sprint => {
           try {
             const jql = projKey
@@ -1059,7 +1110,7 @@ async function loadJiraData(opts = {}) {
               return { sprint, issues: [] };
             }
             const issues = (await ir.json()).issues || [];
-            return { sprint, issues: issues.filter(i => isDone(_mapStatus(i.fields.status?.name))) };
+            return { sprint, issues };
           } catch (e) {
             console.warn(`[JIRA] Vélocité ${teamName} sprint ${sprint.name} : ${e.message}`);
             return { sprint, issues: [] };
@@ -1070,15 +1121,27 @@ async function loadJiraData(opts = {}) {
         // (les sprints sont triés chronologiquement → le dernier gagne)
         const issueLastSprint = new Map(); // issueKey → index du sprint le plus récent
         sprintData.forEach((sd, idx) => {
-          sd.issues.forEach(i => issueLastSprint.set(i.key, idx));
+          sd.issues.filter(i => isDone(_mapStatus(i.fields.status?.name))).forEach(i => issueLastSprint.set(i.key, idx));
         });
         // Aussi vérifier les tickets du sprint actif : si un ticket done d'un sprint
         // fermé est aussi dans le sprint actif, il a glissé → l'exclure du fermé
         const activeKeys = new Set(allIssues.filter(i => i._boardTeam === teamName).map(i => i.key));
 
         // Phase 3 : construire velocityHistory en excluant les tickets qui ont glissé
+        // Construire un epicMap local pour la détection buffer
+        const _closedEpicMap = {};
+        sprintData.forEach(sd => sd.issues.forEach(i => {
+          const t = (i.fields.issuetype?.name || '').toLowerCase();
+          if (t === 'epic') _closedEpicMap[i.key] = { title: i.fields.summary || '' };
+        }));
+        // Compléter avec les epics du sprint actif
+        allIssues.forEach(i => {
+          const t = (i.fields.issuetype?.name || '').toLowerCase();
+          if (t === 'epic') _closedEpicMap[i.key] = { title: i.fields.summary || '' };
+        });
+
         tc.velocityHistory = sprintData.map((sd, idx) => {
-          const doneIssues = sd.issues.filter(i => {
+          const doneIssues = sd.issues.filter(i => isDone(_mapStatus(i.fields.status?.name))).filter(i => {
             // Ticket présent dans le sprint actif → il a glissé vers le sprint courant
             if (activeKeys.has(i.key)) {
               console.log(`[JIRA] Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → sprint actif)`);
@@ -1100,7 +1163,27 @@ async function loadJiraData(opts = {}) {
             assignee: i.fields.assignee?.displayName || '',
             epic:     i.fields.parent?.key || '',
           }));
-          return { name: sd.sprint.name, velocity, tickets, startDate: sd.sprint.startDate || '', endDate: sd.sprint.endDate || '' };
+          // Buffer tickets : tous les tickets buffer de ce sprint (done ou non), hors glissés
+          const bufferTickets = sd.issues
+            .filter(i => !activeKeys.has(i.key))
+            .filter(i => {
+              const labels = (i.fields.labels || []).map(l => l.toLowerCase());
+              const epicKey = _getEpicKey(i.fields);
+              return _isBuffer(labels, epicKey, _closedEpicMap);
+            })
+            .map(i => ({
+              id:       i.key,
+              title:    i.fields.summary || '',
+              type:     _mapType(i.fields.issuetype?.name),
+              status:   _mapStatus(i.fields.status?.name),
+              points:   _getPoints(i.fields),
+              assignee: i.fields.assignee?.displayName || '',
+              epic:     _getEpicKey(i.fields) || '',
+              team:     teamName,
+              buffer:   true,
+              sprintName: sd.sprint.name,
+            }));
+          return { name: sd.sprint.name, velocity, tickets, bufferTickets, startDate: sd.sprint.startDate || '', endDate: sd.sprint.endDate || '' };
         });
         console.log(`[JIRA] Vélocité ${teamName} : ${tc.velocityHistory.map(s => `${s.name}=${s.velocity}`).join(', ')}`);
       } catch (e) {

@@ -41,8 +41,14 @@ function renderKanban() {
   const _kanbanColTickets = {};
   cols.forEach(col => { _kanbanColTickets[col.key] = tickets.filter(t => t.status === col.key); });
 
+  // Grid template for kanban columns
+  const kGridCols = cols.map(col => {
+    const colT = _kanbanColTickets[col.key];
+    return colT.length ? '220px' : '110px';
+  }).join(' ');
+
   // Sticky header bar
-  const stickyHtml = `<div class="kanban-sticky-bar">${cols.map(col => {
+  const stickyHtml = `<div class="kanban-sticky-bar" style="grid-template-columns:${kGridCols}">${cols.map(col => {
     const colT    = _kanbanColTickets[col.key];
     const empty   = !colT.length;
     const over    = col.wip > 0 && colT.length > col.wip;
@@ -55,8 +61,11 @@ function renderKanban() {
     </div>`;
   }).join('')}</div>`;
 
+  // Support tickets
+  const supportTickets = typeof _getSupportTicketsForBoard === 'function' ? _getSupportTicketsForBoard() : [];
+
   // Column bodies
-  const bodyHtml = `<div class="kanban-board-body">${cols.map(col => {
+  const mainColsHtml = cols.map(col => {
     const colT    = _kanbanColTickets[col.key];
     const empty   = !colT.length;
     const over    = col.wip > 0 && colT.length > col.wip;
@@ -70,7 +79,33 @@ function renderKanban() {
       </div>
       <div class="col-body">${colT.map(t => ticketCard(t)).join('')}</div>
     </div>`;
-  }).join('')}</div>`;
+  }).join('');
+
+  // Support swimlane (integrated in grid)
+  let supportLaneHtml = '';
+  if (supportTickets.length) {
+    const arrow = (typeof _supportLaneCollapsed !== 'undefined' && _supportLaneCollapsed) ? '▶' : '▼';
+    const openCnt = supportTickets.filter(t => !isDone(t.status)).length;
+    supportLaneHtml = `<div class="board-lane-header" onclick="_toggleSupportLane()">
+        <span class="swimlane-arrow">${arrow}</span>
+        <span class="swimlane-icon" style="color:var(--support, #F59E0B);">●</span>
+        <span class="swimlane-title">Support</span>
+        <span class="col-count">${supportTickets.length}</span>
+        <span class="swimlane-hint">${openCnt} ouvert${openCnt > 1 ? 's' : ''} · Incidents & demandes</span>
+      </div>`
+      + (!(typeof _supportLaneCollapsed !== 'undefined' && _supportLaneCollapsed) ? (() => { const _seen = new Set(); return cols.map(col => {
+        const colT = supportTickets.filter(t => {
+          if (_seen.has(t.id)) return false;
+          if (t.status === col.key) { _seen.add(t.id); return true; }
+          return false;
+        });
+        return `<div class="kanban-col board-col-lane board-col-lane-support${!colT.length ? ' col-empty-state' : ''}">
+          <div class="col-body">${colT.map(t => ticketCard(t)).join('') || '<div class="col-empty"></div>'}</div>
+        </div>`;
+      }).join(''); })() : '');
+  }
+
+  const bodyHtml = `<div class="kanban-board-body" style="grid-template-columns:${kGridCols}">${mainColsHtml}${supportLaneHtml}</div>`;
 
   kanbanEl.innerHTML = stickyHtml + bodyHtml;
 

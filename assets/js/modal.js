@@ -151,7 +151,7 @@ function _renderModalContent(t) {
     text:  t.id
   });
   const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
-  const teamColor   = CONFIG.teams[t.team]?.color || CLR.slate;
+  const teamColor   = _teamColor(t.team);
 
   document.getElementById('modal-title').innerHTML =
     `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:${_chipBg};border:1.5px solid ${_chipClr}33;font-size:12px;font-weight:700;vertical-align:middle;margin-right:8px;white-space:nowrap;">${_chipHtml}</span>${t.title}`;
@@ -243,7 +243,7 @@ function _renderModalContent(t) {
             ${rangeHtml}${markersHtml}
           </div>
         </div>
-        <span class="mdl-sprint-pct">${remaining > 0 ? 'J-' + remaining : 'Terminé'}</span>
+        <span class="mdl-sprint-pct">${remaining > 0 ? 'J-' + remaining : isDone(t.status) ? 'Terminé' : 'Dépassé'}</span>
       </div>`;
     }
 
@@ -269,18 +269,77 @@ function _renderModalContent(t) {
     }
   }
 
-  // Last comment
-  let commentHtml = '';
-  if (t.lastComment && t.lastComment.body) {
-    const c = t.lastComment;
-    const commentDate = c.date ? new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
-    commentHtml = `<div class="mdl-comment">
-      <div class="mdl-comment-header">
-        ${avatarBadge(c.author, MEMBER_COLORS[c.author] || CLR.slate, {w:18, fs:'8px'})}
-        <span class="mdl-comment-author">${c.author}</span>
-        <span class="mdl-comment-date">${commentDate}</span>
-      </div>
-      <div class="mdl-comment-body">${_formatDescription(c.body)}</div>
+  // Extra info sections (environment, labels, components, links)
+  const _extraSections = [];
+
+  // Environment
+  if (t.environment) {
+    _extraSections.push(`<div class="mdl-extra-section">
+      <div class="mdl-extra-label">🖥️ Environnement</div>
+      <div class="mdl-extra-content">${_formatDescription(t.environment)}</div>
+    </div>`);
+  }
+
+  // Labels / Tags
+  if (t.labels && t.labels.length) {
+    const tags = t.labels.map(l =>
+      `<span class="mdl-tag">${l}</span>`
+    ).join('');
+    _extraSections.push(`<div class="mdl-extra-section">
+      <div class="mdl-extra-label">🏷️ Étiquettes</div>
+      <div class="mdl-extra-tags">${tags}</div>
+    </div>`);
+  }
+
+  // Components
+  if (t.components && t.components.length) {
+    const comps = t.components.map(c =>
+      `<span class="mdl-component">${c}</span>`
+    ).join('');
+    _extraSections.push(`<div class="mdl-extra-section">
+      <div class="mdl-extra-label">🧩 Composants</div>
+      <div class="mdl-extra-tags">${comps}</div>
+    </div>`);
+  }
+
+  // Linked tickets
+  if (t.links && t.links.length) {
+    const linkRows = t.links.map(l => {
+      const statusCls = _mapLinkStatus(l.status);
+      return `<div class="mdl-link-row">
+        <span class="mdl-link-type">${l.type}</span>
+        ${_jiraBrowse(l.id, { style: 'font-weight:600;font-size:12px;color:var(--primary);text-decoration:none;flex-shrink:0;' })}
+        <span class="mdl-link-title">${l.title}</span>
+        <span class="badge badge-${statusCls}" style="font-size:10px;flex-shrink:0;">${l.status}</span>
+      </div>`;
+    }).join('');
+    _extraSections.push(`<div class="mdl-extra-section">
+      <div class="mdl-extra-label">🔗 Liens (${t.links.length})</div>
+      ${linkRows}
+    </div>`);
+  }
+
+  const extrasHtml = _extraSections.length
+    ? `<div class="mdl-extras">${_extraSections.join('')}</div>` : '';
+
+  // Comments (all, most recent first)
+  let commentsHtml = '';
+  const allComments = t.comments && t.comments.length ? t.comments : (t.lastComment ? [t.lastComment] : []);
+  if (allComments.length) {
+    const commentCards = allComments.slice().reverse().map(c => {
+      const commentDate = c.date ? new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+      return `<div class="mdl-comment">
+        <div class="mdl-comment-header">
+          ${avatarBadge(c.author, MEMBER_COLORS[c.author] || CLR.slate, {w:18, fs:'8px'})}
+          <span class="mdl-comment-author">${c.author}</span>
+          <span class="mdl-comment-date">${commentDate}</span>
+        </div>
+        <div class="mdl-comment-body">${_formatDescription(c.body)}</div>
+      </div>`;
+    }).join('');
+    commentsHtml = `<div class="mdl-comments-section">
+      <div class="mdl-extra-label">💬 Commentaires (${allComments.length})</div>
+      ${commentCards}
     </div>`;
   }
 
@@ -310,7 +369,7 @@ function _renderModalContent(t) {
       <div class="mdl-meta-row">
         <div class="mdl-meta-left">
           <span class="mdl-pill mdl-pill-sm">${priorityIcon(t.priority || 'medium')}<span style="font-size:11px;font-weight:600;text-transform:capitalize;">${t.priority || '-'}</span></span>
-          <span class="badge badge-${t.type}">${typeName(t.type || 'support')}</span>
+          <span class="badge badge-${t.type || 'support'}">${typeName(t.type || 'support')}</span>
           <span class="badge badge-${t.status || 'open'}">${statusLabel(t.status || 'open')}</span>
           ${ptsBadge(t.points)}
         </div>
@@ -330,8 +389,21 @@ function _renderModalContent(t) {
     ${t.description
       ? `<div class="mdl-desc">${_formatDescription(t.description)}</div>`
       : `<div class="mdl-desc mdl-desc-empty"><span style="display:flex;align-items:center;gap:8px;justify-content:center;padding:20px 0;color:var(--text-muted);font-size:13px;font-style:italic;opacity:.7;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Pas de description pour le moment</span></div>`}
-    ${commentHtml}
+    ${extrasHtml}
+    ${commentsHtml}
   `;
+}
+
+// Map raw JIRA status name to internal status key for badge styling
+function _mapLinkStatus(statusName) {
+  if (!statusName) return 'todo';
+  const s = statusName.toLowerCase();
+  if (s.includes('done') || s.includes('terminé') || s.includes('fermé') || s.includes('closed') || s.includes('résolu')) return 'done';
+  if (s.includes('progress') || s.includes('cours')) return 'inprog';
+  if (s.includes('review')) return 'review';
+  if (s.includes('test')) return 'test';
+  if (s.includes('block') || s.includes('bloqu')) return 'blocked';
+  return 'todo';
 }
 
 function _updateModalNavButtons() {

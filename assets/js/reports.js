@@ -121,12 +121,29 @@ function _rptTeamTickets(team) {
     : all.filter(t => t.team === team);
 }
 
+function _rptSlackLine(raw) {
+  // Escape HTML
+  let line = raw.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Separator lines (━━━ or ───)
+  if (/^[━─═]{5,}$/.test(line.trim())) return '<hr class="slack-separator">';
+  // Empty line
+  if (!line.trim()) return '<span class="slack-line-empty"></span>';
+  // Inline formatting
+  const fmt = (s) => s
+    .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
+    .replace(/_([^_]+)_/g, '<span class="slack-italic">$1</span>')
+    .replace(/&lt;(https?:\/\/[^|&]+)\|([^&]+)&gt;/g, '<a class="slack-link" href="$1" target="_blank">$2</a>')
+    .replace(/&lt;(https?:\/\/[^\s&]+)&gt;/g, '<a class="slack-link" href="$1" target="_blank">$1</a>')
+    .replace(/•/g, '<span class="slack-bullet">•</span>');
+  // Blockquote line (> prefix)
+  const qMatch = line.match(/^&gt;\s?(.*)/);
+  if (qMatch) return `<span class="slack-quote">${fmt(qMatch[1])}</span>`;
+  return `<span class="slack-line">${fmt(line)}</span>`;
+}
+
 function _rptSetSlack(el, text) {
   const now = new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-  const previewText = _slackToEmoji(text)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
-    .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
-    .replace(/^&gt; /gm, '\u2502 ');
+  const previewHtml = _slackToEmoji(text).split('\n').map(l => _rptSlackLine(l)).join('\n');
   el.className = 'sondage-wrap';
   el.innerHTML = `
     <div class="sondage-columns">
@@ -141,7 +158,7 @@ function _rptSetSlack(el, text) {
             <div class="slack-preview-avatar">📊</div>
             <div><span class="slack-preview-name">JIRA Dashboard</span><span class="slack-preview-badge">APP ${now}</span></div>
           </div>
-          <div class="slack-preview-body">${previewText}</div>
+          <div class="slack-preview-body">${previewHtml}</div>
         </div>
       </div>
     </div>`;

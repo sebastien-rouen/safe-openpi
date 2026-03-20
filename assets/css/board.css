@@ -19,20 +19,20 @@
 /* ===== STICKY COLUMN HEADERS ===== */
 /* Scrum - remove overflow from outer container so sticky works relative to #content */
 .board.board-with-lanes { overflow: visible; }
-.board-sticky-bar { position: sticky; top: -24px; z-index: 10; display: flex; gap: 16px; overflow: hidden; background: var(--bg); padding: 24px 0 2px; margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
-.board-sticky-bar .col-header { background: var(--surface); border: 1px solid var(--border); border-bottom: 6px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; min-width: 240px; flex: 1 0 0%; transition: min-width .3s, flex .3s, opacity .3s; }
-.board-sticky-bar .col-header.col-empty-state { min-width: 0; flex: 0 1 110px; opacity: .45; padding: 8px 10px; }
+.board-sticky-bar { position: sticky; top: -24px; z-index: 10; display: grid; gap: 0 16px; overflow: hidden; background: var(--bg); padding: 24px 0 2px; margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
+.board-sticky-bar .col-header { background: var(--surface); border: 1px solid var(--border); border-bottom: 6px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; transition: opacity .3s; }
+.board-sticky-bar .col-header.col-empty-state { opacity: .45; padding: 8px 10px; }
 .board-sticky-bar .col-header.col-empty-state .col-title { font-size: 11px; gap: 4px; }
 .board-sticky-bar .col-header.col-empty-state .col-title span:first-child { width: 7px !important; height: 7px !important; }
 .board-sticky-bar + .board-main-grid .board-col { border-radius: 0 0 var(--radius) var(--radius); border-top: none; }
 .board-sticky-bar + .board-main-grid .board-col .col-header { display: none; }
 /* Kanban - sticky bar above the scrollable column body */
 .kanban-wrap { overflow: visible; }
-.kanban-sticky-bar { position: sticky; top: -24px; z-index: 10; display: flex; gap: 14px; overflow: hidden; background: var(--bg); padding: 24px 0 2px; margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
-.kanban-sticky-bar .col-header { background: var(--bg); border: 1px solid var(--border); border-bottom: 6px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; min-width: 220px; max-width: 220px; flex-shrink: 0; transition: min-width .3s, max-width .3s, opacity .3s; }
+.kanban-sticky-bar { position: sticky; top: -24px; z-index: 10; display: grid; gap: 0 14px; overflow: hidden; background: var(--bg); padding: 24px 0 2px; margin: 0 -24px; padding-left: 24px; padding-right: 24px; }
+.kanban-sticky-bar .col-header { background: var(--bg); border: 1px solid var(--border); border-bottom: 6px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; transition: opacity .3s; }
 .kanban-sticky-bar .col-header.col-empty-state { min-width: 0; max-width: 110px; opacity: .45; padding: 8px 10px; }
 .kanban-sticky-bar .col-header.col-empty-state .col-title { font-size: 11px; gap: 4px; }
-.kanban-board-body { display: flex; gap: 14px; overflow-x: auto; padding-bottom: 16px; }
+.kanban-board-body { display: grid; gap: 0 14px; overflow-x: auto; padding-bottom: 16px; }
 .kanban-board-body .kanban-col { border-radius: 0 0 var(--radius) var(--radius); border-top: none; }
 .kanban-board-body .kanban-col .col-header { display: none; }
 
@@ -160,20 +160,23 @@
 
 /* ===== BOARD WITH SWIMLANES ===== */
 .board.board-with-lanes { display: flex; flex-direction: column; gap: 12px; grid-template-columns: none; }
-.board-main-grid { display: flex; gap: 16px; overflow-x: auto; padding-bottom: 8px; }
-.board-swimlane { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-.swimlane-header { display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; user-select: none; border-bottom: 1px solid var(--border); transition: background .15s; }
-.swimlane-header:hover { background: var(--bg); }
+.board-main-grid { display: grid; gap: 0 16px; overflow-x: auto; padding-bottom: 8px; }
+
+/* Swimlane lane header — spans full grid width */
+.board-lane-header { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; padding: 8px 14px; cursor: pointer; user-select: none; border: 1px solid var(--border); border-radius: var(--radius) var(--radius) 0 0; margin-top: 12px; background: var(--surface); transition: background .15s; }
+.board-lane-header:hover { background: var(--bg); }
 .swimlane-arrow { font-size: 10px; color: var(--text-muted); width: 14px; text-align: center; }
 .swimlane-icon { font-size: 10px; }
 .swimlane-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .swimlane-hint { font-size: 10px; color: var(--text-muted); margin-left: auto; font-style: italic; }
-.board-swimlane-grid { display: flex; gap: 0; overflow-x: auto; }
-.board-swimlane-grid .board-col-mini { background: transparent; border: none; border-radius: 0; border-right: 1px solid var(--border); min-width: 240px; flex: 1 0 0%; transition: min-width .3s, flex .3s, opacity .3s; }
-.board-swimlane-grid .board-col-mini.col-empty-state { min-width: 0; flex: 0 1 110px; opacity: .45; }
-.board-swimlane-grid .board-col-mini:last-child { border-right: none; }
-.board-swimlane-grid .col-body { min-height: 40px; padding: 6px; gap: 4px; }
-.board-swimlane-grid .col-empty { min-height: 30px; }
+
+/* Swimlane columns — inside main grid, subtle tinted background */
+.board-col-lane { border-radius: 0; border-top: none; min-width: 0; max-width: none; }
+.board-col-lane .col-header { display: none; }
+.board-col-lane .col-body { min-height: 40px; padding: 6px; gap: 4px; }
+.board-col-lane.col-empty-state { opacity: .5; }
+.board-col-lane-task { background: color-mix(in srgb, var(--surface) 92%, var(--tache, #F59E0B)); border: 1px solid color-mix(in srgb, var(--border) 80%, var(--tache, #F59E0B)); border-top: none; }
+.board-col-lane-support { background: color-mix(in srgb, var(--surface) 92%, var(--support, #F59E0B)); border: 1px solid color-mix(in srgb, var(--border) 80%, var(--support, #F59E0B)); border-top: none; }
 
 /* ===== DAILY ACTIVITY ===== */
 #daily-activity-wrap { margin: 12px 0; border: 1px solid #BFDBFE; border-radius: var(--radius); overflow: hidden; }
