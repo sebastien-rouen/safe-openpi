@@ -55,7 +55,7 @@ function epicTag(epic, ticketEpicId, opts = {}) {
   if (!epic) return '';
   const id    = epic.id || ticketEpicId || '';
   const title = epic.title || id;
-  const color = epic.color || '#475569';
+  const color = epic.color || CLR.dark;
   const base  = (CONFIG.jira.url || '').replace(/\/$/, '');
   const url   = base && !base.includes('votre-jira') ? `${base}/browse/${id}` : '';
   const tip   = `${id} - ${title}`;
@@ -84,6 +84,44 @@ function _jiraBrowseUrl(id) {
   const base = (CONFIG.jira.url || '').replace(/\/$/, '');
   if (!base || base.includes('votre-jira')) return '';
   return `${base}/browse/${id}`;
+}
+
+// Shared color constants - semantic fallback palette
+// Used as fallback values when team/member/type color is undefined.
+// These CANNOT be CSS variables because they're used in hex-opacity expressions (e.g., color + '18').
+const CLR = {
+  muted:   '#94A3B8', // light gray - todo, muted text, fallback badges
+  slate:   '#64748B', // medium gray - default avatar, unset team color
+  dark:    '#475569', // dark slate - default type color, filter buttons
+  red:     '#DC2626', // blocked, critical, flagged
+  orange:  '#D97706', // warning, presentiel
+  amber:   '#F59E0B', // test, lead time, caution
+  green:   '#22C55E', // buffer, success
+  darkGrn: '#16A34A', // done, health good, IP sprint
+  blue:    '#3B82F6', // in progress, cycle time
+  purple:  '#7C3AED', // review, epic default
+  teal:    '#06B6D4', // review column
+};
+
+// Status → hex color map (for JS contexts needing hex, e.g. opacity suffixes)
+const STATUS_HEX = {
+  blocked: CLR.red, inprog: CLR.blue, review: CLR.purple,
+  todo: CLR.muted, done: CLR.darkGrn, test: CLR.amber, backlog: CLR.muted,
+};
+
+// Colored dot indicator (status, team, epic)
+// size: 'sm' (6px), 'md' (8px), 'lg' (10px, default)
+function statusDot(color, size) {
+  const px = size === 'sm' ? 6 : size === 'md' ? 8 : 10;
+  return `<span style="width:${px}px;height:${px}px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>`;
+}
+
+// Avatar badge with initials
+// opts: { w (px, default 24), fs (font-size, default '10px') }
+function avatarBadge(name, color, opts = {}) {
+  const w  = opts.w || 24;
+  const fs = opts.fs || '10px';
+  return `<span class="avatar" style="background:${color};width:${w}px;height:${w}px;font-size:${fs};flex-shrink:0;" title="${(name || 'Non assigné').replace(/"/g, '&quot;')}">${initials(name)}</span>`;
 }
 
 // Internal status → CSS color variable
@@ -129,7 +167,7 @@ function getBoardColumns(tickets) {
   if (teams.length === 1 && BOARD_COLUMNS[teams[0]]) {
     const cols = BOARD_COLUMNS[teams[0]]
       .filter(c => c.internal) // skip unmapped columns
-      .map(c => ({ key: c.internal, label: c.name, color: _STATUS_COLORS[c.internal] || '#94A3B8' }));
+      .map(c => ({ key: c.internal, label: c.name, color: _STATUS_COLORS[c.internal] || CLR.muted }));
     return cols.length ? cols : _defaultCols;
   }
 
@@ -144,7 +182,7 @@ function getBoardColumns(tickets) {
   }
   const cols = _ORDER
     .filter(k => seen[k])
-    .map(k => ({ key: k, label: seen[k], color: _STATUS_COLORS[k] || '#94A3B8' }));
+    .map(k => ({ key: k, label: seen[k], color: _STATUS_COLORS[k] || CLR.muted }));
 
   // Add columns for statuses present in tickets but not in board config (e.g. blocked)
   if (tickets) {

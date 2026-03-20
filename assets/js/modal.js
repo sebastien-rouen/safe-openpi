@@ -150,8 +150,8 @@ function _renderModalContent(t) {
     style: `color:${_chipClr};text-decoration:none;font-weight:700;font-size:12px;`,
     text:  t.id
   });
-  const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
-  const teamColor   = CONFIG.teams[t.team]?.color || '#64748B';
+  const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
+  const teamColor   = CONFIG.teams[t.team]?.color || CLR.slate;
 
   document.getElementById('modal-title').innerHTML =
     `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:${_chipBg};border:1.5px solid ${_chipClr}33;font-size:12px;font-weight:700;vertical-align:middle;margin-right:8px;white-space:nowrap;">${_chipHtml}</span>${t.title}`;
@@ -276,7 +276,7 @@ function _renderModalContent(t) {
     const commentDate = c.date ? new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
     commentHtml = `<div class="mdl-comment">
       <div class="mdl-comment-header">
-        <span class="avatar" style="background:${MEMBER_COLORS[c.author] || '#64748B'};width:18px;height:18px;font-size:8px;flex-shrink:0;">${initials(c.author)}</span>
+        ${avatarBadge(c.author, MEMBER_COLORS[c.author] || CLR.slate, {w:18, fs:'8px'})}
         <span class="mdl-comment-author">${c.author}</span>
         <span class="mdl-comment-date">${commentDate}</span>
       </div>
@@ -289,7 +289,7 @@ function _renderModalContent(t) {
 
   // --- Team chip
   const teamChip = t.team
-    ? `<span class="mdl-sep">·</span><span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:7px;height:7px;border-radius:50%;background:${teamColor};flex-shrink:0;"></span><span style="font-size:11px;font-weight:600;color:${teamColor};">${t.team}</span></span>`
+    ? `<span class="mdl-sep">·</span><span style="display:inline-flex;align-items:center;gap:4px;">${statusDot(teamColor, 'sm')}<span style="font-size:11px;font-weight:600;color:${teamColor};">${t.team}</span></span>`
     : '';
 
   // --- Sprint chips
@@ -318,7 +318,7 @@ function _renderModalContent(t) {
       </div>
       <div class="mdl-meta-row">
         <div class="mdl-meta-left">
-          <span class="avatar" style="background:${avatarColor};width:20px;height:20px;font-size:9px;flex-shrink:0;">${initials(t.assignee)}</span>
+          ${avatarBadge(t.assignee, avatarColor, {w:20, fs:'9px'})}
           <span style="font-size:12px;font-weight:600;">${t.assignee || 'Non assigné'}</span>
           ${teamChip}
           ${sprintChipsHtml}

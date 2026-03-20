@@ -468,7 +468,7 @@ function _ppUnpointedBanner(unpointed) {
     </div>`;
 
   const chips = unpointed.slice(0, 10).map(t => {
-    const c = CONFIG.typeColors[t.type] || '#475569';
+    const c = CONFIG.typeColors[t.type] || CLR.dark;
     return `<span onclick="openModal('${t.id}')" style="display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:6px;background:${c}18;border:1px solid ${c}40;font-size:11px;font-weight:600;color:${c};cursor:pointer;margin:2px;">${t.id}</span>`;
   }).join('');
   const more = unpointed.length > 10 ? `<span style="font-size:11px;color:var(--text-muted);margin:2px 4px;">+${unpointed.length - 10} autres</span>` : '';
@@ -500,7 +500,7 @@ function _ppObjectivesSection(activeTeams) {
 
   const rows = objs.map(o => {
     const st   = ST.find(s => s.v === o.status) || ST[0];
-    const tc   = CONFIG.teams[o.team]?.color || '#475569';
+    const tc   = CONFIG.teams[o.team]?.color || CLR.dark;
     const teamSel = activeTeams.map(t =>
       `<option value="${t}" ${o.team === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`
     ).join('');
@@ -570,8 +570,6 @@ function _ppObjectivesSection(activeTeams) {
 // ============================================================
 function _ppLoadMatrix(activeTeams, sprintsPerPI, allBacklog) {
   if (!activeTeams.length) return '';
-  const pOrder = { critical: 0, high: 1, medium: 2, low: 3 };
-
   // Dates des sprints PI (réutilise la même logique que roadmap)
   const sprintStartDay = CONFIG.sprint?.sprintStartDay ?? 5;
   const durationDays   = CONFIG.sprint?.durationDays   || 14;
@@ -600,7 +598,7 @@ function _ppLoadMatrix(activeTeams, sprintsPerPI, allBacklog) {
 
   const rows = activeTeams.map(tid => {
     const tc       = CONFIG.teams[tid];
-    const color    = tc?.color || '#475569';
+    const color    = tc?.color || CLR.dark;
     const defaultCap = Math.round((tc?.velocity || 0) * 0.8);
 
     // Capacité par sprint : somme des jours membres (non exclus) × focus factor, sinon fallback vélocité 80%
@@ -678,7 +676,7 @@ function _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) {
 
   const sections = activeTeams.map(tid => {
     const tc      = CONFIG.teams[tid];
-    const color   = tc?.color || '#475569';
+    const color   = tc?.color || CLR.dark;
     const rawMembers = membersByTeam[tid] || [];
     if (!rawMembers.length) return '';
     // Sort: active members first, excluded (inactive) members at the bottom
@@ -693,7 +691,7 @@ function _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) {
     ).join('');
 
     const memberRows = members.map(m => {
-      const mc = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS?.[m]) || '#64748B';
+      const mc = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS?.[m]) || CLR.slate;
       const excluded = _ppIsExcluded(tid, m);
       const rowOpacity = excluded ? 'opacity:.4;' : '';
       const cells = sprintCols.map(i => {
@@ -710,7 +708,7 @@ function _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) {
       return `<tr class="pp-tr" style="${rowOpacity}">
         <td style="padding:6px 12px;font-size:12px;white-space:nowrap;display:flex;align-items:center;gap:6px;">
           <input type="checkbox" ${excluded ? '' : 'checked'} onchange="_ppExcludedToggle('${tid}','${m}',this)" title="${excluded ? 'Inclure dans le calcul' : 'Exclure du calcul'}" style="cursor:pointer;accent-color:var(--primary);margin:0;">
-          <span class="avatar" style="background:${mc};font-size:9px;width:20px;height:20px;min-width:20px;line-height:20px;">${initials(m)}</span>
+          ${avatarBadge(m, mc, {w:20, fs:'9px'})}
           ${m}
         </td>${cells}
       </tr>`;
@@ -792,7 +790,7 @@ function _ppROAMSection(activeTeams) {
     ).join('');
 
     const cards = items.map(r => {
-      const tc2 = CONFIG.teams[r.team]?.color || '#475569';
+      const tc2 = CONFIG.teams[r.team]?.color || CLR.dark;
       return `
         <div class="pp-roam-card" style="border-color:${cat.border};">
           <div class="pp-roam-card-top">
@@ -840,21 +838,21 @@ function _ppROAMSection(activeTeams) {
 // ============================================================
 // Dépendances inter-équipes
 // ============================================================
-function _ppDepsSection(activeTeams) {
+function _ppDepsSection(_activeTeams) {
   const deps = _ppDepList();
 
   // Toutes les équipes connues (tickets + config) - pas seulement le filtre actif
   const ticketTeams = typeof _allTeams === 'function' ? _allTeams() : [];
   const allTeams = (ticketTeams.length ? ticketTeams : Object.keys(CONFIG.teams || {})).sort();
-  const teamSel = (id, field, cur) =>
+  const teamSel = (_id, _field, cur) =>
     `<option value="" ${!cur ? 'selected' : ''} disabled>- Équipe -</option>` +
     allTeams.map(t =>
       `<option value="${t}" ${cur === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`
     ).join('');
 
   const rows = deps.map(d => {
-    const fc = CONFIG.teams[d.fromTeam]?.color || '#475569';
-    const tc = CONFIG.teams[d.toTeam]?.color   || '#475569';
+    const fc = CONFIG.teams[d.fromTeam]?.color || CLR.dark;
+    const tc = CONFIG.teams[d.toTeam]?.color   || CLR.dark;
     return `
       <tr class="pp-tr">
         <td class="pp-td" style="max-width:200px;">
@@ -915,7 +913,7 @@ function _ppDepsSection(activeTeams) {
 }
 
 // Dependency heatmap matrix + timeline
-function _ppDepsHeatmap(deps, allTeams) {
+function _ppDepsHeatmap(deps, _allTeams) {
   // Build team-pair counts
   const pairs = {};
   const teamsInDeps = new Set();
@@ -932,13 +930,13 @@ function _ppDepsHeatmap(deps, allTeams) {
   const maxCount = Math.max(...Object.values(pairs), 1);
 
   const headerCells = dTeams.map(t => {
-    const c = CONFIG.teams[t]?.color || '#475569';
+    const c = CONFIG.teams[t]?.color || CLR.dark;
     const n = CONFIG.teams[t]?.name || t;
     return `<th style="padding:4px 6px;font-size:10px;font-weight:700;color:${c};text-align:center;writing-mode:vertical-lr;transform:rotate(180deg);height:60px;border-bottom:1px solid var(--border);">${n}</th>`;
   }).join('');
 
   const matrixRows = dTeams.map(from => {
-    const fc = CONFIG.teams[from]?.color || '#475569';
+    const fc = CONFIG.teams[from]?.color || CLR.dark;
     const fn = CONFIG.teams[from]?.name || from;
     const cells = dTeams.map(to => {
       if (from === to) return '<td style="padding:4px;text-align:center;background:var(--surface);"><span style="color:var(--text-muted);font-size:10px;">-</span></td>';
@@ -985,7 +983,7 @@ function _ppFistSection(activeTeams) {
 
   const cards = activeTeams.map(tid => {
     const tc    = CONFIG.teams[tid];
-    const color = tc?.color || '#475569';
+    const color = tc?.color || CLR.dark;
     const votes = Array.isArray(fist[tid]) ? fist[tid] : (fist[tid] ? [fist[tid]] : []);
     const count = votes.length;
     const avg   = count ? Math.round(votes.reduce((s, v) => s + v, 0) / count * 10) / 10 : 0;
@@ -1089,7 +1087,7 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
     const teamSize = members.length || Math.round(avgVel / 15); // fallback: ~15 pts/dev
 
     return {
-      tid, name: tc.name || tid, color: tc.color || '#475569',
+      tid, name: tc.name || tid, color: tc.color || CLR.dark,
       velocity: avgVel, teamSize,
       velPerDev: teamSize > 0 ? Math.round(avgVel / teamSize) : 0,
     };

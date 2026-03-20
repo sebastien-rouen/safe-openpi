@@ -932,7 +932,7 @@ function _rptAppendSprintCharts(container, tickets, ptsDone, ptsTotal, velTarget
   tickets.forEach(t => { const ty = t.type || 'autre'; types[ty] = (types[ty] || 0) + 1; });
   const typeLabels = Object.keys(types).map(t => typeName ? typeName(t) : t);
   const typeData   = Object.values(types);
-  const typeColors = Object.keys(types).map(t => CONFIG.typeColors[t] || '#94A3B8');
+  const typeColors = Object.keys(types).map(t => CONFIG.typeColors[t] || CLR.muted);
 
   const donutCtx = document.getElementById('rpt-sprint-donut');
   if (donutCtx) {
@@ -1178,8 +1178,8 @@ function _rptMoodVelocityChart(container, data, correlation) {
     return {
       label: team,
       data: teamData.map(d => ({ x: d.mood, y: d.velocity })),
-      backgroundColor: colors[team] || '#475569',
-      borderColor: colors[team] || '#475569',
+      backgroundColor: colors[team] || CLR.dark,
+      borderColor: colors[team] || CLR.dark,
       pointRadius: 6,
       pointHoverRadius: 8,
     };

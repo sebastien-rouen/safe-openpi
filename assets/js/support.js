@@ -49,7 +49,7 @@ function renderSupportList() {
 
   document.getElementById('support-list').innerHTML = tickets.map(t => {
     const assignee    = t.assignee || '?';
-    const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+    const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
     // Tickets critiques et hauts ouverts par défaut
     const startOpen   = t.priority === 'critical' || t.priority === 'high';
     return `
@@ -59,10 +59,10 @@ function renderSupportList() {
           <span style="font-weight:700;font-size:13px;color:var(--text-muted)">${_jiraBrowse(t.id, { style: 'color:inherit;text-decoration:none;font-weight:700;' })}</span>
           <span style="font-weight:600;font-size:14px">${t.title}</span>
           <span class="badge" style="background:${pColors[t.priority]}22;color:${pColors[t.priority]}">${pLabels[t.priority]}</span>
-          <span class="badge" style="background:${(sColors[t.status] || '#94A3B8')}22;color:${sColors[t.status] || '#94A3B8'}">${sLabels[t.status] || t.status}</span>
+          <span class="badge" style="background:${(sColors[t.status] || CLR.muted)}22;color:${sColors[t.status] || CLR.muted}">${sLabels[t.status] || t.status}</span>
         </div>
         <div style="display:flex;align-items:center;gap:12px;flex-shrink:0;">
-          <span class="avatar" style="background:${avatarColor}" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+          ${avatarBadge(t.assignee, avatarColor)}
           <span style="font-size:12px;color:var(--text-muted)">${t.date || ''}</span>
           <span style="font-size:18px;color:var(--text-muted)" id="sc-icon-${t.id}">${startOpen ? '▲' : '▼'}</span>
         </div>

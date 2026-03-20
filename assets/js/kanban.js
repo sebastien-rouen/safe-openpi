@@ -50,7 +50,7 @@ function renderKanban() {
     const wipText = col.wip > 0 ? `${colT.length}/${col.wip}` : '∞';
     const cat = statusCat(col.key);
     return `<div class="col-header${empty ? ' col-empty-state' : ''}" data-cat="${cat}" title="${col.label}">
-      <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
+      <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}</span></div>
       <span class="wip-indicator ${wipCls}">${wipText}</span>
     </div>`;
   }).join('')}</div>`;
@@ -65,7 +65,7 @@ function renderKanban() {
     const cat = statusCat(col.key);
     return `<div class="kanban-col${empty ? ' col-empty-state' : ''}">
       <div class="col-header" data-cat="${cat}" title="${col.label}">
-        <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
+        <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}</span></div>
         <span class="wip-indicator ${wipCls}">${wipText}</span>
       </div>
       <div class="col-body">${colT.map(t => ticketCard(t)).join('')}</div>
@@ -147,31 +147,31 @@ function renderKanban() {
 
   let ctHtml = '';
   if (avgCT || avgLT) {
-    ctHtml = `<div style="display:flex;gap:16px;padding:10px 0;border-bottom:1px solid var(--border);margin-bottom:6px;">
-      ${avgCT ? `<div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:800;color:#3B82F6;">${avgCT}<span style="font-size:11px;font-weight:400;">j</span></div><div style="font-size:10px;color:var(--text-muted);font-weight:600;">Cycle Time moy.</div><div style="font-size:9px;color:var(--text-muted);">In Progress → Done</div></div>` : ''}
-      ${avgLT ? `<div style="flex:1;text-align:center;"><div style="font-size:22px;font-weight:800;color:#F59E0B;">${avgLT}<span style="font-size:11px;font-weight:400;">j</span></div><div style="font-size:10px;color:var(--text-muted);font-weight:600;">Lead Time moy.</div><div style="font-size:9px;color:var(--text-muted);">Création → Done</div></div>` : ''}
+    ctHtml = `<div class="kb-ct-container">
+      ${avgCT ? `<div class="kb-metric-box"><div class="kb-metric-value" style="color:#3B82F6;">${avgCT}<span class="kb-metric-unit">j</span></div><div class="kb-metric-label">Cycle Time moy.</div><div class="kb-metric-detail">In Progress → Done</div></div>` : ''}
+      ${avgLT ? `<div class="kb-metric-box"><div class="kb-metric-value" style="color:#F59E0B;">${avgLT}<span class="kb-metric-unit">j</span></div><div class="kb-metric-label">Lead Time moy.</div><div class="kb-metric-detail">Création → Done</div></div>` : ''}
     </div>`;
   }
 
   document.getElementById('cycle-time-display').innerHTML = ctHtml + Object.entries(typeGroups)
     .sort((a, b) => b[1].count - a[1].count)
     .map(([type, g]) => {
-      const color  = CONFIG.typeColors[type] || '#94A3B8';
+      const color  = CONFIG.typeColors[type] || CLR.muted;
       const donePct = g.count ? Math.round(g.done / g.count * 100) : 0;
       // Per-type cycle time
       const typeDone = tickets.filter(t => t.type === type && isDone(t.status) && t.cycleTimeDays != null);
       const typeCT = typeDone.length ? (typeDone.reduce((a, t) => a + t.cycleTimeDays, 0) / typeDone.length).toFixed(1) : null;
-      return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
-        <span style="display:flex;align-items:center;gap:6px;">
+      return `<div class="kb-type-row">
+        <span class="kb-type-label">
           <span style="width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;"></span>
           ${typeName(type)}
         </span>
-        <span style="display:flex;gap:12px;color:var(--text-muted)">
+        <span class="kb-type-stats">
           <span title="Tickets">${g.count} tickets</span>
           <span title="Points">${g.points} pts</span>
           ${typeCT ? `<span title="Cycle Time moyen" style="color:#3B82F6;font-weight:700;">${typeCT}j</span>` : ''}
           <strong style="color:${color}">${donePct}% done</strong>
         </span>
       </div>`;
-    }).join('') || '<div style="padding:8px;color:var(--text-muted)">Aucun ticket</div>';
+    }).join('') || '<div class="kb-empty">Aucun ticket</div>';
 }

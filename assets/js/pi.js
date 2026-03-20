@@ -69,7 +69,7 @@ function renderPI() {
     const pct     = tks.length ? Math.round(done / tks.length * 100) : 0;
     const bar     = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
     let tip = `<strong>${eid}</strong><br>${title}`;
-    tip += `<hr style="border:none;border-top:1px solid #475569;margin:5px 0">`;
+    tip += `<hr class="pi-divider" style="margin:5px 0">`;
     tip += `${bar} ${pct}%<br>${done}/${tks.length} tickets`;
     if (pts)     tip += ` · ${pts} pts`;
     if (blocked) tip += ` · <span style="color:#FCA5A5">⚠ ${blocked} bloqué${blocked > 1 ? 's' : ''}</span>`;
@@ -77,7 +77,7 @@ function renderPI() {
   }
 
   // Helper : rendu d'une liste d'epics dans une cellule du tableau
-  function _epicLines(epics, team, chipClass, bgColor) {
+  function _epicLines(epics, team, chipClass, _bgColor) {
     if (!epics.length) return '<span style="color:var(--text-muted);font-size:11px">-</span>';
     // Sort epics by completion % ascending (least complete first) - improvement #5
     const sortedEpics = epics.slice().sort((a, b) => {
@@ -96,11 +96,11 @@ function renderPI() {
       const pctClr  = pct < 30 ? '#EF4444' : pct < 70 ? '#F59E0B' : '#22C55E';
       const blocked = tks.some(t => t.status === 'blocked');
       const statuses = [...new Set(tks.map(t => t.status))].join(',');
-      return `<div class="pi-tbl-epic" data-eid="${eid}" data-etitle="${(e.title || '').replace(/"/g, '&quot;').toLowerCase()}" data-statuses="${statuses}" style="display:flex;align-items:center;gap:6px;padding:4px 6px;border-radius:5px;margin-bottom:3px;background:${e.color}11;border:1px solid ${e.color}33;cursor:pointer" data-tip="${eid}|${team}">
+      return `<div class="pi-tbl-epic pi-epic-row" data-eid="${eid}" data-etitle="${(e.title || '').replace(/"/g, '&quot;').toLowerCase()}" data-statuses="${statuses}" style="background:${e.color}11;border:1px solid ${e.color}33;" data-tip="${eid}|${team}">
         <span class="pi-chip ${chipClass}" style="background:${e.color};flex-shrink:0;margin:0;cursor:default" onclick="event.stopPropagation()">${e.id}</span>
-        <span style="font-size:11px;color:var(--text);flex:1;min-width:0;max-width:100px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${e.title || ''}">${e.title || eid}</span>
+        <span class="pi-epic-title" title="${e.title || ''}">${e.title || eid}</span>
         ${blocked ? '<span style="color:#EF4444;font-size:11px;flex-shrink:0" title="Ticket(s) bloqué(s)">⚠</span>' : ''}
-        <div style="width:30px;height:4px;background:rgba(0,0,0,.1);border-radius:2px;overflow:hidden;flex-shrink:0;margin-left:auto" title="${pct}%"><div style="height:100%;width:${pct}%;background:${pctClr};border-radius:2px"></div></div>
+        <div class="pi-mini-progress" title="${pct}%"><div style="height:100%;width:${pct}%;background:${pctClr};border-radius:2px"></div></div>
       </div>`;
     }).join('');
   }
@@ -120,7 +120,7 @@ function renderPI() {
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:12px 16px;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow)">
         <input id="_pi-search" type="text" placeholder="🔍  Rechercher un epic…" style="padding:6px 12px;border:1px solid var(--border);border-radius:99px;font-size:12px;outline:none;width:200px" oninput="_piTableFilter()">
         <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
-          <span style="font-size:11px;color:var(--text-muted);font-weight:600">Statut :</span>
+          <span class="pi-filter-label">Statut :</span>
           <button class="pi-tf-btn active" data-tf="all" onclick="_piTableFilterStatus(this)" style="padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
           ${allStatuses.map(s => `<button class="pi-tf-btn" data-tf="${s.key}" data-color="${s.color}" onclick="_piTableFilterStatus(this)" style="padding:4px 10px;border-radius:99px;border:1px solid ${s.color}44;background:#fff;color:${s.color};font-size:11px;font-weight:600;cursor:pointer">${s.label}</button>`).join('')}
         </div>
@@ -141,7 +141,7 @@ function renderPI() {
 
   allTeams.forEach(team => {
     const teamCfg = CONFIG.teams[team] || {};
-    const color   = teamCfg.color || '#94A3B8';
+    const color   = teamCfg.color || CLR.muted;
     const name    = teamCfg.name  || `Équipe ${team}`;
     html += `<tr>
       <td class="team-cell" style="color:${color}">${name}</td>`;
@@ -169,7 +169,8 @@ function renderPI() {
   if (!_tipEl) {
     _tipEl = document.createElement('div');
     _tipEl.id = '_pi-chip-tip';
-    _tipEl.style.cssText = 'position:fixed;z-index:9999;background:#1E293B;color:#E2E8F0;padding:8px 12px;border-radius:8px;font-size:11px;line-height:1.6;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:300px;display:none;';
+    _tipEl.className = 'pi-tooltip';
+    _tipEl.style.maxWidth = '300px';
     document.body.appendChild(_tipEl);
   }
   const _showTip = (html, e) => { _tipEl.innerHTML = html; _tipEl.style.display = 'block'; _moveTip(e); };
@@ -229,7 +230,7 @@ function renderPI() {
 
   // Objectifs PI - epics par équipe, groupés par sprint, avec progress live
   // Cross-reference piprep objectives if available
-  const ppObjs = (typeof _ppGet === 'function') ? (_ppGet('objectives') || []) : [];
+  // ppObjs removed - was unused
 
   // Aggregate stats for global summary
   let _piObjStats = { totalEpics: 0, doneEpics: 0, totalTk: 0, doneTk: 0, atRisk: [] };
@@ -237,7 +238,7 @@ function renderPI() {
   // --- Helper: render one team's objectives ---
   const _piObjTeamHtml = (team) => {
     const teamCfg     = CONFIG.teams[team] || {};
-    const color       = teamCfg.color || '#94A3B8';
+    const color       = teamCfg.color || CLR.muted;
     const name        = teamCfg.name  || `Équipe ${team}`;
     const teamTickets = tickets.filter(t => t.team === team);
 
@@ -267,7 +268,7 @@ function renderPI() {
       const epicIds = [...sprintMap[sp]];
       const rows = epicIds.map(eid => {
         const e        = EPICS.find(x => x.id === eid);
-        const ec       = e?.color || '#94A3B8';
+        const ec       = e?.color || CLR.muted;
         const etitle   = e?.title || eid;
         const eTickets = teamTickets.filter(t => t.epic === eid);
         const done     = eTickets.filter(t => isDone(t.status)).length;
@@ -308,7 +309,7 @@ function renderPI() {
     }).join('');
 
     const teamSummary = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-      <div style="flex:1;height:6px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;">
+      <div class="pi-progress-track">
         <div style="height:100%;width:${teamPct}%;background:${teamPctClr};border-radius:3px;transition:width .3s;"></div>
       </div>
       <span style="font-size:11px;font-weight:700;color:${teamPctClr};white-space:nowrap;">${teamPct}%</span>
@@ -338,13 +339,13 @@ function renderPI() {
     const gPts      = gTickets.reduce((a, t) => a + (t.points || 0), 0);
     const gPtsDone  = gTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
     const gPctClr   = gPct < 30 ? '#EF4444' : gPct < 70 ? '#F59E0B' : '#22C55E';
-    const gColor    = g.color || '#94A3B8';
+    const gColor    = g.color || CLR.muted;
 
     const teamsHtml = gTeams.map(t => _piObjTeamHtml(t)).join('');
 
     return `<div class="pi-obj-group" style="margin-bottom:20px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 12px;background:${gColor}0C;border-radius:8px;border:1px solid ${gColor}22;">
-        <span style="width:10px;height:10px;border-radius:50%;background:${gColor};flex-shrink:0;"></span>
+      <div class="pi-group-header" style="background:${gColor}0C;border:1px solid ${gColor}22;">
+        <span class="pi-status-dot" style="background:${gColor};"></span>
         <span style="font-weight:700;font-size:14px;color:${gColor};flex:1;">${g.name || g.id}</span>
         <div style="display:flex;align-items:center;gap:6px;">
           <div style="width:80px;height:5px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;">
@@ -365,7 +366,7 @@ function renderPI() {
   document.getElementById('pi-objectives').innerHTML =
     groupSections.join('') +
     (ungroupedHtml ? `<div class="pi-obj-group" style="margin-bottom:20px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;padding:8px 12px;background:rgba(0,0,0,.03);border-radius:8px;border:1px solid var(--border);">
+      <div class="pi-group-header" style="background:rgba(0,0,0,.03);border:1px solid var(--border);">
         <span style="font-weight:700;font-size:14px;color:var(--text-muted);flex:1;">Autres équipes</span>
       </div>
       ${ungroupedHtml}
@@ -390,7 +391,7 @@ function renderPI() {
     if (ctx._chart) ctx._chart.destroy();
 
     const teamLabels = allTeams.map(t => CONFIG.teams[t]?.name || `Équipe ${t}`);
-    const teamColors = allTeams.map(t => CONFIG.teams[t]?.color || '#94A3B8');
+    const teamColors = allTeams.map(t => CONFIG.teams[t]?.color || CLR.muted);
     const capacity   = allTeams.map(t => CONFIG.teams[t]?.velocity || 80);
     const planned    = allTeams.map(t =>
       tickets.filter(x => x.team === t).reduce((a, x) => a + x.points, 0)
@@ -490,7 +491,7 @@ function _piTableFilterStatus(btn) {
 function _piShowCellDetail(team, epicIds) {
   const teamCfg   = CONFIG.teams[team] || {};
   const teamName  = teamCfg.name  || `Équipe ${team}`;
-  const teamColor = teamCfg.color || '#94A3B8';
+  const teamColor = teamCfg.color || CLR.muted;
 
   const ST_CFG = {
     done:    { bg: '#DCFCE7', fg: '#15803D', label: 'Terminé'   },
@@ -507,7 +508,7 @@ function _piShowCellDetail(team, epicIds) {
   const sections = epicIds.map(eid => {
     const epic   = EPICS.find(x => x.id === eid);
     const eTitle = epic?.title || eid;
-    const eColor = epic?.color || '#94A3B8';
+    const eColor = epic?.color || CLR.muted;
     const tks    = getTickets().filter(t => t.team === team && t.epic === eid);
     if (!tks.length) return '';
     totalTickets += tks.length;
@@ -522,17 +523,17 @@ function _piShowCellDetail(team, epicIds) {
 
     const rows = tks.map(t => {
       const st      = ST_CFG[t.status] || ST_CFG.todo;
-      const typeClr = CONFIG.typeColors?.[t.type] || '#475569';
+      const typeClr = CONFIG.typeColors?.[t.type] || CLR.dark;
       const avatar  = (t.assignee || '?').slice(0, 2).toUpperCase();
       const aColor  = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[t.assignee]) || teamColor;
       const pIcon   = priorityIcon(t.priority || 'medium');
       const ticketLink = _jiraBrowse(t.id, { style: `font-weight:700;font-size:12px;color:${typeClr};text-decoration:none;` });
       const _tkDone = isDone(t.status);
 
-      return `<div data-tk-id="${t.id}" data-tk-status="${t.status}" data-tk-type="${t.type || ''}" data-tk-assign="${t.assignee || ''}" data-tk-title="${(t.title || '').replace(/"/g, '&quot;')}" style="display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;margin-bottom:4px;background:${_tkDone ? '#FAFAFA' : '#fff'};border:1px solid ${_tkDone ? 'var(--border)' : '#E2E8F0'};transition:background .15s;">
+      return `<div data-tk-id="${t.id}" data-tk-status="${t.status}" data-tk-type="${t.type || ''}" data-tk-assign="${t.assignee || ''}" data-tk-title="${(t.title || '').replace(/"/g, '&quot;')}" class="pi-ticket-row" style="background:${_tkDone ? '#FAFAFA' : '#fff'};border-color:${_tkDone ? 'var(--border)' : '#E2E8F0'}">
         <span style="font-size:13px;flex-shrink:0">${pIcon}</span>
-        <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${typeClr}22;color:${typeClr};flex-shrink:0;white-space:nowrap">${typeName(t.type || 'story')}</span>
-        <span style="flex:1;min-width:0;${_tkDone ? 'opacity:.55;text-decoration:line-through;' : ''}">
+        <span class="pi-type-badge" style="background:${typeClr}22;color:${typeClr};white-space:nowrap">${typeName(t.type || 'story')}</span>
+        <span class="pi-ticket-title" style="${_tkDone ? 'opacity:.55;text-decoration:line-through;' : ''}">
           ${ticketLink}
           <span style="font-size:12px;color:var(--text);margin-left:4px">${t.title || '(sans titre)'}</span>
         </span>
@@ -550,14 +551,14 @@ function _piShowCellDetail(team, epicIds) {
       <!-- Epic header -->
       <div style="background:${eColor}11;border-left:4px solid ${eColor};padding:12px 16px;">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-          <span style="width:10px;height:10px;border-radius:50%;background:${eColor};flex-shrink:0"></span>
+          <span class="pi-status-dot" style="background:${eColor}"></span>
           ${epicLink}
           <span style="font-size:13px;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${eTitle}</span>
           ${blockedBadge}
         </div>
         <!-- Progress bar -->
         <div style="display:flex;align-items:center;gap:8px">
-          <div style="flex:1;height:6px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden">
+          <div class="pi-progress-track">
             <div style="height:100%;width:${pct}%;background:${pctGrad};border-radius:3px;transition:width .4s"></div>
           </div>
           <span style="font-size:11px;font-weight:700;color:${pctGrad};flex-shrink:0">${pct}%</span>
@@ -584,23 +585,23 @@ function _piShowCellDetail(team, epicIds) {
     <div id="_pimod-filters" style="display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:#F8FAFC;border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <input id="_pimod-search" type="text" placeholder="🔍  Titre ou ID…" oninput="_piModFilter()" style="padding:5px 10px;border:1px solid var(--border);border-radius:99px;font-size:12px;outline:none;width:170px">
-        <span style="font-size:11px;color:var(--text-muted);font-weight:600">Statut :</span>
+        <span class="pi-filter-label">Statut :</span>
         <button class="pimod-btn active" data-mf-type="status" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid #475569;background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
         ${presentStatuses.map(s => {
-          const c = ST_COLORS[s] || '#94A3B8';
+          const c = ST_COLORS[s] || CLR.muted;
           return `<button class="pimod-btn" data-mf-type="status" data-mf-val="${s}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:#fff;color:${c};font-size:11px;font-weight:600;cursor:pointer">${ST_LABELS[s] || s}</button>`;
         }).join('')}
       </div>
       ${presentTypes.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--text-muted);font-weight:600">Type :</span>
+        <span class="pi-filter-label">Type :</span>
         <button class="pimod-btn active" data-mf-type="type" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid #475569;background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
         ${presentTypes.map(tp => {
-          const c = CONFIG.typeColors?.[tp] || '#475569';
+          const c = CONFIG.typeColors?.[tp] || CLR.dark;
           return `<button class="pimod-btn" data-mf-type="type" data-mf-val="${tp}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:#fff;color:${c};font-size:11px;font-weight:600;cursor:pointer">${typeName(tp)}</button>`;
         }).join('')}
       </div>` : ''}
       ${presentAssigns.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-size:11px;color:var(--text-muted);font-weight:600">Assigné :</span>
+        <span class="pi-filter-label">Assigné :</span>
         <button class="pimod-btn active" data-mf-type="assignee" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid #475569;background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
         ${presentAssigns.map(a => {
           const c = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[a]) || teamColor;
@@ -650,7 +651,7 @@ window._piModFilterBtn = function(btn) {
     group.forEach(b => {
       const isAll = b.dataset.mfVal === 'all';
       b.classList.toggle('active', isAll);
-      const origClr = b.dataset.color || '#475569';
+      const origClr = b.dataset.color || CLR.dark;
       b.style.background  = isAll ? '#475569' : '#fff';
       b.style.color       = isAll ? '#fff' : origClr;
       b.style.borderColor = isAll ? '#475569' : (origClr + '55');
@@ -659,7 +660,7 @@ window._piModFilterBtn = function(btn) {
     if (allBtn) { allBtn.classList.remove('active'); allBtn.style.background = '#fff'; allBtn.style.color = '#475569'; allBtn.style.borderColor = '#47556955'; }
     btn.classList.toggle('active');
     const on = btn.classList.contains('active');
-    const c  = btn.dataset.color || '#475569';
+    const c  = btn.dataset.color || CLR.dark;
     btn.style.background  = on ? c : '#fff';
     btn.style.color       = on ? '#fff' : c;
     btn.style.borderColor = on ? c : (c + '55');
@@ -702,7 +703,7 @@ function _renderVelocityHistory(allTeams) {
   const _velTipData = {}; // per-team tip data for hover
   const teamRows = allTeams.map(t => {
     const cfg     = CONFIG.teams[t] || {};
-    const color   = cfg.color || '#94A3B8';
+    const color   = cfg.color || CLR.muted;
     const name    = cfg.name  || t;
     const history = cfg.velocityHistory || [];
     // Cible empirique : moyenne des vélocités historiques
@@ -753,7 +754,7 @@ function _renderVelocityHistory(allTeams) {
   if (!_tipEl) {
     _tipEl = document.createElement('div');
     _tipEl.id = '_pi-chip-tip';
-    _tipEl.style.cssText = 'position:fixed;z-index:9999;background:#1E293B;color:#E2E8F0;padding:8px 12px;border-radius:8px;font-size:11px;line-height:1.6;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:360px;display:none;';
+    _tipEl.className = 'pi-tooltip';
     document.body.appendChild(_tipEl);
   }
   el.querySelectorAll('[data-vel-team]').forEach(td => {
@@ -773,7 +774,7 @@ function _renderVelocityHistory(allTeams) {
     const tipHtml = `<div style="font-size:12px;line-height:1.7">
       <div style="font-weight:700;margin-bottom:6px;color:${d.color}">📊 ${d.name} - Calcul cible</div>
       <table style="width:100%;margin-bottom:8px">${sprintLines}</table>
-      <hr style="border:none;border-top:1px solid #475569;margin:6px 0">
+      <hr class="pi-divider">
       <div style="display:flex;flex-direction:column;gap:2px">
         <span>Somme : <strong>${sum} pts</strong> sur <strong>${d.histVals.length}</strong> sprints</span>
         <span>Moyenne : ${sum} ÷ ${d.histVals.length} = <strong style="color:#60A5FA">${d.empirical} pts</strong></span>
@@ -818,7 +819,7 @@ function _renderVelocityHistory(allTeams) {
       .filter(t => (CONFIG.teams[t]?.velocityHistory || []).length)
       .map(t => {
         const cfg   = CONFIG.teams[t] || {};
-        const color = cfg.color || '#94A3B8';
+        const color = cfg.color || CLR.muted;
         const data  = allSprints.map(spName => {
           const e = (cfg.velocityHistory || []).find(s => s.name === spName);
           return e ? e.velocity : null;
@@ -998,7 +999,7 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
 function _piVelCellDetail(teamId, sprintName) {
   const tc        = CONFIG.teams[teamId] || {};
   const teamName  = tc.name  || teamId;
-  const teamColor = tc.color || '#94A3B8';
+  const teamColor = tc.color || CLR.muted;
   const isCurrent = sprintName === '_current';
 
   // Tickets de cette équipe
@@ -1039,20 +1040,20 @@ function _piVelCellDetail(teamId, sprintName) {
   const typeSummary = Object.entries(byType)
     .sort((a, b) => b[1].pts - a[1].pts)
     .map(([type, g]) => {
-      const color = CONFIG.typeColors?.[type] || '#475569';
+      const color = CONFIG.typeColors?.[type] || CLR.dark;
       return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:99px;background:${color}15;border:1px solid ${color}33;font-size:11px;font-weight:600;color:${color}">${typeName(type)} ${g.count} · ${g.pts} pts</span>`;
     }).join(' ');
 
   const rows = tks
     .sort((a, b) => (b.points || 0) - (a.points || 0))
     .map(t => {
-      const typeClr = CONFIG.typeColors?.[t.type] || '#475569';
+      const typeClr = CONFIG.typeColors?.[t.type] || CLR.dark;
       const epicObj = typeof EPICS !== 'undefined' ? EPICS.find(e => e.id === t.epic) : null;
       const epicLabel = epicObj ? epicTag(epicObj, t.epic, { maxWidth: 100 }) : '';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s" onclick="closeModalDirect();openModal('${t.id}')" onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='transparent'">
-        <span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:10px;font-weight:700;background:${typeClr}22;color:${typeClr};flex-shrink:0">${typeName(t.type || 'story')}</span>
+      return `<div class="pi-modal-row" onclick="closeModalDirect();openModal('${t.id}')">
+        <span class="pi-type-badge" style="background:${typeClr}22;color:${typeClr}">${typeName(t.type || 'story')}</span>
         ${_jiraBrowse(t.id, { style: 'font-weight:600;font-size:11px;color:inherit;text-decoration:none;flex-shrink:0' })}
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--text)">${t.title}</span>
+        <span class="pi-ticket-title" style="font-size:12px;color:var(--text)">${t.title}</span>
         ${epicLabel}
         ${ptsBadge(t.points, { size: 'small' })}
         <span style="font-size:10px;color:var(--text-muted);flex-shrink:0">${t.assignee || '–'}</span>
@@ -1086,8 +1087,6 @@ function _renderPIBuffer(tickets, allTeams) {
   const donePts      = bufferTickets.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
   const inprogPts    = bufferTickets.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
   const todoPts      = totalPts - donePts - inprogPts;
-  const donePct      = totalPts ? Math.round(donePts / totalPts * 100) : 0;
-  const inprogPct    = totalPts ? Math.round(inprogPts / totalPts * 100) : 0;
 
   // Total sprint points for ratio
   const sprintTotal  = tickets.reduce((s, t) => s + (t.points || 0), 0);
@@ -1106,7 +1105,7 @@ function _renderPIBuffer(tickets, allTeams) {
   // Per-team breakdown
   const teamRows = allTeams.map(tid => {
     const tc      = CONFIG.teams[tid] || {};
-    const color   = tc.color || '#94A3B8';
+    const color   = tc.color || CLR.muted;
     const name    = tc.name || tid;
     const tBuf    = bufferTickets.filter(t => t.team === tid);
     if (!tBuf.length) return '';
@@ -1136,12 +1135,12 @@ function _renderPIBuffer(tickets, allTeams) {
     if (!tks.length) return '';
     const pts = tks.reduce((s, t) => s + (t.points || 0), 0);
     const rows = tks.map(t => {
-      const teamColor = CONFIG.teams[t.team]?.color || '#94A3B8';
+      const teamColor = CONFIG.teams[t.team]?.color || CLR.muted;
       const teamName  = CONFIG.teams[t.team]?.name || t.team;
-      return `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:5px;font-size:12px;cursor:pointer;transition:background .15s" onclick="openModal('${t.id}')" onmouseover="this.style.background='#F1F5F9'" onmouseout="this.style.background='transparent'">
+      return `<div class="pi-buf-row" onclick="openModal('${t.id}')">
         <span style="color:${cfg.color};flex-shrink:0">${cfg.icon}</span>
         ${_jiraBrowse(t.id, { style: 'font-weight:600;font-size:11px;color:inherit;text-decoration:none;flex-shrink:0' })}
-        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${t.title}</span>
+        <span class="pi-ticket-title" style="color:var(--text)">${t.title}</span>
         ${(() => { const sn = t.sprintName || (t.allSprints && t.allSprints[t.allSprints.length - 1]) || CONFIG.teams[t.team]?.sprintName || ''; return sn ? `<span style="font-size:10px;color:var(--text-muted);font-weight:600;flex-shrink:0;white-space:nowrap">${sn.replace(/sprint\s*/i, 'S')}</span>` : ''; })()}
         ${ptsBadge(t.points, {size:'small'})}
         <span style="font-size:10px;color:${teamColor};font-weight:600;flex-shrink:0">${teamName}</span>
@@ -1192,12 +1191,12 @@ function _renderPIBuffer(tickets, allTeams) {
       <!-- Per-team table -->
       ${teamRows ? `<table style="width:100%;border-collapse:collapse;margin-bottom:16px">
         <thead><tr style="border-bottom:1px solid var(--border)">
-          <th style="text-align:left;font-size:11px;color:var(--text-muted);padding:4px 8px;font-weight:600">Équipe</th>
-          <th style="text-align:center;font-size:11px;color:var(--text-muted);padding:4px 8px;font-weight:600">Tickets</th>
-          <th style="text-align:center;font-size:11px;color:var(--text-muted);padding:4px 8px;font-weight:600">Planifié</th>
-          <th style="text-align:center;font-size:11px;color:var(--text-muted);padding:4px 8px;font-weight:600">Terminé</th>
-          <th style="text-align:center;font-size:11px;color:var(--text-muted);padding:4px 8px;font-weight:600">Progression</th>
-          <th style="text-align:center;font-size:11px;color:var(--text-muted);padding:4px 8px;font-weight:600">%</th>
+          <th class="pi-table-th" style="text-align:left">Équipe</th>
+          <th class="pi-table-th" style="text-align:center">Tickets</th>
+          <th class="pi-table-th" style="text-align:center">Planifié</th>
+          <th class="pi-table-th" style="text-align:center">Terminé</th>
+          <th class="pi-table-th" style="text-align:center">Progression</th>
+          <th class="pi-table-th" style="text-align:center">%</th>
         </tr></thead>
         <tbody>${teamRows}</tbody>
       </table>` : ''}
@@ -1241,7 +1240,7 @@ function _renderPIBuffer(tickets, allTeams) {
         <span>🔵 Features : <strong>${featurePts} pts</strong> (${100 - bufferRatio}%)</span>
         <span>🟡 Buffer : <strong>${totalPts} pts</strong> (${bufferRatio}%)</span>
       </div>
-      <hr style="border:none;border-top:1px solid #475569;margin:6px 0">
+      <hr class="pi-divider">
       <div style="font-weight:700;margin-bottom:4px">🛡️ Détail buffer - ${bufferTickets.length} tickets</div>
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:6px">
         <span>✅ ${bufDone.length} terminé${bufDone.length > 1 ? 's' : ''} (${donePts} pts)</span>
@@ -1249,7 +1248,7 @@ function _renderPIBuffer(tickets, allTeams) {
         ${bufTodo.length ? `<span>📋 ${bufTodo.length} non commencé${bufTodo.length > 1 ? 's' : ''} (${todoPts} pts)</span>` : ''}
         ${bufBlocked.length ? `<span>🚫 ${bufBlocked.length} bloqué${bufBlocked.length > 1 ? 's' : ''}</span>` : ''}
       </div>
-      <hr style="border:none;border-top:1px solid #475569;margin:6px 0">
+      <hr class="pi-divider">
       <div style="font-weight:700;margin-bottom:4px">Par type</div>
       <table style="width:100%">${typeLines}</table>
     </div>`;
@@ -1260,7 +1259,7 @@ function _renderPIBuffer(tickets, allTeams) {
     if (!_tipEl) {
       _tipEl = document.createElement('div');
       _tipEl.id = '_pi-chip-tip';
-      _tipEl.style.cssText = 'position:fixed;z-index:9999;background:#1E293B;color:#E2E8F0;padding:8px 12px;border-radius:8px;font-size:11px;line-height:1.6;pointer-events:none;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:360px;display:none;';
+      _tipEl.className = 'pi-tooltip';
       document.body.appendChild(_tipEl);
     }
     ratioEl.addEventListener('mouseenter', e => { _tipEl.innerHTML = ratioTipHtml; _tipEl.style.display = 'block'; _tipEl.style.maxWidth = '360px'; _movRatioTip(e); });

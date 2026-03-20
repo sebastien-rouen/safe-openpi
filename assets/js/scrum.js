@@ -326,7 +326,7 @@ function _renderMoodPanel() {
 
   const cards = teams.map(tid => {
     const tc    = CONFIG.teams[tid];
-    const color = tc?.color || '#475569';
+    const color = tc?.color || CLR.dark;
     const key   = _moodKey(tid);
     const votes = Array.isArray(md.votes?.[key]) ? md.votes[key] : [];
     const count = votes.length;
@@ -347,13 +347,13 @@ function _renderMoodPanel() {
 
     const btns = [1,2,3,4,5].map(n => `
       <button onclick="_moodVote('${tid}',${n})"
-        style="border:1.5px solid var(--border);border-radius:10px;background:var(--surface);padding:8px 12px;font-size:22px;cursor:pointer;transition:all .15s;"
+        class="sc-mood-btn"
         title="${n} - ${labels[n]}">${emojis[n-1]}</button>`
     ).join('');
 
     const actions = count ? `
-      <button onclick="_moodUndo('${tid}')" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;" title="Annuler le dernier vote">↩</button>
-      <button onclick="_moodReset('${tid}')" style="font-size:11px;padding:4px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-muted);cursor:pointer;" title="Réinitialiser">✕</button>` : '';
+      <button onclick="_moodUndo('${tid}')" class="sc-action-btn-sm" title="Annuler le dernier vote">↩</button>
+      <button onclick="_moodReset('${tid}')" class="sc-action-btn-sm" title="Réinitialiser">✕</button>` : '';
 
     return `<div class="mood-card" style="border-left:3px solid ${color};border:1.5px solid ${borderColor};border-left:3px solid ${color};">
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
@@ -810,7 +810,7 @@ window._toggleDailyActivity = function() {
 
 function _daRenderRow(c) {
   const authorName  = c.author || c.assignee || '';
-  const avatarColor = MEMBER_COLORS[authorName] || '#64748B';
+  const avatarColor = MEMBER_COLORS[authorName] || CLR.slate;
   let transitionHtml;
   if (c.kind === 'status') {
     const fromS = _mapStatus(c.from) || c.from;
@@ -828,7 +828,7 @@ function _daRenderRow(c) {
       <span class="da-ticket-title">${c.title}</span>
     </span>
     <span class="da-assignee" title="${authorName}">
-      <span class="avatar" style="background:${avatarColor};width:20px;height:20px;font-size:9px;flex-shrink:0;">${initials(authorName)}</span>
+      ${avatarBadge(authorName, avatarColor, {w:20, fs:'9px'})}
     </span>
   </div>`;
 }
@@ -1115,7 +1115,7 @@ function _renderBoardColumns(filtered) {
     const empty = !colCounts[col.key];
     const cat = statusCat(col.key);
     return `<div class="col-header${empty ? ' col-empty-state' : ''}" data-cat="${cat}" title="${col.label}">
-      <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
+      <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}</span></div>
       <span class="col-count">${colCounts[col.key]}</span>
     </div>`;
   }).join('')}</div>`;
@@ -1129,7 +1129,7 @@ function _renderBoardColumns(filtered) {
     const cat = statusCat(col.key);
     return `<div class="board-col${empty ? ' col-empty-state' : ''}">
       <div class="col-header" data-cat="${cat}" title="${col.label}">
-        <div class="col-title"><span style="width:10px;height:10px;border-radius:50%;background:${col.color};display:inline-block;flex-shrink:0;"></span><span class="col-label">${col.label}</span></div>
+        <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}</span></div>
         <span class="col-count">${colTickets.length}</span>
       </div>
       <div class="col-body">${colTickets.map(t => ticketCard(t)).join('')}</div>
@@ -1214,7 +1214,7 @@ function _renderBoardDeadlines(filtered) {
 
 function _deadlineCard(t, dateStr) {
   const epic        = EPICS.find(e => e.id === t.epic);
-  const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+  const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
   const isBlocked   = t.status === 'blocked';
   const isFlagged   = !!t.flagged;
   const extraCls    = isBlocked ? ' blocked' : isFlagged ? ' flagged' : '';
@@ -1222,10 +1222,10 @@ function _deadlineCard(t, dateStr) {
     <span style="font-size:11px;color:var(--text-muted);min-width:45px;flex-shrink:0;">${dateStr}</span>
     <span class="badge badge-${t.status}" style="font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
     <span class="ticket-prio-key">${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
-    <span style="flex:1;font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title}</span>
+    <span class="sc-truncate-sm">${t.title}</span>
     ${epicTag(epic, t.epic)}
     ${ptsBadge(t.points, {size:'small'})}
-    <span class="avatar" style="background:${avatarColor};width:22px;height:22px;font-size:9px;flex-shrink:0;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+    ${avatarBadge(t.assignee, avatarColor, {w:22, fs:'9px'})}
   </div>`;
 }
 
@@ -1297,7 +1297,7 @@ function _renderBoardList(filtered) {
     </div>
     ${sorted.map(t => {
       const epic = EPICS.find(e => e.id === t.epic);
-      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+      const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
       const _tkDone = isDone(t.status);
       const rowCls = t.status === 'blocked' ? ' bl-blocked' : t.flagged ? ' bl-flagged' : t.buffer ? ' bl-buffer' : '';
       let ddStr = '';
@@ -1314,7 +1314,7 @@ function _renderBoardList(filtered) {
         <span class="bl-cell" style="width:55px;">${ptsBadge(t.points, {size:'small'})}</span>
         <span class="bl-cell" style="width:80px;font-size:11px;color:var(--text-muted);">${ddStr}</span>
         <span class="bl-cell" style="width:110px;">${epicTag(epic, t.epic)}</span>
-        <span class="bl-cell" style="width:32px;"><span class="avatar" style="background:${avatarColor};width:22px;height:22px;font-size:9px;" title="${t.assignee || ''}">${initials(t.assignee)}</span></span>
+        <span class="bl-cell" style="width:32px;">${avatarBadge(t.assignee, avatarColor, {w:22, fs:'9px'})}</span>
       </div>`;
     }).join('')}`;
 }
@@ -1339,8 +1339,8 @@ function _showScrumStatDetail(filter) {
 
   // Type summary pills
   const typePills = typeOrder.map(type => {
-    const c = CONFIG.typeColors[type] || '#475569';
-    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;background:${c}18;border:1px solid ${c}40;font-size:11px;font-weight:700;color:${c};margin:2px;">${typeName(type)} ×${byType[type].length}</span>`;
+    const c = CONFIG.typeColors[type] || CLR.dark;
+    return `<span class="sc-type-pill" style="background:${c}18;border:1px solid ${c}40;color:${c};">${typeName(type)} ×${byType[type].length}</span>`;
   }).join('');
 
   // Points total
@@ -1348,23 +1348,23 @@ function _showScrumStatDetail(filter) {
 
   document.getElementById('modal-title').innerHTML = `${cfg.icon} ${cfg.label} <span style="font-size:14px;font-weight:400;color:#94A3B8;">(${cfg.list.length} · ${totalPts} pts)</span>`;
   document.getElementById('modal-body').innerHTML = `
-    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #E2E8F0;">${typePills}</div>
+    <div class="sc-pills-bar">${typePills}</div>
     ${cfg.list.map(t => {
       const epic        = EPICS.find(e => e.id === t.epic);
-      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+      const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
       const _tkDone     = isDone(t.status);
       const strike      = _tkDone ? 'text-decoration:line-through;opacity:.5;' : '';
-      const flagBadge   = t.flagged ? '<span style="color:#DC2626;font-size:11px;font-weight:700;flex-shrink:0;">🚩</span>' : '';
+      const flagBadge   = t.flagged ? '<span class="sc-flag-badge">🚩</span>' : '';
       const rowBg = t.flagged ? 'background:#FEF2F2;' : t.buffer ? 'background:#F0FDF4;' : '';
-      return `<div style="display:flex;align-items:center;gap:8px;${rowBg}padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
+      return `<div class="sc-ticket-row" style="${rowBg}${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
         ${flagBadge}
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${strike}">${_jiraBrowse(t.id)} - ${t.title}</span>
+        <span class="sc-truncate-title" style="${strike}">${_jiraBrowse(t.id)} - ${t.title}</span>
         <span class="badge badge-${t.status}" style="white-space:nowrap;font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
         ${epicTag(epic, t.epic)}
         ${ptsBadge(t.points)}
-        <span class="avatar" style="background:${avatarColor};flex-shrink:0;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+        ${avatarBadge(t.assignee, avatarColor)}
       </div>`;
     }).join('')}`;
 
@@ -1376,13 +1376,13 @@ function _showScrumStatDetail(filter) {
 
 function ticketCard(t) {
   const epic        = EPICS.find(e => e.id === t.epic);
-  const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+  const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
   const isBlocked   = t.status === 'blocked';
   const isFlagged   = !!t.flagged;
   const isBuffer    = !!t.buffer;
   const statusBadge = isBlocked
-    ? '<span style="color:#DC2626;font-size:11px;font-weight:700;">⚠ Bloqué</span>'
-    : isFlagged ? '<span style="color:#DC2626;font-size:11px;font-weight:700;">🚩 Flaggé</span>' : '';
+    ? '<span class="sc-flag-badge">⚠ Bloqué</span>'
+    : isFlagged ? '<span class="sc-flag-badge">🚩 Flaggé</span>' : '';
   const bufferBadge = isBuffer ? '<span class="buffer-badge">🛡️ Buffer</span>' : '';
   const extraCls    = isBlocked ? ' blocked' : isFlagged ? ' flagged' : isBuffer ? ' buffer' : '';
   // Daily mode: dimmed if not focused, "discussed" badge
@@ -1411,7 +1411,7 @@ function ticketCard(t) {
     <div class="ticket-meta">
       <span class="badge badge-${t.type}">${typeName(t.type)}</span>
       ${epicTag(epic, t.epic)}
-      <span class="avatar" style="background:${avatarColor}" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+      ${avatarBadge(t.assignee, avatarColor)}
       ${statusBadge}
       ${bufferBadge}
     </div>
@@ -1724,9 +1724,9 @@ function _dailyRenderPanel() {
   if (_dailyMode === 'board' && _dailyFocusId) {
     const t = getTickets().find(x => x.id === _dailyFocusId);
     if (t) {
-      const sc = { blocked: '#DC2626', review: '#7C3AED', inprog: '#2563EB', todo: '#94A3B8' };
+      const sc = STATUS_HEX;
       focusInfo = `<div class="daily-focus-info">
-        <span class="daily-focus-status" style="background:${(sc[t.status] || '#94A3B8')}18;color:${sc[t.status] || '#94A3B8'};border:1px solid ${(sc[t.status] || '#94A3B8')}33;">${statusLabel(t.status)}</span>
+        <span class="daily-focus-status" style="background:${(sc[t.status] || CLR.muted)}18;color:${sc[t.status] || CLR.muted};border:1px solid ${(sc[t.status] || CLR.muted)}33;">${statusLabel(t.status)}</span>
         <strong>${t.id}</strong> - ${(t.title || '').slice(0, 60)}
         ${t.assignee ? `<span class="daily-focus-assignee">@${t.assignee.split(' ')[0]}</span>` : ''}
         <span id="daily-timer-ticket" class="daily-timer-ticket">${_dailyTicketMs ? _dailyElapsed(_dailyTicketMs) : ''}</span>
@@ -1738,14 +1738,14 @@ function _dailyRenderPanel() {
   let personInfo = '';
   if (_dailyMode === 'person' && persons.length) {
     const p = persons[_dailyPersonIdx];
-    const avatarColor = MEMBER_COLORS[p.name] || '#64748B';
+    const avatarColor = MEMBER_COLORS[p.name] || CLR.slate;
     const blocked = p.tickets.filter(t => t.status === 'blocked');
     const inprog = p.tickets.filter(t => t.status === 'inprog' || t.status === 'review');
     const todo = p.tickets.filter(t => t.status === 'todo');
 
     personInfo = `<div class="daily-person-card">
       <div class="daily-person-header">
-        <span class="avatar" style="background:${avatarColor};width:28px;height:28px;font-size:11px;">${initials(p.name)}</span>
+        ${avatarBadge(p.name, avatarColor, {w:28, fs:'11px'})}
         <strong style="font-size:14px;">${p.name}</strong>
         <span style="font-size:11px;color:var(--text-muted);">${p.tickets.length} ticket${p.tickets.length > 1 ? 's' : ''}</span>
         <span id="daily-timer-person" class="daily-timer-person">${_dailyElapsed(_dailyPersonStartMs)}</span>
@@ -1834,8 +1834,8 @@ function _dailyRenderPanel() {
 }
 
 function _dailyTicketMini(t) {
-  const sc = { blocked: '#DC2626', review: '#7C3AED', inprog: '#2563EB', todo: '#94A3B8' };
-  const color = sc[t.status] || '#94A3B8';
+  const sc = STATUS_HEX;
+  const color = sc[t.status] || CLR.muted;
   return `<div class="daily-ticket-mini" onclick="openModal('${t.id}')">
     <span style="font-weight:700;color:${color};font-size:11px;">${t.id}</span>
     <span style="font-size:11px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title || ''}</span>

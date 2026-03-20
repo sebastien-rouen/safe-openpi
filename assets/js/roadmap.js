@@ -100,7 +100,7 @@ function _rmInitScrollSpy() {
 // ============================================================
 // Roadmap visuelle - Groupes × Équipes × Epics par PI
 // ============================================================
-function _roadmapVisual(featureData, sprintPlan, s) {
+function _roadmapVisual(_featureData, _sprintPlan, s) {
   const activeTeams = getActiveTeams();
   const allTickets = getTickets();
   const _bl = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
@@ -266,7 +266,7 @@ function _roadmapVisual(featureData, sprintPlan, s) {
 
   // Teams not in any group
   Object.keys(teamEpics).filter(t => !renderedTeams.has(t) && activeTeams.includes(t)).forEach(tid => {
-    const teamColor = CONFIG.teams[tid]?.color || '#475569';
+    const teamColor = CONFIG.teams[tid]?.color || CLR.dark;
     const epicsForTeam = teamEpics[tid].sort((a, b) => a.minPI - b.minPI || b.totalPts - a.totalPts);
 
     swimlanesHtml += `<div class="rm-vr-team-header" style="background:${teamColor}0A;border-left:3px solid ${teamColor};">
@@ -332,7 +332,7 @@ function _showVrEpicDetail(epicId) {
   const remaining = totalPts - donePts;
   const color = epic.color || '#7C3AED';
   const pctColor = pct === 100 ? '#16A34A' : pct > 50 ? '#2563EB' : pct > 0 ? '#F59E0B' : '#94A3B8';
-  const teamColor = CONFIG.teams[epic.team]?.color || '#64748B';
+  const teamColor = CONFIG.teams[epic.team]?.color || CLR.slate;
 
   // Group tickets by PI
   const piRegex = /(\d{2,3})\.(\d+)/;
@@ -367,8 +367,8 @@ function _showVrEpicDetail(epicId) {
           ${epic.team ? `<span style="font-size:10px;font-weight:600;color:${teamColor};background:${teamColor}15;padding:1px 6px;border-radius:4px;">${epic.team}</span>` : ''}
         </div>
         <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px;">${epic.title || epic.id}</div>
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px;">
-          <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden;">
+        <div class="rm-detail-progress">
+          <div class="rm-detail-bar">
             <div style="height:100%;width:${pct}%;background:${pctColor};border-radius:4px;transition:width .3s;"></div>
           </div>
           <span style="font-size:14px;font-weight:800;color:${pctColor};min-width:40px;text-align:right;">${pct}%</span>
@@ -378,39 +378,39 @@ function _showVrEpicDetail(epicId) {
 
   // Stats cards
   const stats = `
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:20px;">
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
-        <div style="font-size:20px;font-weight:800;color:var(--text);">${totalPts}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Story Points</div>
+    <div class="rm-stats-grid">
+      <div class="rm-detail-stat">
+        <div class="rm-detail-stat-val" style="color:var(--text);">${totalPts}</div>
+        <div class="rm-detail-stat-lbl">Story Points</div>
       </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
-        <div style="font-size:20px;font-weight:800;color:#16A34A;">${donePts}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Terminés</div>
+      <div class="rm-detail-stat">
+        <div class="rm-detail-stat-val" style="color:#16A34A;">${donePts}</div>
+        <div class="rm-detail-stat-lbl">Terminés</div>
       </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
-        <div style="font-size:20px;font-weight:800;color:#F59E0B;">${remaining}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Restants</div>
+      <div class="rm-detail-stat">
+        <div class="rm-detail-stat-val" style="color:#F59E0B;">${remaining}</div>
+        <div class="rm-detail-stat-lbl">Restants</div>
       </div>
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center;">
-        <div style="font-size:20px;font-weight:800;color:var(--text);">${total}</div>
-        <div style="font-size:10px;color:var(--text-muted);font-weight:600;">Tickets</div>
+      <div class="rm-detail-stat">
+        <div class="rm-detail-stat-val" style="color:var(--text);">${total}</div>
+        <div class="rm-detail-stat-lbl">Tickets</div>
       </div>
     </div>`;
 
   // Status breakdown bar
   const statusBar = `
     <div style="margin-bottom:20px;">
-      <div style="display:flex;height:10px;border-radius:5px;overflow:hidden;margin-bottom:6px;">
+      <div class="rm-status-bar">
         ${donePctR > 0 ? `<div style="width:${donePctR}%;background:#16A34A;" title="Terminé ${donePctR}%"></div>` : ''}
         ${inprogPctR > 0 ? `<div style="width:${inprogPctR}%;background:#2563EB;" title="En cours ${inprogPctR}%"></div>` : ''}
         ${blockedPctR > 0 ? `<div style="width:${blockedPctR}%;background:#DC2626;" title="Bloqué ${blockedPctR}%"></div>` : ''}
         ${todoPctR > 0 ? `<div style="width:${todoPctR}%;background:var(--border);" title="A faire ${todoPctR}%"></div>` : ''}
       </div>
-      <div style="display:flex;gap:12px;font-size:10px;color:var(--text-muted);">
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#16A34A;margin-right:3px;"></span>Terminé ${done}</span>
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#2563EB;margin-right:3px;"></span>En cours ${inprog}</span>
-        ${blocked > 0 ? `<span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:#DC2626;margin-right:3px;"></span>Bloqué ${blocked}</span>` : ''}
-        <span><span style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(--border);margin-right:3px;"></span>A faire ${todo}</span>
+      <div class="rm-status-legend">
+        <span><span class="rm-legend-dot" style="background:#16A34A;"></span>Terminé ${done}</span>
+        <span><span class="rm-legend-dot" style="background:#2563EB;"></span>En cours ${inprog}</span>
+        ${blocked > 0 ? `<span><span class="rm-legend-dot" style="background:#DC2626;"></span>Bloqué ${blocked}</span>` : ''}
+        <span><span class="rm-legend-dot" style="background:var(--border);"></span>A faire ${todo}</span>
       </div>
     </div>`;
 
@@ -425,20 +425,19 @@ function _showVrEpicDetail(epicId) {
     const piDone = tickets.filter(t => isDone(t.status)).length;
     const rows = tickets.map(t => {
       const _tkDone = isDone(t.status);
-      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
-      const tColor = CONFIG.teams[t.team]?.color || '#64748B';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);${_tkDone ? 'opacity:.5;' : ''}cursor:pointer;" onclick="closeModalDirect();openModal('${t.id}')">
+      const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
+      return `<div class="rm-ticket-row" style="${_tkDone ? 'opacity:.5;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
         <span style="flex-shrink:0;width:18px;text-align:center;font-size:12px;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.status}" style="font-size:9px;padding:1px 5px;flex-shrink:0;">${statusLabel(t.status)}</span>
         <span class="badge badge-${t.type}" style="font-size:9px;padding:1px 5px;flex-shrink:0;">${typeName(t.type)}</span>
-        <span style="flex:1;font-size:12px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} ${t.title}</span>
+        <span class="rm-ticket-title" style="${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} ${t.title}</span>
         ${ptsBadge(t.points)}
-        <span class="avatar" style="background:${avatarColor};flex-shrink:0;width:22px;height:22px;font-size:9px;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+        ${avatarBadge(t.assignee, avatarColor, {w:22, fs:'9px'})}
       </div>`;
     }).join('');
 
     return `<div style="margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:2px solid var(--border);">
+      <div class="rm-pi-group-hdr">
         <span style="font-size:12px;font-weight:700;color:var(--text);">${piLabel}</span>
         <span style="font-size:10px;color:var(--text-muted);">${piDone}/${tickets.length} tickets · ${piPts} pts</span>
       </div>
@@ -927,9 +926,9 @@ function _rmTicketList(tickets, previewCount) {
 
 function _roadmapTimeline(velRef, cap80, sprintPlan) {
   // Label du sprint actif : nom du board de l'équipe sélectionnée si une seule équipe active
-  const _activeTeams = getActiveTeams();
-  const currentLabel = (_activeTeams.length === 1 && CONFIG.teams[_activeTeams[0]]?.sprintName)
-    ? CONFIG.teams[_activeTeams[0]].sprintName
+  const activeTeams = getActiveTeams();
+  const currentLabel = (activeTeams.length === 1 && CONFIG.teams[activeTeams[0]]?.sprintName)
+    ? CONFIG.teams[activeTeams[0]].sprintName
     : CONFIG.sprint.label || `Sprint ${CONFIG.sprint.current || 'Actif'}`;
   const tickets  = getTickets();
   const ptsDone  = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
@@ -940,7 +939,6 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
   const lastPast  = velRef.history.length ? [velRef.history[velRef.history.length - 1]] : [];
   const pastCards = lastPast.map(h => {
     const pct    = velRef.max ? Math.round(h.vel / velRef.max * 100) : 80;
-    const target = Math.round(velRef.max || velRef.avg);
     return `<div class="rm-tl-card rm-tl-past">
       <div class="rm-tl-dot rm-tl-dot-past"></div>
       <div class="rm-tl-name">${h.name.replace(/sprint\s*/i, 'S ')}</div>
@@ -970,7 +968,7 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
       const ipTypes = {};
       sp.tickets.forEach(t => { ipTypes[t.type] = (ipTypes[t.type] || 0) + 1; });
       const ipPills = Object.entries(ipTypes).map(([type, cnt]) => {
-        const c = CONFIG.typeColors[type] || '#475569';
+        const c = CONFIG.typeColors[type] || CLR.dark;
         return `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${c}22;color:${c};border:1px solid ${c}44;font-weight:600;">${typeName(type)}×${cnt}</span>`;
       }).join(' ');
       return `<div class="rm-tl-card" style="border:2px solid #86EFAC;background:#F0FDF4;">
@@ -1177,7 +1175,7 @@ function _roadmapSprintPlan(plan, cap80, cap20) {
     const typeGroups = {};
     s.tickets.forEach(t => { typeGroups[t.type] = (typeGroups[t.type] || 0) + 1; });
     const typePills = Object.entries(typeGroups).map(([type, cnt]) => {
-      const c = CONFIG.typeColors[type] || '#475569';
+      const c = CONFIG.typeColors[type] || CLR.dark;
       return `<span class="badge" style="background:${c}22;color:${c};border:1px solid ${c}44">${typeName(type)}×${cnt}</span>`;
     }).join('');
 
@@ -1576,10 +1574,10 @@ function _roadmapBacklogHealth(backlog) {
   window._bhAgingSprints = agingSprints;
 
   const kpi = (icon, label, count, color, filter) => count > 0 ? `
-    <div class="rm-health-kpi" onclick="_showBacklogHealthDetail('${filter}')" title="Voir le détail" style="display:flex;align-items:center;gap:6px;padding:6px 12px;background:${color}11;border:1px solid ${color}33;border-radius:8px;cursor:pointer;transition:box-shadow .15s,transform .15s;">
-      <span style="font-size:14px">${icon}</span>
-      <span style="font-size:20px;font-weight:800;color:${color}">${count}</span>
-      <span style="font-size:11px;color:var(--text-muted)">${label}</span>
+    <div class="rm-health-kpi" onclick="_showBacklogHealthDetail('${filter}')" title="Voir le détail" style="background:${color}11;border:1px solid ${color}33;">
+      <span class="rm-health-kpi-icon">${icon}</span>
+      <span class="rm-health-kpi-val" style="color:${color}">${count}</span>
+      <span class="rm-health-kpi-lbl">${label}</span>
     </div>` : '';
 
   return `
@@ -1618,7 +1616,7 @@ function _showBacklogHealthDetail(filter) {
   cfg.list.forEach(t => { (byType[t.type] = byType[t.type] || []).push(t); });
   const typeOrder = Object.keys(byType).sort((a, b) => byType[b].length - byType[a].length);
   const typePills = typeOrder.map(type => {
-    const c = CONFIG.typeColors[type] || '#475569';
+    const c = CONFIG.typeColors[type] || CLR.dark;
     return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:6px;background:${c}18;border:1px solid ${c}40;font-size:11px;font-weight:700;color:${c};margin:2px;">${typeName(type)} ×${byType[type].length}</span>`;
   }).join('');
 
@@ -1627,7 +1625,7 @@ function _showBacklogHealthDetail(filter) {
     <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:12px;padding-bottom:10px;border-bottom:1px solid #E2E8F0;">${typePills}</div>
     ${cfg.list.map(t => {
       const epic        = EPICS.find(e => e.id === t.epic);
-      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
+      const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
       const highlight   = filter === 'noEpic' && !t.epic ? 'background:#FEF2F2;'
                         : filter === 'noPoints' && !t.points ? 'background:#FFFBEB;'
                         : filter === 'noPriority' ? 'background:#FFF7ED;'
@@ -1638,14 +1636,14 @@ function _showBacklogHealthDetail(filter) {
         const days = Math.floor((Date.now() - new Date(t.updatedAt).getTime()) / 86400000);
         extra = `<span style="font-size:10px;color:#64748B;white-space:nowrap;flex-shrink:0;">${days}j inactif</span>`;
       }
-      return `<div style="display:flex;align-items:center;gap:8px;${highlight}padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;" onclick="closeModalDirect();openModal('${t.id}')">
+      return `<div class="rm-ticket-row" style="${highlight}border-radius:4px;" onclick="closeModalDirect();openModal('${t.id}')">
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_jiraBrowse(t.id)} - ${t.title}</span>
+        <span class="rm-ticket-title-lg">${_jiraBrowse(t.id)} - ${t.title}</span>
         ${epic ? epicTag(epic, t.epic) : '<span style="font-size:10px;color:#DC2626;font-weight:600;flex-shrink:0;">Ø epic</span>'}
         ${ptsBadge(t.points)}
         ${extra}
-        <span class="avatar" style="background:${avatarColor};flex-shrink:0;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+        ${avatarBadge(t.assignee, avatarColor)}
       </div>`;
     }).join('')}`;
 
@@ -1660,7 +1658,6 @@ function _showBacklogHealthDetail(filter) {
 // ============================================================
 
 function _roadmapCrossTeamFeatures() {
-  const activeTeams = getActiveTeams();
   const _bl         = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
   const allPool     = [...TICKETS, ..._bl];
 
@@ -1737,7 +1734,7 @@ function _roadmapCrossTeamFeatures() {
   // ── Header ──
   const thTeams = teamList.map(tid => {
     const tc  = CONFIG.teams[tid];
-    const col = tc?.color || '#64748B';
+    const col = tc?.color || CLR.slate;
     const isSel = tid === selectedTeam;
     return `<th class="rm-cx-th-team${isSel ? ' rm-cx-sel' : ''}" style="--team-c:${col};">
       <span class="rm-cx-dot" style="background:${col};"></span>${tid}
@@ -1747,7 +1744,7 @@ function _roadmapCrossTeamFeatures() {
   // ── Rows ──
   const trs = teamList.map(rowTid => {
     const rowTc  = CONFIG.teams[rowTid];
-    const rowCol = rowTc?.color || '#64748B';
+    const rowCol = rowTc?.color || CLR.slate;
     const isRowSel = rowTid === selectedTeam;
 
     const cells = teamList.map(colTid => {
@@ -1804,8 +1801,8 @@ function _roadmapCrossTeamFeatures() {
 function _showCrossPairDetail(teamA, teamB) {
   const _bl     = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
   const allPool = [...TICKETS, ..._bl];
-  const colA    = CONFIG.teams[teamA]?.color || '#64748B';
-  const colB    = CONFIG.teams[teamB]?.color || '#64748B';
+  const colA    = CONFIG.teams[teamA]?.color || CLR.slate;
+  const colB    = CONFIG.teams[teamB]?.color || CLR.slate;
 
   const epics = typeof EPICS !== 'undefined' ? EPICS : [];
   const sections = [];
@@ -1822,21 +1819,21 @@ function _showCrossPairDetail(teamA, teamB) {
 
     const rows = relevant.map(t => {
       const _tkDone     = isDone(t.status);
-      const avatarColor = MEMBER_COLORS[t.assignee] || '#64748B';
-      const tColor      = CONFIG.teams[t.team]?.color || '#64748B';
-      return `<div style="display:flex;align-items:center;gap:8px;padding:7px 8px;border-bottom:1px solid var(--border);border-radius:4px;cursor:pointer;${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
+      const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
+      const tColor      = CONFIG.teams[t.team]?.color || CLR.slate;
+      return `<div class="rm-ticket-row" style="${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;color:${tColor};flex-shrink:0;white-space:nowrap;"><span style="width:6px;height:6px;border-radius:50%;background:${tColor};"></span>${t.team}</span>
         <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-        <span style="flex:1;font-size:13px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} - ${t.title}</span>
+        <span class="rm-ticket-title-lg" style="${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} - ${t.title}</span>
         <span class="badge badge-${t.status}" style="white-space:nowrap;font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
         ${ptsBadge(t.points)}
-        <span class="avatar" style="background:${avatarColor};flex-shrink:0;" title="${t.assignee || 'Non assigné'}">${initials(t.assignee)}</span>
+        ${avatarBadge(t.assignee, avatarColor)}
       </div>`;
     }).join('');
 
     sections.push(`<div style="margin-bottom:12px;">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div class="rm-pi-group-hdr">
         <span style="width:8px;height:8px;border-radius:50%;background:${e.color || '#7C3AED'};flex-shrink:0;"></span>
         <span style="font-size:13px;font-weight:700;">${e.title}</span>
         <span style="font-size:11px;color:var(--text-muted);">${done}/${relevant.length} · ${pct}% · ${pts} pts</span>
@@ -1865,7 +1862,7 @@ function _roadmapBacklogTable(backlog, cap80) {
 
   const rows = backlog.map(t => {
     const epic = EPICS.find(e => e.id === t.epic);
-    const tc   = CONFIG.typeColors[t.type] || '#475569';
+    const tc   = CONFIG.typeColors[t.type] || CLR.dark;
     const sn = t.sprintName || '';
     // Short sprint label: remove team prefix (e.g. "Fuego - Ité. 28.4" → "Ité. 28.4")
     const snShort = sn.replace(/^[^-]+-\s*/, '') || '-';

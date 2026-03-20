@@ -31,7 +31,7 @@ function _teamColor(teamId) {
   for (const g of GROUPS) {
     if (g.teams.includes(teamId)) return g.color;
   }
-  return CONFIG.teams[teamId]?.color || '#475569';
+  return CONFIG.teams[teamId]?.color || CLR.dark;
 }
 
 // ---- Rendu dynamique des boutons d'équipe -----
