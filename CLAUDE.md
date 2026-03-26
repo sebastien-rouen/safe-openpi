@@ -215,6 +215,12 @@ Sections : progress, buffer, objectifs PI, risques & qualité, stats sprint.
 6. `<script>` **avant** `navigation.js` dans `index.html`
 7. Refresh dans `selectTeam()` et `selectGroup()` de `filter.js`
 
+## CHANGELOG.md
+
+**Toujours mettre à jour `CHANGELOG.md`** lors de modifications conséquentes (nouvelles features, fixes importants, refactors). Le changelog est un historique lisible des évolutions — il sert aux utilisateurs et à la maintenance future.
+
+Format : section `[Non publié]` en haut, puis blocs `###` par feature/fix avec description et fichiers modifiés. Voir le skill `/git changelog` pour le format complet.
+
 ## Pièges courants
 
 1. **PI sélectionné vs PI actif** : `_piDetect().piNum` = sélectionné, `_ppDetectPI()` = actif réel
