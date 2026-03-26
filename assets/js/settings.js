@@ -2,12 +2,43 @@
 // SETTINGS VIEW - Configuration équipes, JIRA, groupes, notifications
 // ============================================================
 
+// --- Info tooltips (fixed position, escapes overflow) ---
+(function() {
+  let _tip = null;
+  document.addEventListener('mouseenter', e => {
+    const el = e.target.closest?.('.stg-info');
+    if (!el || !el.dataset.tip) return;
+    if (_tip) _tip.remove();
+    _tip = document.createElement('div');
+    _tip.className = 'stg-info-tip';
+    _tip.textContent = el.dataset.tip;
+    document.body.appendChild(_tip);
+    const r = el.getBoundingClientRect();
+    let left = r.left + r.width / 2 - _tip.offsetWidth / 2;
+    let top = r.top - _tip.offsetHeight - 8;
+    if (top < 4) top = r.bottom + 8;
+    if (left < 4) left = 4;
+    if (left + _tip.offsetWidth > window.innerWidth - 4) left = window.innerWidth - _tip.offsetWidth - 4;
+    _tip.style.left = left + 'px';
+    _tip.style.top = top + 'px';
+  }, true);
+  document.addEventListener('mouseleave', e => {
+    if (e.target.closest?.('.stg-info') && _tip) { _tip.remove(); _tip = null; }
+  }, true);
+})();
+
 // --- Dark mode ---
 function _initTheme() {
   const saved = localStorage.getItem('theme');
   if (saved) document.documentElement.setAttribute('data-theme', saved);
 }
 _initTheme();
+
+// --- Restore persisted sync settings ---
+(function _initSyncSettings() {
+  const enrich = localStorage.getItem('enrichClosedSprints');
+  if (enrich !== null) CONFIG.sync.enrichClosedSprints = enrich === '1';
+})();
 
 function toggleDarkMode(checkbox) {
   const theme = checkbox.checked ? 'dark' : 'light';
@@ -19,124 +50,88 @@ function toggleDarkMode(checkbox) {
 // Collapsible state for settings sections
 const _settingsCollapsed = JSON.parse(localStorage.getItem('settings_collapsed') || '{}');
 
-// Support rotation data (persisted in localStorage)
-let _supportRotation = JSON.parse(localStorage.getItem('support_rotation') || '{}');
-let _rotParsedAbsences = {}; // live-parsed from textarea
-let _rotAbsencesRaw = '';    // raw textarea content, loaded from JSON
-let _rotAbsencesDate = '';   // last update timestamp
-let _rotAbsencesLoaded = false;
+// ============================================================
+// Support rotation data — persisted in data/supports.json
+// Structure: { rotation, extraMembers, hiddenMembers, absences: { piXX: { raw, updatedAt } } }
+// ============================================================
+let _supFile = {};             // full JSON file contents
+let _supLoaded = false;
 
-let _rotAbsMemberCount = 0; // total members parsed (not just absent ones)
-let _rotAbsAllNames = new Set(); // all normalized names found in absences data
+let _supportRotation = {};     // rotation assignments (ref into _supFile)
+let _rotExtraMembers = {};     // manually added members
+let _rotHiddenMembers = {};    // hidden members
 
-let _rotAbsSaveTimer = null;
-function _rotAbsSave(raw) {
-  clearTimeout(_rotAbsSaveTimer);
-  _rotAbsSaveTimer = setTimeout(() => {
-    _rotAbsencesDate = new Date().toISOString();
-    const structured = _buildAbsencesJSON(raw);
-    fetch('/data/absences.json', {
+// Absences variables & functions → absences.js
+let _rotPIOffset = 0;
+let _rotTeamCollapsed = {};
+
+// --- supports.json persistence ---
+let _supSaveTimer = null;
+function _supSave() {
+  // Sync in-memory refs back to file
+  _supFile.rotation = _supportRotation;
+  _supFile.extraMembers = _rotExtraMembers;
+  _supFile.hiddenMembers = _rotHiddenMembers;
+  clearTimeout(_supSaveTimer);
+  _supSaveTimer = setTimeout(() => {
+    fetch('/data/supports.json', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(structured, null, 2),
-    }).catch(err => console.warn('[absences] Sauvegarde échouée :', err));
-    const ind = document.getElementById('rot-abs-indicator');
-    if (ind) ind.innerHTML = _rotAbsIndicatorContent();
-  }, 500);
-}
-
-function _buildAbsencesJSON(raw) {
-  const lines = (raw || '').trim().split('\n');
-  if (lines.length < 2) return { updatedAt: _rotAbsencesDate, members: [], raw };
-
-  const headerCells = lines[0].split('\t');
-  const dateRe = /^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/;
-  const weekInfos = _rotWeekInfos();
-  const piStart = weekInfos[0]?._start;
-  const piEnd   = weekInfos[weekInfos.length - 1]?._end;
-  const piYear  = piStart ? piStart.getFullYear() : new Date().getFullYear();
-
-  // Resolve each date column with correct year
-  const dateCols = [];
-  for (let ci = 0; ci < headerCells.length; ci++) {
-    const m = headerCells[ci].trim().match(dateRe);
-    if (!m) continue;
-    const day = parseInt(m[1]), month = parseInt(m[2]) - 1;
-    let year;
-    if (m[3]) {
-      year = m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3]);
-    } else if (piStart && piEnd) {
-      const c1 = new Date(piYear, month, day);
-      const c2 = new Date(piYear + 1, month, day);
-      year = (c2 >= piStart && c2 <= piEnd && !(c1 >= piStart && c1 <= piEnd)) ? piYear + 1 : piYear;
-    } else {
-      year = piYear;
-    }
-    const dd = String(day).padStart(2, '0');
-    const mm = String(month + 1).padStart(2, '0');
-    dateCols.push({ col: ci, date: `${dd}/${mm}/${year}` });
-  }
-
-  const members = [];
-  for (let li = 1; li < lines.length; li++) {
-    const cells = lines[li].split('\t');
-    if (!cells[0]?.trim()) continue;
-    const rawName = cells[0].trim();
-    const team = (cells[1] || '').trim();
-    const absences = [];
-    for (const dc of dateCols) {
-      const val = (cells[dc.col] || '').trim().replace(',', '.');
-      const num = parseFloat(val);
-      if (num && !isNaN(num)) absences.push({ date: dc.date, value: num });
-    }
-    members.push({
-      name: _normalizeExcelName(rawName),
-      rawName,
-      team,
-      totalDays: absences.reduce((s, a) => s + a.value, 0),
-      absences,
+      body: JSON.stringify(_supFile, null, 2),
+    }).catch(err => {
+      console.error('[supports] Sauvegarde échouée :', err);
+      if (typeof showToast === 'function') showToast('Erreur sauvegarde supports.json : ' + err.message, 'error');
     });
-  }
-
-  return { updatedAt: _rotAbsencesDate, memberCount: members.length, members, raw };
+  }, 300);
 }
 
-async function _rotAbsLoad() {
-  if (_rotAbsencesLoaded) return;
+async function _supLoad() {
+  if (_supLoaded) return;
   try {
-    const res = await fetch('/data/absences.json');
+    const res = await fetch('/data/supports.json');
     if (res.ok) {
-      const data = await res.json();
-      _rotAbsencesRaw = data.raw || '';
-      _rotAbsencesDate = data.updatedAt || '';
-      _rotAbsMemberCount = data.memberCount || 0;
-      if (_rotAbsencesRaw) {
-        _rotParsedAbsences = _parseAbsences(_rotAbsencesRaw);
-        // Populate all names set from raw data
-        _rotAbsAllNames = new Set();
-        const lines = _rotAbsencesRaw.trim().split('\n');
-        if (lines.length > 1) {
-          for (const l of lines.slice(1)) {
-            const raw = l.split('\t')[0]?.trim();
-            if (raw) _rotAbsAllNames.add(_normalizeExcelName(raw).toLowerCase());
+      _supFile = await res.json() || {};
+    } else if (res.status === 404) {
+      // First run: migrate from localStorage if available
+      _supFile = {};
+      const lsRot = localStorage.getItem('support_rotation');
+      if (lsRot) _supFile.rotation = JSON.parse(lsRot);
+      const lsExtra = localStorage.getItem('rot_extra_members');
+      if (lsExtra) _supFile.extraMembers = JSON.parse(lsExtra);
+      const lsHidden = localStorage.getItem('rot_hidden_members');
+      if (lsHidden) _supFile.hiddenMembers = JSON.parse(lsHidden);
+      // Migrate old absences.json if present
+      try {
+        const absRes = await fetch('/data/absences.json');
+        if (absRes.ok) {
+          const absData = await absRes.json();
+          if (absData.raw) {
+            const piNum = _rotWeekInfos(0)._piNum || 'unknown';
+            _supFile.absences = { [piNum]: { raw: absData.raw, updatedAt: absData.updatedAt || '' } };
           }
         }
-      }
+      } catch {}
+      _supSave(); // persist migrated data
     }
-  } catch { /* no file yet */ }
-  _rotAbsencesLoaded = true;
+  } catch (err) {
+    console.error('[supports] Chargement échoué :', err);
+    if (typeof showToast === 'function') showToast('Erreur chargement supports.json : ' + err.message, 'error');
+  }
+  // Populate in-memory refs from file
+  _supportRotation = _supFile.rotation || {};
+  _rotExtraMembers = _supFile.extraMembers || {};
+  _rotHiddenMembers = _supFile.hiddenMembers || {};
+  _supLoaded = true;
 }
 
-function _rotAbsIndicatorContent() {
-  if (!_rotAbsencesDate) return '';
-  const d = new Date(_rotAbsencesDate);
-  const fmt = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
-  const absentCount = Object.keys(_rotParsedAbsences).length;
-  return `<span class="rot-abs-dot"></span> ${_rotAbsMemberCount} membre${_rotAbsMemberCount > 1 ? 's' : ''}${absentCount ? ` · ${absentCount} avec absences` : ''} · ${fmt}`;
-}
+// _supAbsRaw, _supAbsDate, _supSetAbs → absences.js
+
+// _rotLoadAbsForPI → absences.js
+
+// _rotAbsIndicatorContent → absences.js
 
 function _saveRotation() {
-  localStorage.setItem('support_rotation', JSON.stringify(_supportRotation));
+  _supSave();
 }
 
 function _piWeeks() {
@@ -145,60 +140,123 @@ function _piWeeks() {
   return sPerPI * (dur / 7); // typically 10 weeks
 }
 
-function _rotWeekInfos() {
+function _rotWeekInfos(piOffset, weekMode) {
+  const offset = piOffset != null ? piOffset : _rotPIOffset || 0;
   const sprintsPerPI = CONFIG.sprint.sprintsPerPI || 5;
   const dur = CONFIG.sprint.durationDays || 14;
   const weeksPerSprint = dur / 7;
-  const totalWeeks = sprintsPerPI * weeksPerSprint;
-
   // Detect PI number — same logic as _ppDetectPI(): team sprintNames first, then label
   const piRe = /(\d{2,3})\.(\d+)\s*$/;
-  let piNum = null, currentSprintIdx = 0;
+  let basePiNum = null, currentSprintIdx = 0;
   for (const tc of Object.values(CONFIG.teams || {})) {
     const m = (tc.sprintName || '').match(piRe);
-    if (m) { piNum = m[1]; currentSprintIdx = parseInt(m[2]) - 1; break; }
+    if (m) { basePiNum = parseInt(m[1]); currentSprintIdx = parseInt(m[2]) - 1; break; }
   }
-  if (!piNum) {
+  if (basePiNum == null) {
     const m2 = (CONFIG.sprint.label || '').match(/(\d{2,3})\.(\d+)/);
-    if (m2) { piNum = m2[1]; currentSprintIdx = parseInt(m2[2]) - 1; }
+    if (m2) { basePiNum = parseInt(m2[1]); currentSprintIdx = parseInt(m2[2]) - 1; }
   }
+  const piNum = basePiNum != null ? String(basePiNum + offset) : null;
 
-  // Compute PI start date — derive from current sprint start + sprint position
-  let piStartDate = null;
+  // Collect actual sprint dates from velocity history for the target PI
   const _tryDate = s => { if (!s) return null; const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00' : s); return isNaN(d.getTime()) ? null : d; };
-
-  // 1) rm_pi_start from localStorage — authoritative, set by roadmap/piprep
-  const stored = localStorage.getItem('rm_pi_start') || '';
-  if (stored) piStartDate = _tryDate(stored);
-
-  // 2) Derive current PI start from team sprint ISO start date + sprint index
-  //    sprintStart is formatted in French locale (unparseable), use sprintStartISO instead
-  if (!piStartDate && currentSprintIdx >= 0) {
-    let bestStart = null;
+  const _piSprintDates = {}; // sprintIdx (0-based) → { start, end }
+  if (piNum) {
     for (const tc of Object.values(CONFIG.teams || {})) {
-      const d = _tryDate(tc.sprintStartISO);
-      if (d) { bestStart = d; break; }
-    }
-    if (!bestStart) bestStart = _tryDate(CONFIG.sprint.startDateISO);
-    if (!bestStart) bestStart = _tryDate(CONFIG.sprint.startDate); // legacy fallback
-    if (bestStart) {
-      piStartDate = new Date(bestStart);
-      piStartDate.setDate(piStartDate.getDate() - currentSprintIdx * dur);
+      for (const vh of (tc.velocityHistory || [])) {
+        const m = (vh.name || '').match(piRe);
+        if (m && m[1] === piNum) {
+          const idx = parseInt(m[2]) - 1;
+          if (!_piSprintDates[idx]) {
+            const s = _tryDate(vh.startDate);
+            const e = _tryDate(vh.endDate);
+            if (s) _piSprintDates[idx] = { start: s, end: e };
+          }
+        }
+      }
+      // Also use current active sprint (only for current PI, offset=0)
+      if (offset === 0) {
+        const cm = (tc.sprintName || '').match(piRe);
+        if (cm && cm[1] === piNum) {
+          const idx = parseInt(cm[2]) - 1;
+          if (!_piSprintDates[idx]) {
+            const s = _tryDate(tc.sprintStartISO);
+            if (s) _piSprintDates[idx] = { start: s, end: null };
+          }
+        }
+      }
     }
   }
 
-  // 3) Fallback: next sprintStartDay from today
+  // Compute PI start date
+  let piStartDate = null;
+
+  // 1) Use actual date of sprint X.1 from velocity history
+  if (_piSprintDates[0]?.start) {
+    piStartDate = new Date(_piSprintDates[0].start);
+  }
+
+  if (offset === 0) {
+    // 2) rm_pi_start from localStorage — authoritative, set by roadmap/piprep
+    if (!piStartDate) {
+      const stored = localStorage.getItem('rm_pi_start') || '';
+      if (stored) piStartDate = _tryDate(stored);
+    }
+
+    // 3) Derive from current sprint ISO start date + sprint index
+    if (!piStartDate && currentSprintIdx >= 0) {
+      let bestStart = null;
+      for (const tc of Object.values(CONFIG.teams || {})) {
+        const d = _tryDate(tc.sprintStartISO);
+        if (d) { bestStart = d; break; }
+      }
+      if (!bestStart) bestStart = _tryDate(CONFIG.sprint.startDateISO);
+      if (!bestStart) bestStart = _tryDate(CONFIG.sprint.startDate);
+      if (bestStart) {
+        piStartDate = new Date(bestStart);
+        piStartDate.setDate(piStartDate.getDate() - currentSprintIdx * dur);
+      }
+    }
+  }
+
+  // For next PI: extrapolate from current PI end
+  if (!piStartDate && offset > 0) {
+    const currentInfos = _rotWeekInfos(0);
+    if (currentInfos.length) {
+      piStartDate = new Date(currentInfos[currentInfos.length - 1]._end);
+      piStartDate.setDate(piStartDate.getDate() + 1); // day after current PI ends
+      // Advance by (offset - 1) full PIs
+      if (offset > 1) piStartDate.setDate(piStartDate.getDate() + (offset - 1) * sprintsPerPI * dur);
+    }
+  }
+
+  // 4) Fallback: next sprintStartDay from today
   if (!piStartDate) {
     const sd = CONFIG.sprint?.sprintStartDay ?? 5;
     piStartDate = new Date(); piStartDate.setHours(0, 0, 0, 0);
     piStartDate.setDate(piStartDate.getDate() + (sd - piStartDate.getDay() + 7) % 7);
   }
 
+  // Build per-sprint start dates: use actual JIRA dates when available, else extrapolate
+  const sprintStarts = [];
+  for (let s = 0; s < sprintsPerPI; s++) {
+    if (_piSprintDates[s]?.start) {
+      sprintStarts[s] = new Date(_piSprintDates[s].start);
+    } else if (s === 0) {
+      sprintStarts[s] = new Date(piStartDate);
+    } else {
+      // Extrapolate from previous sprint start + duration
+      sprintStarts[s] = new Date(sprintStarts[s - 1]);
+      sprintStarts[s].setDate(sprintStarts[s].getDate() + dur);
+    }
+  }
+
   // Collect French holidays covering the full PI date range
   const fmt = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
   const y1 = piStartDate.getFullYear();
-  const piEndEst = new Date(piStartDate);
-  piEndEst.setDate(piEndEst.getDate() + totalWeeks * 7);
+  const lastSprintStart = sprintStarts[sprintsPerPI - 1];
+  const piEndEst = new Date(lastSprintStart);
+  piEndEst.setDate(piEndEst.getDate() + dur);
   const y2 = piEndEst.getFullYear();
   const holidays = typeof _frenchHolidays === 'function'
     ? [..._frenchHolidays(y1), ...(y2 !== y1 ? _frenchHolidays(y2) : [])]
@@ -206,52 +264,102 @@ function _rotWeekInfos() {
   const holSet = new Set(holidays.map(h => h.d.toDateString()));
 
   const infos = [];
-  for (let i = 0; i < totalWeeks; i++) {
-    const sprintIdx = Math.floor(i / weeksPerSprint); // 0-based sprint
-    const weekInSprint = (i % weeksPerSprint) + 1;    // 1-based week
+  infos._piNum = piNum; // expose PI number for display
+  for (let s = 0; s < sprintsPerPI; s++) {
+    for (let w = 0; w < weeksPerSprint; w++) {
+      const label = piNum
+        ? `${piNum}.${s + 1}.${w + 1}`
+        : `S${s * weeksPerSprint + w + 1}`;
 
-    const label = piNum
-      ? `${piNum}.${sprintIdx + 1}.${weekInSprint}`
-      : `S${i + 1}`;
-
-    const _start = new Date(piStartDate);
-    _start.setDate(_start.getDate() + i * 7);
-    const _end = new Date(_start);
-    _end.setDate(_end.getDate() + 6);
-    const dateRange = `${fmt(_start)} → ${fmt(_end)}`;
-
-    // Count working days (exclude weekends + French holidays)
-    let workDays = 0;
-    const weekHolidays = [];
-    const cursor = new Date(_start);
-    while (cursor <= _end) {
-      const dow = cursor.getDay();
-      if (dow !== 0 && dow !== 6) { // weekday
-        if (holSet.has(cursor.toDateString())) {
-          const h = holidays.find(h => h.d.toDateString() === cursor.toDateString());
-          weekHolidays.push(h ? h.name : 'Férié');
-        } else {
-          workDays++;
-        }
+      let _start, _end;
+      if (weekMode === 'monday') {
+        // Monday→Friday: find the Monday on or after sprint week boundary
+        const base = new Date(sprintStarts[s]);
+        base.setDate(base.getDate() + w * 7);
+        const dow = base.getDay(); // 0=Sun,1=Mon,...
+        _start = new Date(base);
+        if (dow !== 1) _start.setDate(_start.getDate() + ((8 - dow) % 7)); // advance to Monday
+        _start.setHours(0, 0, 0, 0);
+        _end = new Date(_start);
+        _end.setDate(_end.getDate() + 4); // Friday
+        _end.setHours(23, 59, 59, 999);
+      } else {
+        // Default (friday / sprint-aligned): 7-day block from sprint start
+        _start = new Date(sprintStarts[s]);
+        _start.setDate(_start.getDate() + w * 7);
+        _start.setHours(0, 0, 0, 0);
+        _end = new Date(_start);
+        _end.setDate(_end.getDate() + 6);
+        _end.setHours(23, 59, 59, 999);
       }
-      cursor.setDate(cursor.getDate() + 1);
-    }
+      const dateRange = `${fmt(_start)} → ${fmt(_end)}`;
 
-    infos.push({ label, dateRange, sprintIdx, weekInSprint, _start, _end, workDays, holidays: weekHolidays });
+      // Count working days (exclude weekends + French holidays)
+      let workDays = 0;
+      const weekHolidays = [];
+      const cursor = new Date(_start);
+      while (cursor <= _end) {
+        const dow = cursor.getDay();
+        if (dow !== 0 && dow !== 6) {
+          if (holSet.has(cursor.toDateString())) {
+            const h = holidays.find(h => h.d.toDateString() === cursor.toDateString());
+            weekHolidays.push(h ? h.name : 'Férié');
+          } else {
+            workDays++;
+          }
+        }
+        cursor.setDate(cursor.getDate() + 1);
+      }
+
+      infos.push({ label, dateRange, sprintIdx: s, weekInSprint: w + 1, _start, _end, workDays, holidays: weekHolidays });
+    }
   }
   return infos;
 }
 
+function _rotToggleTeam(team) {
+  _rotTeamCollapsed[team] = !(_rotTeamCollapsed[team] ?? true);
+  _rotRefreshTeam(team);
+}
+
+function _rotTogglePI(offset) {
+  _rotPIOffset = offset;
+  _rotLoadAbsForPI();
+  renderSettings();
+}
+
+// Rotation key: namespace by PI offset so each PI has its own rotation data
+function _rotTeamKey(team) {
+  const piNum = _rotWeekInfos()._piNum;
+  return piNum ? `${team}__pi${piNum}` : team;
+}
+
 function _rotSetMembersPerWeek(team, n) {
-  if (!_supportRotation[team]) _supportRotation[team] = { membersPerWeek: 3, weeks: {} };
-  _supportRotation[team].membersPerWeek = Math.max(1, Math.min(10, n));
+  const k = _rotTeamKey(team);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
+  _supportRotation[k].membersPerWeek = Math.max(1, Math.min(10, n));
   _saveRotation();
   renderSettings();
 }
 
+function _rotSetWeekMode(team, mode) {
+  const k = _rotTeamKey(team);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
+  _supportRotation[k].weekMode = mode; // 'monday' | 'friday'
+  _supportRotation[k].weeks = {};      // reset assignments — week boundaries changed
+  _saveRotation();
+  _rotRefreshTeam(team);
+}
+
+function _rotGetWeekMode(team) {
+  const k = _rotTeamKey(team);
+  return (_supportRotation[k]?.weekMode) || 'friday';
+}
+
 function _rotToggleMember(team, weekIdx, member) {
-  if (!_supportRotation[team]) _supportRotation[team] = { membersPerWeek: 3, weeks: {} };
-  const weeks = _supportRotation[team].weeks;
+  const k = _rotTeamKey(team);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
+  const weeks = _supportRotation[k].weeks;
   if (!weeks[weekIdx]) weeks[weekIdx] = [];
   const arr = weeks[weekIdx];
   const idx = arr.indexOf(member);
@@ -267,14 +375,136 @@ function _rotRefreshTeam(team) {
   el.outerHTML = _rotTeamPanel(team);
 }
 
+function _rotTeamMembers(team) {
+  const base = MEMBERS[team] || [];
+  const extra = _rotExtraMembers[team] || [];
+  // Members auto-detected from absences "Équipes" column
+  const fromAbs = Object.entries(_rotAbsTeams)
+    .filter(([, t]) => t === team)
+    .map(([m]) => m);
+  const hk = _rotTeamKey(team);
+  const hidden = new Set(_rotHiddenMembers[hk] || []);
+  const all = [...new Set([...base, ...extra, ...fromAbs])].filter(m => !hidden.has(m));
+  all.sort((a, b) => a.localeCompare(b, 'fr'));
+  return all;
+}
+
+// --- Add member: inline input with autocomplete ---
+let _rotAddingTeam = null; // team currently showing add input
+
+function _rotAddMember(team) {
+  // Toggle: close if already open for this team
+  if (_rotAddingTeam === team) { _rotAddingTeam = null; _rotRefreshTeam(team); return; }
+  _rotAddingTeam = team;
+  _rotRefreshTeam(team);
+  // Focus the input after DOM update
+  setTimeout(() => {
+    const inp = document.getElementById(`rot-add-input-${team}`);
+    if (inp) inp.focus();
+  }, 30);
+}
+
+function _rotConfirmAdd(team) {
+  const inp = document.getElementById(`rot-add-input-${team}`);
+  const name = inp?.value?.trim();
+  if (!name) return;
+  if (!_rotExtraMembers[team]) _rotExtraMembers[team] = [];
+  if (!_rotExtraMembers[team].includes(name)) _rotExtraMembers[team].push(name);
+  const hk = _rotTeamKey(team);
+  if (_rotHiddenMembers[hk]) {
+    _rotHiddenMembers[hk] = _rotHiddenMembers[hk].filter(m => m !== name);
+  }
+  _supSave();
+  _rotAddingTeam = null;
+  _rotRefreshTeam(team);
+  if (typeof showToast === 'function') showToast(`✅ ${name} ajouté à ${CONFIG.teams[team]?.name || team}`, 'success');
+}
+
+function _rotAddInputKeydown(e, team) {
+  if (e.key === 'Enter') { e.preventDefault(); _rotConfirmAdd(team); }
+  if (e.key === 'Escape') { _rotAddingTeam = null; _rotRefreshTeam(team); }
+}
+
+// Build suggestions: all members from other teams not already in this team
+function _rotSuggestions(team) {
+  const current = new Set(_rotTeamMembers(team));
+  const suggestions = [];
+  // From all MEMBERS (other teams)
+  Object.entries(MEMBERS).forEach(([t, ms]) => {
+    if (t === team) return;
+    ms.forEach(m => { if (!current.has(m) && !suggestions.includes(m)) suggestions.push(m); });
+  });
+  // From extra members of other teams
+  Object.entries(_rotExtraMembers).forEach(([t, ms]) => {
+    if (t === team) return;
+    ms.forEach(m => { if (!current.has(m) && !suggestions.includes(m)) suggestions.push(m); });
+  });
+  // From hidden members of this team (re-add)
+  (_rotHiddenMembers[_rotTeamKey(team)] || []).forEach(m => {
+    if (!current.has(m) && !suggestions.includes(m)) suggestions.push(m);
+  });
+  // From absences data names
+  _rotAbsAllNames.forEach(absName => {
+    // Find the original-case name
+    const origName = _normalizeExcelName(absName);
+    if (!current.has(origName) && !suggestions.includes(origName)) suggestions.push(origName);
+  });
+  suggestions.sort((a, b) => a.localeCompare(b, 'fr'));
+  return suggestions;
+}
+
+function _rotAddInputHtml(team) {
+  const suggestions = _rotSuggestions(team);
+  const listId = `rot-add-list-${team}`;
+  return `<div class="rot-add-row">
+    <input id="rot-add-input-${team}" type="text" class="rot-add-input" placeholder="Nom du membre…"
+      list="${listId}" autocomplete="off"
+      onkeydown="_rotAddInputKeydown(event,'${team}')">
+    <datalist id="${listId}">
+      ${suggestions.map(s => `<option value="${s}">`).join('')}
+    </datalist>
+    <button class="rot-add-confirm" onclick="_rotConfirmAdd('${team}')" title="Ajouter">✓</button>
+    <button class="rot-add-cancel" onclick="_rotAddingTeam=null;_rotRefreshTeam('${team}')" title="Annuler">✕</button>
+  </div>`;
+}
+
+// --- Remove member: with confirmation ---
+function _rotRemoveMember(team, member) {
+  if (!confirm(`Retirer « ${member} » de l'équipe ${CONFIG.teams[team]?.name || team} ?`)) return;
+  // Remove from extra if manually added
+  if (_rotExtraMembers[team]) {
+    _rotExtraMembers[team] = _rotExtraMembers[team].filter(m => m !== member);
+  }
+  // Hide if from JIRA or from absences auto-detection
+  const isFromJira = (MEMBERS[team] || []).includes(member);
+  const isFromAbs = _rotAbsTeams[member] === team;
+  const hk = _rotTeamKey(team);
+  if (isFromJira || isFromAbs) {
+    if (!_rotHiddenMembers[hk]) _rotHiddenMembers[hk] = [];
+    if (!_rotHiddenMembers[hk].includes(member)) _rotHiddenMembers[hk].push(member);
+  }
+  // Remove from rotation weeks
+  const k = _rotTeamKey(team);
+  const rot = _supportRotation[k];
+  if (rot?.weeks) {
+    Object.values(rot.weeks).forEach(arr => {
+      const idx = arr.indexOf(member);
+      if (idx >= 0) arr.splice(idx, 1);
+    });
+  }
+  _supSave();
+  _rotRefreshTeam(team);
+}
+
 function _rotTeamPanel(team) {
-  const members = MEMBERS[team] || [];
+  const members = _rotTeamMembers(team);
   if (!members.length) return '';
   const color = _teamColor(team);
   const name  = CONFIG.teams[team]?.name || team;
-  const rot   = _supportRotation[team] || { membersPerWeek: 3, weeks: {} };
+  const rot   = _supportRotation[_rotTeamKey(team)] || { membersPerWeek: 3, weeks: {} };
   const mpw   = rot.membersPerWeek || 3;
-  const weekInfos = _rotWeekInfos();
+  const wMode = rot.weekMode || 'friday';
+  const weekInfos = _rotWeekInfos(null, wMode);
   const totalWeeks = weekInfos.length;
 
   const weekHeaders = weekInfos.map(w => {
@@ -286,9 +516,13 @@ function _rotTeamPanel(team) {
   const memberRows = members.map(m => {
     const cells = Array.from({ length: totalWeeks }, (_, wi) => {
       const selected = (rot.weeks[wi] || []).includes(m);
-      const absent = _isAbsent(m, wi, _rotParsedAbsences);
-      const absentCls = absent ? ' rot-cell-absent' : '';
+      const w = weekInfos[wi];
+      const absDays = _getAbsDaysForRange(m, w._start, w._end);
+      const absent = absDays >= (w.workDays || 5) / 2;
+      const absentCls = absent ? ' rot-cell-absent' : absDays > 0 ? ' rot-cell-partial' : '';
+      const absBadge = absDays > 0 ? `<span class="rot-abs-badge${absent ? ' rot-abs-full' : ''}" title="${absDays}j congé">${absDays % 1 ? absDays.toFixed(1).replace('.', ',') : absDays}j</span>` : '';
       return `<td class="rot-cell${absentCls}">
+        ${absBadge}
         <button class="rot-chip${selected ? ' rot-chip-on' : ''}" style="${selected ? `background:${color}22;color:${color};border-color:${color}` : ''}"
           onclick="_rotToggleMember('${team}',${wi},'${m.replace(/'/g, "\\'")}')">${selected ? '✓' : ''}</button>
       </td>`;
@@ -296,10 +530,13 @@ function _rotTeamPanel(team) {
     const hasAbsData = _rotAbsAllNames.size > 0;
     let matchDot = '';
     if (hasAbsData) {
-      const matched = _rotAbsAllNames.has(m.toLowerCase());
+      const matched = _isMemberInAbsData(m);
       matchDot = `<span class="rot-member-match ${matched ? 'matched' : 'unmatched'}" title="${matched ? 'Congés référencés' : 'Non trouvé dans les congés'}"></span>`;
     }
-    return `<tr><td class="rot-member">${matchDot}${m}</td>${cells}</tr>`;
+    const isExtra = (_rotExtraMembers[team] || []).includes(m);
+    const removeTip = isExtra ? 'Retirer ce membre ajouté manuellement' : 'Masquer ce membre';
+    const removeBtn = `<button class="rot-member-rm" onclick="event.stopPropagation();_rotRemoveMember('${team}','${m.replace(/'/g, "\\'")}')" title="${removeTip}">×</button>`;
+    return `<tr><td class="rot-member">${matchDot}${m}${removeBtn}</td>${cells}</tr>`;
   }).join('');
 
   // Week counts
@@ -309,201 +546,152 @@ function _rotTeamPanel(team) {
     return `<td class="rot-cell rot-count${ok ? '' : ' rot-count-warn'}">${cnt}/${mpw}</td>`;
   }).join('');
 
+  // Capacity row: total available person-days per week
+  const capaCells = Array.from({ length: totalWeeks }, (_, wi) => {
+    const w = weekInfos[wi];
+    const wd = w?.workDays ?? 5;
+    let totalAbs = 0;
+    members.forEach(m => { totalAbs += _getAbsDaysForRange(m, w._start, w._end); });
+    const totalCap = members.length * wd;
+    const availCap = Math.max(0, totalCap - totalAbs);
+    const pct = totalCap > 0 ? Math.round(availCap / totalCap * 100) : 100;
+    const warn = pct < 60 ? ' rot-capa-warn' : pct < 80 ? ' rot-capa-mid' : '';
+    return `<td class="rot-cell rot-capa${warn}" title="${availCap}/${totalCap} jours dispo (${pct}%)">${availCap}j <span class="rot-capa-pct">${pct}%</span></td>`;
+  }).join('');
+
+  const activeTeams = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+  const isActive = activeTeams.length === 0 || activeTeams.includes(team);
+  const collapsed = _rotTeamCollapsed[team] ?? !isActive;
+  const filledWeeks = Object.keys(rot.weeks).filter(wi => (rot.weeks[wi] || []).length > 0).length;
+  const correctWeeks = Object.keys(rot.weeks).filter(wi => (rot.weeks[wi] || []).length === mpw).length;
+  const weeksPct = totalWeeks > 0 ? Math.round(filledWeeks / totalWeeks * 100) : 0;
+  const weeksOk = filledWeeks === totalWeeks;
+  const correctOk = correctWeeks === totalWeeks;
+  const summaryWeeksCls = weeksOk && correctOk ? 'rot-sum-ok' : filledWeeks > 0 ? 'rot-sum-partial' : 'rot-sum-empty';
+  const summary = collapsed ? `<span class="rot-team-summary">
+    <span class="rot-sum-pill rot-sum-members">${members.length} membre${members.length > 1 ? 's' : ''}</span>
+    <span class="rot-sum-pill ${summaryWeeksCls}">${filledWeeks}/${totalWeeks} sem.</span>
+    ${!correctOk && filledWeeks > 0 ? `<span class="rot-sum-pill rot-sum-partial">${correctWeeks}/${totalWeeks} complet${correctWeeks > 1 ? 's' : ''}</span>` : ''}
+    <span class="rot-sum-bar"><span class="rot-sum-fill ${summaryWeeksCls}" style="width:${weeksPct}%"></span></span>
+  </span>` : '';
+
   return `<div class="rot-team-panel" id="rot-team-${team}" style="border-left:3px solid ${color}">
-    <div class="rot-team-hdr">
+    <div class="rot-team-hdr" onclick="_rotToggleTeam('${team}')" style="cursor:pointer;">
+      <span class="rot-team-chevron">${collapsed ? '▶' : '▼'}</span>
       <span class="rot-team-dot" style="background:${color}"></span>
       <span class="rot-team-name">${name}</span>
-      <label class="rot-mpw-label">Effectif support / semaine :
+      ${summary}
+      ${!collapsed ? `<label class="rot-mpw-label" onclick="event.stopPropagation()">Effectif / sem. :
         <input type="number" min="1" max="10" value="${mpw}" class="rot-mpw-input"
           onchange="_rotSetMembersPerWeek('${team}',+this.value)">
       </label>
-      <button class="rot-copy-btn" onclick="_rotCopyTeam('${team}')" title="Copier la rotation">📋</button>
-      <button class="rot-gen-btn" onclick="_rotShuffleTeam('${team}')" title="Générer une nouvelle rotation pour cette équipe">🎲</button>
+      <span class="rot-wmode" onclick="event.stopPropagation()" title="Mode semaine support">
+        <button class="rot-wmode-btn${wMode === 'friday' ? ' rot-wmode-on' : ''}" onclick="_rotSetWeekMode('${team}','friday')">Ven→Jeu</button>
+        <button class="rot-wmode-btn${wMode === 'monday' ? ' rot-wmode-on' : ''}" onclick="_rotSetWeekMode('${team}','monday')">Lun→Ven</button>
+      </span>
+      <button class="rot-copy-btn" onclick="event.stopPropagation();_rotCopyTeam('${team}')" title="Copier la rotation">📋</button>
+      <button class="rot-gen-btn" onclick="event.stopPropagation();_rotShuffleTeam('${team}')" title="Générer une nouvelle rotation pour cette équipe">🎲</button>
+      <button class="rot-add-btn" onclick="event.stopPropagation();_rotAddMember('${team}')" title="Ajouter un membre">+ Membre</button>` : ''}
     </div>
-    <div class="rot-table-wrap">
+    ${!collapsed ? `<div class="rot-table-wrap">
       <table class="rot-table">
         <thead><tr><th class="rot-member-th">Membre</th>${weekHeaders}</tr></thead>
         <tbody>${memberRows}
           <tr class="rot-count-row"><td class="rot-member rot-count-label">Total</td>${countCells}</tr>
+          <tr class="rot-capa-row"><td class="rot-member rot-count-label">Capacité</td>${capaCells}</tr>
         </tbody>
       </table>
-    </div>
+      <div class="rot-capa-legend">
+        <span class="legend-ok">&ge;80%</span>
+        <span class="legend-mid">60-80%</span>
+        <span class="legend-warn">&lt;60%</span>
+      </div>
+      ${_rotAddingTeam === team ? _rotAddInputHtml(team) : ''}
+    </div>` : ''}
   </div>`;
 }
 
 function _rotShuffleTeam(team) {
   _rotParseAbsencesLive();
-  const absences = _rotParsedAbsences;
   const totalWeeks = _piWeeks();
-  const members = MEMBERS[team] || [];
+  const members = _rotTeamMembers(team);
   if (!members.length) return;
-  if (!_supportRotation[team]) _supportRotation[team] = { membersPerWeek: 3, weeks: {} };
-  const mpw = _supportRotation[team].membersPerWeek || 3;
+  const k = _rotTeamKey(team);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
+  const mpw = _supportRotation[k].membersPerWeek || 3;
   const weeks = {};
   const counts = {};
   members.forEach(m => counts[m] = 0);
 
+  const weekInfos = _rotWeekInfos(null, _supportRotation[k].weekMode || 'friday');
   for (let wi = 0; wi < totalWeeks; wi++) {
-    const available = members.filter(m => !_isAbsent(m, wi, absences));
-    available.sort((a, b) => counts[a] - counts[b] || (Math.random() - 0.5));
+    const w = weekInfos[wi];
+    const wd = w?.workDays ?? 5;
+    // Filter: exclude fully absent AND members with < 1 day present
+    const available = members.filter(m => {
+      const abs = _getAbsDaysForRange(m, w._start, w._end);
+      if (abs >= wd / 2) return false; // majority absent
+      return (wd - abs) >= 1; // at least 1 working day present
+    });
+    // Sort by effective availability, then by assignment balance
+    available.sort((a, b) => {
+      const aAbs = _getAbsDaysForRange(a, w._start, w._end);
+      const bAbs = _getAbsDaysForRange(b, w._start, w._end);
+      const aPresent = wd - aAbs;
+      const bPresent = wd - bAbs;
+      // Primary: prefer members who are fully present (0 abs) over partial
+      const aFull = aAbs === 0 ? 0 : 1;
+      const bFull = bAbs === 0 ? 0 : 1;
+      if (aFull !== bFull) return aFull - bFull;
+      // Secondary: fewest assignments so far (balance workload)
+      if (counts[a] !== counts[b]) return counts[a] - counts[b];
+      // Tertiary: more present days preferred
+      if (aPresent !== bPresent) return bPresent - aPresent;
+      // Quaternary: random
+      return Math.random() - 0.5;
+    });
     const picked = available.slice(0, Math.min(mpw, available.length));
     weeks[wi] = picked;
     picked.forEach(m => counts[m]++);
   }
 
-  _supportRotation[team].weeks = weeks;
+  _supportRotation[k].weeks = weeks;
   _saveRotation();
   _rotRefreshTeam(team);
   if (typeof showToast === 'function') showToast(`🔄 Rotation générée pour ${CONFIG.teams[team]?.name || team}`, 'success');
 }
 
 function _rotShuffle() {
-  _rotParseAbsencesLive();
-  const realTeams = [...new Set([
-    ...Object.keys(CONFIG.teams),
-    ...GROUPS.flatMap(g => g.teams),
-  ])].sort();
-  for (const team of realTeams) _rotShuffleTeam(team);
-  if (typeof showToast === 'function') showToast('🔄 Rotation générée pour toutes les équipes !', 'success');
+  const btn = document.querySelector('[onclick="_rotShuffle()"]');
+  const origHtml = btn?.innerHTML;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<span class="rot-spinner"></span> Génération…'; }
+  setTimeout(() => {
+    _rotParseAbsencesLive();
+    const realTeams = _stgLiveTeams([...new Set([
+      ...Object.keys(CONFIG.teams),
+      ...GROUPS.flatMap(g => g.teams),
+    ])].sort());
+    for (const team of realTeams) _rotShuffleTeam(team);
+    const piLabel = _rotWeekInfos()._piNum || '?';
+    if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
+    if (typeof showToast === 'function') showToast(`🔄 Rotation PI ${piLabel} générée pour toutes les équipes !`, 'success');
+  }, 50);
 }
 
-function _parseAbsences(raw) {
-  // Excel format: header row with dates (DD/MM) starting at col 4+
-  // Data rows: "Nom, Prénom \t Équipe \t Entité \t Rôle \t 1 \t \t 0,5 …"
-  // Returns { normalizedMemberName: Set([weekIndex, ...]) }
-  const result = {};
-  if (!raw.trim()) return result;
-  const lines = raw.trim().split('\n');
-  if (lines.length < 2) return result;
+// _parseAbsences, _normalizeExcelName, _normalizeAbsTeam, _fuzzyNameMatch,
+// _findAbsKey, _isAbsent, _getAbsDays, _isMemberInAbsData → absences.js
 
-  // Parse header row to find date columns
-  const headerCells = lines[0].split('\t');
-  const weekInfos = _rotWeekInfos();
-  const dateRe = /^(\d{1,2})[\/\-](\d{1,2})(?:[\/\-](\d{2,4}))?$/;
-
-  // PI date range for year inference (handles Dec→Jan crossover)
-  const piStart = weekInfos[0]?._start;
-  const piEnd   = weekInfos[weekInfos.length - 1]?._end;
-  const piYear  = piStart ? piStart.getFullYear() : new Date().getFullYear();
-
-  // Map each column index → date object
-  const colDates = {};
-  for (let ci = 0; ci < headerCells.length; ci++) {
-    const m = headerCells[ci].trim().match(dateRe);
-    if (m) {
-      const day = parseInt(m[1]), month = parseInt(m[2]) - 1;
-      if (m[3]) {
-        // Explicit year provided
-        const year = m[3].length === 2 ? 2000 + parseInt(m[3]) : parseInt(m[3]);
-        colDates[ci] = new Date(year, month, day);
-      } else {
-        // No year: pick the one that falls within PI range
-        // Try piYear and piYear+1, keep the one closest to PI window
-        const candidate1 = new Date(piYear, month, day);
-        const candidate2 = new Date(piYear + 1, month, day);
-        if (piStart && piEnd) {
-          const inRange1 = candidate1 >= piStart && candidate1 <= piEnd;
-          const inRange2 = candidate2 >= piStart && candidate2 <= piEnd;
-          colDates[ci] = inRange2 && !inRange1 ? candidate2 : candidate1;
-        } else {
-          colDates[ci] = candidate1;
-        }
-      }
-    }
-  }
-
-  // Map each date → week index (which rotation week does this date fall in?)
-  function dateToWeekIdx(date) {
-    for (let wi = 0; wi < weekInfos.length; wi++) {
-      const w = weekInfos[wi];
-      if (!w._start) continue;
-      const wEnd = new Date(w._start);
-      wEnd.setDate(wEnd.getDate() + 6);
-      if (date >= w._start && date <= wEnd) return wi;
-    }
-    return -1;
-  }
-
-  // Parse data rows
-  for (let li = 1; li < lines.length; li++) {
-    const cells = lines[li].split('\t');
-    if (!cells[0]?.trim()) continue;
-    const rawName = cells[0].trim();
-    const memberName = _normalizeExcelName(rawName);
-
-    // Sum absence values per week
-    const weekAbsence = {};
-    for (const [ci, date] of Object.entries(colDates)) {
-      const val = (cells[ci] || '').trim().replace(',', '.');
-      const num = parseFloat(val);
-      if (!num || isNaN(num)) continue;
-      const wi = dateToWeekIdx(date);
-      if (wi < 0) continue;
-      weekAbsence[wi] = (weekAbsence[wi] || 0) + num;
-    }
-
-    // Mark absent if absent for majority of working days (>= half of workDays)
-    const absentWeeks = new Set();
-    for (const [wi, total] of Object.entries(weekAbsence)) {
-      const wd = weekInfos[wi]?.workDays ?? 5;
-      if (total >= wd / 2) absentWeeks.add(parseInt(wi));
-    }
-    if (absentWeeks.size) result[memberName] = absentWeeks;
-  }
-  return result;
-}
-
-function _normalizeExcelName(raw) {
-  // "Nom, Prénom" → "Prénom Nom" to match MEMBERS format
-  const commaMatch = raw.match(/^([^,]+),\s*(.+)$/);
-  if (commaMatch) return `${commaMatch[2].trim()} ${commaMatch[1].trim()}`;
-  return raw;
-}
-
-function _isAbsent(member, weekIdx, absences) {
-  // Try exact match first, then case-insensitive
-  if (absences[member]?.has(weekIdx)) return true;
-  const lower = member.toLowerCase();
-  for (const [name, weeks] of Object.entries(absences)) {
-    if (name.toLowerCase() === lower && weeks.has(weekIdx)) return true;
-  }
-  return false;
-}
-
-function _rotParseAbsencesLive() {
-  const raw = document.getElementById('rot-absences-input')?.value || '';
-  _rotAbsencesRaw = raw;
-  _rotParsedAbsences = _parseAbsences(raw);
-  // Count total members in pasted data (lines with a name, excluding header)
-  const lines = raw.trim().split('\n');
-  _rotAbsMemberCount = lines.length > 1 ? lines.slice(1).filter(l => l.split('\t')[0]?.trim()).length : 0;
-  // Collect all normalized names from absences data
-  _rotAbsAllNames = new Set();
-  if (lines.length > 1) {
-    for (const l of lines.slice(1)) {
-      const raw = l.split('\t')[0]?.trim();
-      if (raw) _rotAbsAllNames.add(_normalizeExcelName(raw).toLowerCase());
-    }
-  }
-  // Persist to JSON
-  if (raw.trim()) _rotAbsSave(raw);
-  // Refresh all team panels to show/hide orange cells
-  const realTeams = [...new Set([
-    ...Object.keys(CONFIG.teams),
-    ...GROUPS.flatMap(g => g.teams),
-  ])].sort();
-  for (const team of realTeams) _rotRefreshTeam(team);
-}
+// _rotParseAbsencesLive → absences.js
 
 function _rotCopyTeam(team) {
-  const rot = _supportRotation[team] || { weeks: {} };
-  const weekInfos = _rotWeekInfos();
+  const rot = _supportRotation[_rotTeamKey(team)] || { weeks: {} };
+  const weekInfos = _rotWeekInfos(null, rot.weekMode || 'friday');
   const lines = [];
   for (let wi = 0; wi < weekInfos.length; wi++) {
     const w = weekInfos[wi];
     const members = rot.weeks[wi] || [];
     const datePart = w.dateRange ? ` (${w.dateRange.replace(' → ', '– ')})` : '';
-    lines.push(`* ✅ Itération ${w.label}${datePart}`);
+    lines.push(`* 🟦 Itération ${w.label}${datePart}`);
     if (members.length) {
       lines.push(`    * ${members.map(m => '@' + m).join(', ')}`);
     } else {
@@ -518,12 +706,13 @@ function _rotCopyTeam(team) {
 }
 
 function _rotClearAll() {
-  const realTeams = [...new Set([
+  const realTeams = _stgLiveTeams([...new Set([
     ...Object.keys(CONFIG.teams),
     ...GROUPS.flatMap(g => g.teams),
-  ])].sort();
+  ])].sort());
   for (const team of realTeams) {
-    if (_supportRotation[team]) _supportRotation[team].weeks = {};
+    const k = _rotTeamKey(team);
+    if (_supportRotation[k]) _supportRotation[k].weeks = {};
   }
   _saveRotation();
   renderSettings();
@@ -552,7 +741,8 @@ const _stgTabs = [
   { id: 'teams',     icon: '👥', label: 'Équipes' },
   { id: 'groups',    icon: '🗂️', label: 'Groupes' },
   { id: 'notif',     icon: '🔔', label: 'Notifications' },
-  { id: 'rotation',  icon: '🔄', label: 'Rotation' },
+  { id: 'rotation',  icon: '🔄', label: 'Support' },
+  { id: 'absences', icon: '📋', label: 'Absences' },
 ];
 
 function _stgScrollTo(id) {
@@ -566,8 +756,17 @@ function _stgScrollTo(id) {
     setTimeout(() => _stgScrollTo(id), 50);
     return;
   }
-  setTimeout(() => sec.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+  setTimeout(() => {
+    const container = document.getElementById('content') || document.documentElement;
+    const rect = sec.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+    const offset = (document.getElementById('stg-tabs')?.offsetHeight || 0) + (document.getElementById('topbar')?.offsetHeight || 0) + 16;
+    container.scrollBy({ top: rect.top - contRect.top - offset, behavior: 'smooth' });
+    sec.classList.add('pi-highlight');
+    setTimeout(() => sec.classList.remove('pi-highlight'), 3000);
+  }, 50);
   document.querySelectorAll('.stg-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === id));
+  if (typeof _pushHash === 'function') _pushHash();
 }
 
 let _stgSpyCleanup = null;
@@ -585,7 +784,9 @@ function _stgInitScrollSpy() {
       if (rect.top <= offset && rect.bottom > offset) activeId = sec.id.replace('stg-sec-', '');
     });
     if (activeId) {
+      const prev = tabs.querySelector('.stg-tab.active')?.dataset.sec;
       tabs.querySelectorAll('.stg-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === activeId));
+      if (activeId !== prev && typeof _pushHash === 'function') _pushHash();
     }
   };
   content.addEventListener('scroll', handler, { passive: true });
@@ -594,10 +795,10 @@ function _stgInitScrollSpy() {
 }
 
 function renderSettings() {
-  // Load absences from JSON on first render
-  if (!_rotAbsencesLoaded) {
-    _rotAbsLoad().then(() => {
-      // Re-render to inject loaded textarea content + indicator
+  // Load supports.json on first render
+  if (!_supLoaded) {
+    _supLoad().then(() => {
+      _rotLoadAbsForPI();
       const el = document.getElementById('settings-content');
       if (el) renderSettings();
     });
@@ -621,22 +822,21 @@ function renderSettings() {
 
   document.getElementById('settings-content').innerHTML = tabsHtml + `
   <!-- Apparence -->
-  <div class="settings-section stg-compact" id="stg-sec-apparence" style="grid-column:1/-1">
+  <div class="settings-section stg-compact stg-full-width" id="stg-sec-apparence">
     <div style="display:flex;align-items:center;justify-content:space-between;">
       <span style="font-size:13px;font-weight:700;">🎨 Apparence</span>
       <label class="theme-toggle" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;">
         <span>${isDark ? '🌙 Sombre' : '☀️ Clair'}</span>
-        <div class="toggle-track" style="position:relative;width:40px;height:22px;border-radius:99px;background:${isDark ? 'var(--primary)' : '#CBD5E1'};transition:background .3s;flex-shrink:0;">
-          <div style="position:absolute;top:2px;${isDark ? 'left:20px' : 'left:2px'};width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.3);transition:left .3s;"></div>
-          <input type="checkbox" ${isDark ? 'checked' : ''} onchange="toggleDarkMode(this);renderSettings();"
-            style="position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;margin:0;">
+        <div class="stg-toggle-track" style="background:${isDark ? 'var(--primary)' : '#CBD5E1'}">
+          <div class="stg-toggle-thumb" style="${isDark ? 'left:20px' : 'left:2px'}"></div>
+          <input type="checkbox" ${isDark ? 'checked' : ''} onchange="toggleDarkMode(this);renderSettings();">
         </div>
       </label>
     </div>
   </div>
 
   <!-- Connexion JIRA -->
-  <div class="settings-section" id="stg-sec-jira" style="grid-column:1/-1">
+  <div class="settings-section stg-full-width" id="stg-sec-jira">
     ${_sectionHeader('jira', '🔗', 'Connexion JIRA', CONFIG.jira.url !== 'https://votre-jira.atlassian.net' ? '✅ Configuré' : '⚠️ Non configuré')}
     ${!_settingsCollapsed['jira'] ? `<div class="stg-body">
       <div class="stg-grid-3">
@@ -647,88 +847,96 @@ function renderSettings() {
       <div class="stg-grid-2" style="margin-top:6px;">
         <div class="form-group"><label>Durée Sprint (jours)</label><input type="number" value="${CONFIG.sprint.durationDays}"/></div>
         <div style="display:flex;align-items:flex-end;">
-          <button class="btn btn-primary" onclick="showToast('✅ Connexion testée avec succès !','success')" style="font-size:12px;padding:7px 14px;">🔌 Tester</button>
+          <button class="btn btn-primary stg-btn-sm" id="stg-jira-test-btn" onclick="_stgTestJira()">🔌 Tester</button>
         </div>
       </div>
     </div>` : ''}
   </div>
 
   <!-- Paramètres de synchronisation -->
-  <div class="settings-section" id="stg-sec-sync" style="grid-column:1/-1">
+  <div class="settings-section stg-full-width" id="stg-sec-sync">
     ${_sectionHeader('sync', '⚙️', 'Synchronisation', '')}
     ${!_settingsCollapsed['sync'] ? `<div class="stg-body">
       <div class="stg-kv-grid">
         <div class="stg-kv">
-          <label>Boards par page</label>
-          <input type="number" value="${sc.maxBoardsPerPage}" onchange="CONFIG.sync.maxBoardsPerPage=+this.value" style="width:80px;">
+          <label>Boards par page <span class="stg-info" data-tip="Nombre max de boards JIRA récupérés par requête. Augmentez si certaines équipes ne sont pas détectées.">i</span></label>
+          <input type="number" value="${sc.maxBoardsPerPage}" onchange="CONFIG.sync.maxBoardsPerPage=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>Issues max / sprint</label>
-          <input type="number" value="${sc.maxIssuesPerSprint}" onchange="CONFIG.sync.maxIssuesPerSprint=+this.value" style="width:80px;">
+          <label>Issues max / sprint <span class="stg-info" data-tip="Nombre max de tickets récupérés par sprint. Augmentez si des tickets manquent dans le board.">i</span></label>
+          <input type="number" value="${sc.maxIssuesPerSprint}" onchange="CONFIG.sync.maxIssuesPerSprint=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>Sprints historiques (vélocité)</label>
-          <input type="number" value="${sc.velocityHistoryCount}" onchange="CONFIG.sync.velocityHistoryCount=+this.value" style="width:80px;">
+          <label>Sprints historiques <span class="stg-info" data-tip="Nombre de sprints fermés analysés par équipe pour calculer la vélocité et l'historique. Ex : 5 → les 5 derniers sprints terminés seront récupérés pour chaque board.">i</span></label>
+          <input type="number" value="${sc.velocityHistoryCount}" onchange="CONFIG.sync.velocityHistoryCount=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>PIs historiques</label>
-          <input type="number" value="${sc.piHistoryCount}" onchange="CONFIG.sync.piHistoryCount=+this.value" style="width:80px;">
+          <label>PIs historiques <span class="stg-info" data-tip="Nombre de PIs futurs à scanner en plus du PI courant (ex: 3 → PI actuel + PI+1 + PI+2 + PI+3).">i</span></label>
+          <input type="number" value="${sc.piHistoryCount}" onchange="CONFIG.sync.piHistoryCount=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>Issues max vélocité (JQL)</label>
-          <input type="number" value="${sc.velocityMaxIssues}" onchange="CONFIG.sync.velocityMaxIssues=+this.value" style="width:80px;">
+          <label>Issues max vélocité <span class="stg-info" data-tip="Limite de tickets dans la requête JQL pour le calcul de vélocité. Augmentez pour les gros projets.">i</span></label>
+          <input type="number" value="${sc.velocityMaxIssues}" onchange="CONFIG.sync.velocityMaxIssues=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>Epics orphelines max</label>
-          <input type="number" value="${sc.maxEpicsResolve}" onchange="CONFIG.sync.maxEpicsResolve=+this.value" style="width:80px;">
+          <label>Epics orphelines max <span class="stg-info" data-tip="Nombre max d'epics sans tickets à résoudre. Utilisé pour compléter les epics référencées mais absentes du sprint.">i</span></label>
+          <input type="number" value="${sc.maxEpicsResolve}" onchange="CONFIG.sync.maxEpicsResolve=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>Sprints fermés (fallback)</label>
-          <input type="number" value="${sc.closedSprintsFetch}" onchange="CONFIG.sync.closedSprintsFetch=+this.value" style="width:80px;">
+          <label>Sprints fermés <span class="stg-info" data-tip="Nombre max de sprints fermés récupérés par board (fallback). Couvre le cas où l'API retourne plus de sprints que nécessaire.">i</span></label>
+          <input type="number" value="${sc.closedSprintsFetch}" onchange="CONFIG.sync.closedSprintsFetch=+this.value" class="stg-kv-num">
         </div>
         <div class="stg-kv">
-          <label>Champ Sprint</label>
-          <input type="text" value="${sc.sprintField}" onchange="CONFIG.sync.sprintField=this.value" style="width:160px;">
+          <label>Champ Sprint <span class="stg-info" data-tip="ID du custom field JIRA contenant les sprints (ex: customfield_10020). Détecté automatiquement à la première sync.">i</span></label>
+          <input type="text" value="${sc.sprintField}" onchange="CONFIG.sync.sprintField=this.value" class="stg-kv-text">
         </div>
+      </div>
+      <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:12px;font-weight:600;">
+          <div class="stg-toggle-track" style="background:${sc.enrichClosedSprints ? 'var(--primary)' : '#CBD5E1'}">
+            <div class="stg-toggle-thumb" style="${sc.enrichClosedSprints ? 'left:20px' : 'left:2px'}"></div>
+            <input type="checkbox" ${sc.enrichClosedSprints ? 'checked' : ''} onchange="CONFIG.sync.enrichClosedSprints=this.checked;localStorage.setItem('enrichClosedSprints',this.checked?'1':'0');renderSettings();">
+          </div>
+          <span>Enrichir les tickets des sprints fermés</span>
+        </label>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px;margin-left:50px;">Stocke la description, priorité, labels et commentaires des tickets d'itérations passées. Augmente la taille du cache d'environ 30%. Nécessite une re-synchronisation.</div>
       </div>
     </div>` : ''}
   </div>
 
   <!-- Alertes sprint -->
-  <div class="settings-section" id="stg-sec-alerts" style="grid-column:1/-1">
+  <div class="settings-section" id="stg-sec-alerts" class="stg-full-width">
     ${_sectionHeader('alerts', '🔔', 'Alertes Sprint', '')}
     ${!_settingsCollapsed['alerts'] ? `<div class="stg-body">
-      <div class="stg-kv-grid">
-        <div class="stg-kv">
-          <label>🎬 Préparation démo</label>
-          <div class="stg-alert-input">
-            <span>J-</span>
-            <input type="number" min="0" max="7" value="${CONFIG.alerts?.demoDays ?? 1}" onchange="if(!CONFIG.alerts)CONFIG.alerts={};CONFIG.alerts.demoDays=+this.value;" style="width:50px;">
-            <span>avant fin de sprint</span>
-          </div>
+      <div class="stg-alert-group">
+        <div class="stg-alert-header">⏳ Avant fin de sprint</div>
+        <div class="stg-alert-row">
+          <span class="stg-alert-icon">🎬</span>
+          <span class="stg-alert-label">Préparation démo <span class="stg-info" data-tip="Affiche un rappel dans la sprint-bar de la vue Scrum pour préparer la démo de fin de sprint. Ex : J-1 → le rappel apparaît la veille de la fin du sprint. Cochez le rituel pour le masquer.">i</span></span>
+          <span class="stg-alert-jx">J-</span>
+          <input type="number" class="stg-alert-num" min="0" max="7" value="${CONFIG.alerts?.demoDays ?? 1}" onchange="if(!CONFIG.alerts)CONFIG.alerts={};CONFIG.alerts.demoDays=+this.value;">
         </div>
-        <div class="stg-kv">
-          <label>😊 Mood meter (ROTI)</label>
-          <div class="stg-alert-input">
-            <span>J-</span>
-            <input type="number" min="0" max="7" value="${CONFIG.alerts?.moodDays ?? 2}" onchange="if(!CONFIG.alerts)CONFIG.alerts={};CONFIG.alerts.moodDays=+this.value;" style="width:50px;">
-            <span>avant fin de sprint</span>
-          </div>
+        <div class="stg-alert-row">
+          <span class="stg-alert-icon">😊</span>
+          <span class="stg-alert-label">Mood meter <span class="stg-info" data-tip="Affiche un rappel dans la sprint-bar (vue Scrum) pour lancer le sondage de satisfaction d'équipe (ROTI). Le panel Mood se trouve dans la barre du sprint en haut de la vue Scrum.">i</span></span>
+          <span class="stg-alert-jx">J-</span>
+          <input type="number" class="stg-alert-num" min="0" max="7" value="${CONFIG.alerts?.moodDays ?? 2}" onchange="if(!CONFIG.alerts)CONFIG.alerts={};CONFIG.alerts.moodDays=+this.value;">
         </div>
-        <div class="stg-kv">
-          <label>🗳️ Vote de confiance</label>
-          <div class="stg-alert-input">
-            <span>J+</span>
-            <input type="number" min="0" max="7" value="${CONFIG.alerts?.voteDays ?? 1}" onchange="if(!CONFIG.alerts)CONFIG.alerts={};CONFIG.alerts.voteDays=+this.value;" style="width:50px;">
-            <span>après début de sprint</span>
-          </div>
+      </div>
+      <div class="stg-alert-group">
+        <div class="stg-alert-header">🚀 Après début de sprint</div>
+        <div class="stg-alert-row">
+          <span class="stg-alert-icon">🗳️</span>
+          <span class="stg-alert-label">Vote de confiance <span class="stg-info" data-tip="Affiche un rappel dans la sprint-bar (vue Scrum) pour réaliser le Fist of Five en début de sprint. Les votes se gèrent dans PI Planning > ✋ Fist of Five et sont aussi visibles dans Roadmap.">i</span></span>
+          <span class="stg-alert-jx">J+</span>
+          <input type="number" class="stg-alert-num" min="0" max="7" value="${CONFIG.alerts?.voteDays ?? 1}" onchange="if(!CONFIG.alerts)CONFIG.alerts={};CONFIG.alerts.voteDays=+this.value;">
         </div>
       </div>
     </div>` : ''}
   </div>
 
   <!-- Équipes -->
-  <div class="settings-section" id="stg-sec-teams" style="grid-column:1/-1">
+  <div class="settings-section" id="stg-sec-teams" class="stg-full-width">
     ${_sectionHeader('teams', '👥', 'Équipes', `${activeCount} actives · ${inactiveCount} inactives`)}
     ${!_settingsCollapsed['teams'] ? `<div class="stg-body">
       <div class="stg-teams-grid">${realTeams.map(team => {
@@ -740,17 +948,28 @@ function renderSettings() {
         const boardId  = cfg.boardId || '';
         const projKey  = cfg.projectKey || '';
         const sprintN  = cfg.sprintName || '';
+        // Reasons for being inactive
+        const _inactiveReasons = [];
+        if (inactive) {
+          if (cfg.inactive) _inactiveReasons.push('Marquée inactive dans la config');
+          if (!cfg.sprintName) _inactiveReasons.push('Pas de sprint configuré (sprintName)');
+          const hasTickets = TICKETS.some(t => t.team === team);
+          if (!hasTickets) _inactiveReasons.push('Aucun ticket trouvé dans le sprint actif');
+          if (!cfg.boardId) _inactiveReasons.push('Pas de board JIRA associé (boardId)');
+          if (!_inactiveReasons.length) _inactiveReasons.push('Non détectée par la synchronisation');
+        }
+        const _inactiveTip = _inactiveReasons.join(' · ');
         return `<div class="stg-team-card${inactive ? ' stg-inactive' : ''}" style="border-left:3px solid ${color}">
           <div class="stg-team-header">
             <span class="stg-team-name" style="color:${color}">${team}</span>
-            ${inactive ? '<span class="stg-badge-inactive">inactif</span>' : ''}
+            ${inactive ? `<span class="stg-badge-inactive stg-info" data-tip="${_inactiveTip}">inactif</span>` : ''}
             <span class="stg-team-meta">${members.length} membres · ${velocity} pts</span>
           </div>
           <div class="stg-team-details">
             <span class="stg-chip" title="Sprint">${sprintN || '-'}</span>
             <span class="stg-chip" title="Board ID">Board ${boardId || '-'}</span>
             <span class="stg-chip" title="Projet">${projKey || '-'}</span>
-            <input type="color" value="${color}" style="width:24px;height:20px;padding:0;border:1px solid var(--border);border-radius:4px;cursor:pointer;vertical-align:middle;"
+            <input type="color" value="${color}" class="stg-color-input"
               onchange="if(CONFIG.teams['${team}'])CONFIG.teams['${team}'].color=this.value;" title="Couleur">
           </div>
         </div>`;
@@ -759,30 +978,37 @@ function renderSettings() {
   </div>
 
   <!-- Groupes -->
-  <div class="settings-section" id="stg-sec-groups" style="grid-column:1/-1">
+  <div class="settings-section" id="stg-sec-groups" class="stg-full-width">
     ${_sectionHeader('groups', '🗂️', 'Groupes', `${GROUPS.length} groupes`)}
     ${!_settingsCollapsed['groups'] ? `<div class="stg-body">
-      <div id="groups-config-list">${GROUPS.map((g, gi) => `
+      <div id="groups-config-list">${GROUPS.map((g, gi) => {
+        const isEmpty = !g.teams.length;
+        const dupes = GROUPS.filter((o, oi) => oi !== gi && o.name.trim().toLowerCase() === g.name.trim().toLowerCase());
+        return `
       <div class="stg-group-card" id="group-cfg-${g.id}" style="border-left:3px solid ${g.color}">
         <div class="stg-group-header">
           <span class="group-dot" style="background:${g.color};width:10px;height:10px;border-radius:3px;"></span>
           <input type="text" class="stg-group-name-input" value="${g.name}" onchange="GROUPS[${gi}].name=this.value;renderGroupBtns();">
-          <input type="color" value="${g.color}" style="width:24px;height:20px;padding:0;border:1px solid var(--border);border-radius:4px;cursor:pointer;"
+          <input type="color" value="${g.color}" class="stg-color-input"
             onchange="GROUPS[${gi}].color=this.value;renderGroupBtns();document.getElementById('group-cfg-${g.id}').style.borderLeftColor=this.value;">
+          <button class="stg-group-delete" onclick="_stgDeleteGroup(${gi})" title="Supprimer ce groupe">×</button>
         </div>
         <div class="stg-group-teams">
-          ${realTeams.map(t =>
+          ${_stgLiveTeams(realTeams).map(t =>
             `<label class="stg-team-check"><input type="checkbox" ${g.teams.includes(t) ? 'checked' : ''} onchange="toggleGroupTeam('${g.id}','${t}',this.checked)"><span>${t}</span></label>`
           ).join('')}
         </div>
-      </div>`).join('')}
+        ${isEmpty ? '<div class="stg-group-empty">Aucune équipe sélectionnée</div>' : ''}
+        ${dupes.length ? '<div class="stg-group-empty">Nom en doublon</div>' : ''}
+      </div>`;
+      }).join('')}
       </div>
-      <button class="btn btn-secondary" style="margin-top:8px;font-size:12px;" onclick="addGroup()">➕ Ajouter un groupe</button>
+      <button class="btn btn-secondary stg-btn-sm" style="margin-top:8px;" onclick="addGroup()">➕ Ajouter un groupe</button>
     </div>` : ''}
   </div>
 
   <!-- Notifications -->
-  <div class="settings-section" id="stg-sec-notif" style="grid-column:1/-1">
+  <div class="settings-section" id="stg-sec-notif" class="stg-full-width">
     ${_sectionHeader('notif', '🔔', 'Notifications', '')}
     ${!_settingsCollapsed['notif'] ? `<div class="stg-body">
       <div class="stg-grid-2">
@@ -793,36 +1019,110 @@ function renderSettings() {
           <select><option>Fin de sprint</option><option>Hebdomadaire</option><option>Quotidien</option></select>
         </div>
       </div>
-      <button class="btn btn-primary" onclick="showToast('✅ Paramètres sauvegardés !','success')" style="margin-top:6px;font-size:12px;padding:7px 14px;">💾 Sauvegarder</button>
+      <button class="btn btn-primary stg-btn-sm" onclick="showToast('✅ Paramètres sauvegardés !','success')" style="margin-top:6px;">💾 Sauvegarder</button>
     </div>` : ''}
   </div>
 
   <!-- Rotation Support -->
-  <div class="settings-section rot-section" id="stg-sec-rotation" style="grid-column:1/-1">
+  <div class="settings-section rot-section" id="stg-sec-rotation" class="stg-full-width">
     <div class="rot-sticky-bar">
       ${_sectionHeader('rotation', '🔄', 'Rotation Support', '')}
-      ${!_settingsCollapsed['rotation'] ? `<div class="rot-toolbar">
-        <button class="btn btn-primary" onclick="_rotShuffle()" style="font-size:12px;padding:6px 14px;">🎲 Générer la rotation pour toutes les équipes</button>
-        <button class="btn btn-secondary" onclick="_rotClearAll()" style="font-size:12px;padding:6px 14px;">🗑️ Réinitialiser</button>
-      </div>` : ''}
+      ${!_settingsCollapsed['rotation'] ? (() => {
+        const wi0 = _rotWeekInfos(0);
+        const piLabel = wi0._piNum || '?';
+        const nextPiLabel = String((parseInt(piLabel) || 0) + 1);
+        return `<div class="rot-toolbar">
+        <div class="rot-pi-toggle">
+          <button class="btn ${_rotPIOffset === 0 ? 'btn-primary' : 'btn-secondary'} stg-btn-sm" onclick="_rotTogglePI(0)">PI ${piLabel}</button>
+          <button class="btn ${_rotPIOffset === 1 ? 'btn-primary' : 'btn-secondary'} stg-btn-sm" onclick="_rotTogglePI(1)">PI ${nextPiLabel}</button>
+        </div>
+        <button class="btn btn-primary stg-btn-sm" onclick="_rotShuffle()">🎲 Générer la rotation pour toutes les équipes</button>
+        <button class="btn btn-secondary stg-btn-sm" onclick="_rotClearAll()">🗑️ Réinitialiser</button>
+        <button class="stg-btn-info rot-algo-toggle" onclick="_rotToggleAlgoLegend()" title="Algorithme de génération">ℹ️ Algorithme</button>
+      </div>
+      <div class="rot-algo-legend" id="rot-algo-legend" style="display:none">
+        <div class="rot-algo-title">Algorithme de génération 🎲</div>
+        <ol class="rot-algo-steps">
+          <li><strong>Exclusion</strong> — un membre est retiré de la semaine si :
+            <ul>
+              <li>ses jours de congé &ge; 50% des jours ouvrés de la semaine</li>
+              <li><em>ou</em> il lui reste &lt; 1 jour ouvré présent (congés + fériés)</li>
+            </ul>
+          </li>
+          <li><strong>Priorité 1 — Présence complète</strong> — les membres sans aucun congé dans la semaine sont choisis en premier</li>
+          <li><strong>Priorité 2 — Équilibrage</strong> — parmi les candidats de même disponibilité, celui avec le moins d'assignations cumulées est choisi</li>
+          <li><strong>Priorité 3 — Jours présents</strong> — à assignations égales, le membre avec le plus de jours ouvrés présents est préféré</li>
+          <li><strong>Aléatoire</strong> — en dernier recours, tirage au sort</li>
+        </ol>
+      </div>`;
+      })() : ''}
     </div>
     ${!_settingsCollapsed['rotation'] ? `<div class="stg-body">
-      <details class="rot-absences-details"${_rotAbsencesRaw ? ' open' : ''}>
-        <summary class="rot-absences-summary">📋 Congés / Absences (coller depuis Excel)
-          <span class="rot-abs-indicator" id="rot-abs-indicator">${_rotAbsIndicatorContent()}</span>
-        </summary>
-        <div class="rot-absences-body">
-          <p class="rot-absences-help">Collez le tableau Excel des congés (Ctrl+C depuis Excel, Ctrl+V ici). Format attendu : 1ère ligne = en-têtes avec dates (JJ/MM), colonnes suivantes = 1 (absent) ou 0,5 (demi-journée). Si >= 2,5 jours d'absence dans une semaine, le membre est exclu de cette semaine.</p>
-          <pre class="rot-absences-example">NOMS, Prénom\tÉquipes\tEntité\tRôles\t03/04\t06/04\t07/04\nLeclerc, Martin\tFuego\tXYZ\tOps\t\t1\t\nRenaud, Sophie\tFuego\tXYZ\tDev\t1\t1\t1</pre>
-          <textarea id="rot-absences-input" class="rot-absences-textarea" rows="6" placeholder="Collez ici le tableau Excel des congés…" oninput="_rotParseAbsencesLive()">${_rotAbsencesRaw.replace(/</g,'&lt;')}</textarea>
-        </div>
-      </details>
-      ${realTeams.map(t => _rotTeamPanel(t)).join('')}
+      ${_stgLiveTeams(realTeams).map(t => _rotTeamPanel(t)).join('')}
     </div>` : ''}
-  </div>`;
+  </div>
+
+  <!-- Absences / Congés (rendered by absences.js) -->
+  ${_absencesSectionHtml()}`;
 
   // Init scroll spy for tabs
   setTimeout(_stgInitScrollSpy, 100);
+}
+
+// --- Filter out demo-only teams (A, B, C, D) when real JIRA teams exist ---
+function _stgLiveTeams(allTeams) {
+  const live = allTeams.filter(t => {
+    const cfg = CONFIG.teams[t] || {};
+    return cfg.boardId || cfg.sprintName || (typeof MEMBERS !== 'undefined' && (MEMBERS[t] || []).length > 0);
+  });
+  return live.length > 0 ? live : allTeams;
+}
+
+// --- Toggle algo legend ---
+function _rotToggleAlgoLegend() {
+  const el = document.getElementById('rot-algo-legend');
+  if (el) el.style.display = el.style.display === 'none' ? '' : 'none';
+}
+
+// --- Real JIRA connectivity test ---
+async function _stgTestJira() {
+  const btn = document.getElementById('stg-jira-test-btn');
+  if (!btn) return;
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="rot-spinner"></span> Test…';
+  try {
+    const url = CONFIG.jira.url;
+    if (!url || url === 'https://votre-jira.atlassian.net') {
+      showToast('URL JIRA non configurée', 'error');
+      return;
+    }
+    const res = await fetch(`/jira/rest/api/3/myself`, { headers: { 'Accept': 'application/json' } });
+    if (res.ok) {
+      const data = await res.json();
+      showToast(`Connexion OK : ${data.displayName || data.emailAddress || 'Authentifié'}`, 'success');
+    } else if (res.status === 401 || res.status === 403) {
+      showToast(`Échec authentification (${res.status}) — vérifiez le token`, 'error');
+    } else {
+      showToast(`Erreur JIRA (${res.status})`, 'error');
+    }
+  } catch (err) {
+    showToast('Proxy inaccessible — lancez python scripts/proxy.py', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// --- Delete group ---
+function _stgDeleteGroup(idx) {
+  const g = GROUPS[idx];
+  if (!g) return;
+  if (!confirm(`Supprimer le groupe « ${g.name} » ?`)) return;
+  GROUPS.splice(idx, 1);
+  renderGroupBtns();
+  renderSettings();
+  showToast(`Groupe « ${g.name} » supprimé`, 'success');
 }
 
 function toggleGroupTeam(gid, team, checked) {

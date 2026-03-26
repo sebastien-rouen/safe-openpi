@@ -8,7 +8,19 @@ window._modalCurrentIdx  = 0;
 
 function openModal(id) {
   const _bl = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
-  const t = TICKETS.find(x => x.id === id) || SUPPORT_TICKETS.find(x => x.id === id) || _bl.find(x => x.id === id);
+  const _am = typeof AMELIORATION_TICKETS !== 'undefined' ? AMELIORATION_TICKETS : [];
+  let t = TICKETS.find(x => x.id === id) || SUPPORT_TICKETS.find(x => x.id === id) || _bl.find(x => x.id === id) || _am.find(x => x.id === id);
+  // Fallback: search in velocityHistory (closed sprint tickets)
+  if (!t) {
+    Object.values(CONFIG.teams || {}).some(tc =>
+      (tc.velocityHistory || []).some(vh =>
+        [...(vh.tickets || []), ...(vh.bufferTickets || [])].some(vt => {
+          if (vt.id === id) { t = { ...vt, sprintName: vt.sprintName || vh.name, _fromClosedSprint: true }; return true; }
+          return false;
+        })
+      )
+    );
+  }
   if (!t) return;
 
   // If no context was pre-set, build it from current visible tickets
@@ -110,13 +122,30 @@ function _formatDescription(text) {
   // Headings (## or #)
   s = s.replace(/^#{2,}\s+(.+)$/gm, '<div style="font-weight:700;font-size:12px;color:var(--text);margin:8px 0 3px;">$1</div>');
   s = s.replace(/^#\s+(.+)$/gm,     '<div style="font-weight:700;font-size:13px;color:var(--text);margin:10px 0 3px;border-bottom:1px solid var(--border);padding-bottom:3px;">$1</div>');
-  // Bullet lists (- or *)
+  // Checkboxes (- [x] or - [ ])
+  s = s.replace(/^-\s+\[x\]\s+(.+)$/gm, '<li style="list-style:none;"><input type="checkbox" checked disabled style="margin-right:4px;accent-color:#16A34A;"> $1</li>');
+  s = s.replace(/^-\s+\[\s?\]\s+(.+)$/gm, '<li style="list-style:none;"><input type="checkbox" disabled style="margin-right:4px;"> $1</li>');
+  // Bullet lists (- or *) — group consecutive <li> into one <ul>
   s = s.replace(/^[\-\*]\s+(.+)$/gm, '<li>$1</li>');
-  s = s.replace(/(<li>[\s\S]*?<\/li>)/g, '<ul>$1</ul>');
-  // Numbered lists
-  s = s.replace(/^\d+\.\s+(.+)$/gm, '<li>$1</li>');
+  s = s.replace(/((?:<li[^>]*>[\s\S]*?<\/li>\s*)+)/g, (m) => '<ul>' + m + '</ul>');
+  // Numbered lists — group consecutive <li> into one <ol>
+  s = s.replace(/^\d+\.\s+(.+)$/gm, '<oli>$1</oli>');
+  s = s.replace(/((?:<oli>[\s\S]*?<\/oli>\s*)+)/g, (m) => '<ol>' + m.replace(/<\/?oli>/g, (tag) => tag.replace('oli', 'li')) + '</ol>');
+  // Remove \n inside <ul>/<ol> blocks to avoid extra <br> between list items
+  s = s.replace(/<ul>([\s\S]*?)<\/ul>/g, (_, inner) => '<ul>' + inner.replace(/\n/g, '') + '</ul>');
+  s = s.replace(/<ol>([\s\S]*?)<\/ol>/g, (_, inner) => '<ol>' + inner.replace(/\n/g, '') + '</ol>');
+  // Links: [text](mailto:...) - email links, clean surrounding &lt;&gt;
+  s = s.replace(/&lt;\[([^\]]+)\]\((mailto:[^\s)]+)\)&gt;/g, '<a href="$2">$1</a>');
+  s = s.replace(/\[([^\]]+)\]\((mailto:[^\s)]+)\)/g, '<a href="$2">$1</a>');
   // Links: [text](url) - markdown style
   s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  // Auto-link bare emails (skip those already inside <a> tags)
+  s = s.replace(/(<a[^>]*>[\s\S]*?<\/a>)|\b([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})\b/g, (match, link, email) => {
+    if (link) return link;
+    return `<a href="mailto:${email}">${email}</a>`;
+  });
+  // Clean leftover &lt;&gt; around <a> tags
+  s = s.replace(/&lt;(<a [^>]*>[^<]*<\/a>)&gt;/g, '$1');
   // Auto-link bare URLs (not already inside href)
   s = s.replace(/(?<!="|'>)(https?:\/\/[^\s<"']+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
   // JIRA ticket references (e.g. PROJ-123) - skip matches inside existing <a> tags
@@ -125,8 +154,8 @@ function _formatDescription(text) {
     const url = CONFIG.jira?.url && !CONFIG.jira.url.includes('votre-jira') ? CONFIG.jira.url : null;
     return url ? `<a href="${url}/browse/${key}" target="_blank" rel="noopener" style="font-weight:600;">${key}</a>` : `<strong>${key}</strong>`;
   });
-  // @mentions - styled as inline badge
-  s = s.replace(/@([A-Za-zÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ0-9 ._-]*)/g,
+  // @mentions - styled as inline badge (capture Prénom + optional NOM/Nom, each word must start uppercase)
+  s = s.replace(/@([A-ZÀ-ÖØ-Ý][a-zà-öø-ÿ]+(?:[- ][A-ZÀ-ÖØ-Ý][A-Za-zÀ-ÖØ-öø-ÿ]*){0,2})/g,
     '<span class="mdl-mention">@$1</span>');
   // Status-like keywords
   s = s.replace(/\b(TODO|FIXME|NOTE|WARN|WARNING|IMPORTANT)\b/g,
@@ -319,6 +348,9 @@ function _renderModalContent(t) {
     </div>`);
   }
 
+  // Placeholder for web links (loaded async)
+  _extraSections.push(`<div id="mdl-weblinks" class="mdl-extra-section" style="display:none;"></div>`);
+
   const extrasHtml = _extraSections.length
     ? `<div class="mdl-extras">${_extraSections.join('')}</div>` : '';
 
@@ -327,7 +359,8 @@ function _renderModalContent(t) {
   const allComments = t.comments && t.comments.length ? t.comments : (t.lastComment ? [t.lastComment] : []);
   if (allComments.length) {
     const commentCards = allComments.slice().reverse().map(c => {
-      const commentDate = c.date ? new Date(c.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '';
+      const _cd = c.date ? new Date(c.date) : null;
+      const commentDate = _cd ? '📅 ' + _cd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) + ' à ' + _cd.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
       return `<div class="mdl-comment">
         <div class="mdl-comment-header">
           ${avatarBadge(c.author, MEMBER_COLORS[c.author] || CLR.slate, {w:18, fs:'8px'})}
@@ -370,7 +403,7 @@ function _renderModalContent(t) {
         <div class="mdl-meta-left">
           <span class="mdl-pill mdl-pill-sm">${priorityIcon(t.priority || 'medium')}<span style="font-size:11px;font-weight:600;text-transform:capitalize;">${t.priority || '-'}</span></span>
           <span class="badge badge-${t.type || 'support'}">${typeName(t.type || 'support')}</span>
-          <span class="badge badge-${t.status || 'open'}">${statusLabel(t.status || 'open')}</span>
+          <span class="badge badge-${t.status || 'open'}">${t._jiraStatus || statusLabel(t.status || 'open')}</span>
           ${ptsBadge(t.points)}
         </div>
         <div class="mdl-meta-right">${rightL1}</div>
@@ -388,10 +421,43 @@ function _renderModalContent(t) {
     </div>
     ${t.description
       ? `<div class="mdl-desc">${_formatDescription(t.description)}</div>`
-      : `<div class="mdl-desc mdl-desc-empty"><span style="display:flex;align-items:center;gap:8px;justify-content:center;padding:20px 0;color:var(--text-muted);font-size:13px;font-style:italic;opacity:.7;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Pas de description pour le moment</span></div>`}
+      : t._fromClosedSprint
+        ? `<div class="mdl-desc mdl-desc-empty"><div style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px 0;color:var(--text-muted);font-size:13px;font-style:italic;opacity:.7;text-align:center;"><span style="display:flex;align-items:center;gap:8px;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>Sprint fermé — les détails (description, labels, liens) ne sont pas disponibles pour les tickets d'itérations passées</span><span style="font-size:11px;font-style:normal;opacity:.8;">Activez <strong style="cursor:pointer;color:var(--primary);text-decoration:underline;" onclick="closeModal();showView('settings');">Paramètres → Enrichir les tickets des sprints fermés</strong> puis re-synchronisez</span></div></div>`
+        : `<div class="mdl-desc mdl-desc-empty"><span style="display:flex;align-items:center;gap:8px;justify-content:center;padding:20px 0;color:var(--text-muted);font-size:13px;font-style:italic;opacity:.7;"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>Pas de description pour le moment</span></div>`}
     ${extrasHtml}
     ${commentsHtml}
   `;
+
+  // Async: fetch web links (remote links) from JIRA
+  _loadWebLinks(t.id);
+}
+
+// Fetch and render web links in the modal placeholder
+async function _loadWebLinks(issueKey) {
+  if (typeof _fetchRemoteLinks !== 'function') return;
+  const el = document.getElementById('mdl-weblinks');
+  if (!el) return;
+  const links = await _fetchRemoteLinks(issueKey);
+  if (!links.length) { el.style.display = 'none'; return; }
+
+  const _esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const rows = links.map(l => {
+    let domain = '';
+    try { domain = new URL(l.url).hostname.replace(/^www\./, ''); } catch(e) {}
+    const icon = l.icon
+      ? `<img src="${_esc(l.icon)}" width="14" height="14" style="flex-shrink:0;border-radius:2px;" onerror="this.style.display='none'">`
+      : `<span style="flex-shrink:0;font-size:12px;">🌐</span>`;
+    const title = _esc(l.title || l.url);
+    const href  = _esc(l.url);
+    return `<div class="mdl-link-row">
+      ${icon}
+      <a href="${href}" target="_blank" rel="noopener" class="mdl-weblink-url" title="${href}">${title}</a>
+      ${domain ? `<span class="mdl-weblink-domain">${_esc(domain)}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  el.innerHTML = `<div class="mdl-extra-label">🌐 Liens web (${links.length})</div>${rows}`;
+  el.style.display = '';
 }
 
 // Map raw JIRA status name to internal status key for badge styling

@@ -35,24 +35,22 @@ function _renderSupportRoster() {
   // No rotation data → hide
   if (!_supportRotation || !Object.keys(_supportRotation).length) { el.innerHTML = ''; return; }
 
-  // Determine current week index within the PI
-  const weekInfos = typeof _rotWeekInfos === 'function' ? _rotWeekInfos() : [];
-  if (!weekInfos.length) { el.innerHTML = ''; return; }
-
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const currentWeekIdx = weekInfos.findIndex(w => today >= w._start && today <= w._end);
-  if (currentWeekIdx < 0) { el.innerHTML = ''; return; }
-
-  const weekInfo = weekInfos[currentWeekIdx];
   const activeTeams = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
 
-  // Collect roster members per team for the current week
+  // Collect roster members per team — each team may have its own weekMode
   const rosterByTeam = [];
+  let firstWeekInfo = null;
   for (const teamId of activeTeams) {
-    const rot = _supportRotation[teamId];
-    if (!rot || !rot.weeks || !rot.weeks[currentWeekIdx]) continue;
-    const members = rot.weeks[currentWeekIdx];
-    if (members.length) rosterByTeam.push({ teamId, members });
+    const k = typeof _rotTeamKey === 'function' ? _rotTeamKey(teamId) : teamId;
+    const rot = _supportRotation[k];
+    if (!rot || !rot.weeks) continue;
+    const wMode = rot.weekMode || 'friday';
+    const weekInfos = typeof _rotWeekInfos === 'function' ? _rotWeekInfos(0, wMode) : [];
+    const wi = weekInfos.findIndex(w => today >= w._start && today <= w._end);
+    if (wi < 0 || !rot.weeks[wi] || !rot.weeks[wi].length) continue;
+    if (!firstWeekInfo) firstWeekInfo = weekInfos[wi];
+    rosterByTeam.push({ teamId, members: rot.weeks[wi], weekInfo: weekInfos[wi] });
   }
 
   if (!rosterByTeam.length) { el.innerHTML = ''; return; }
@@ -83,7 +81,7 @@ function _renderSupportRoster() {
 
   el.innerHTML = `<div class="sup-roster-bar">
     <span class="sup-roster-icon">🛡️</span>
-    <span class="sup-roster-label">Support ${weekInfo.label} <small>(${weekInfo.dateRange})</small></span>
+    <span class="sup-roster-label">Support ${firstWeekInfo.label} <small>(${firstWeekInfo.dateRange})</small></span>
     ${chips}
     <button class="sup-roster-cfg" onclick="showView('settings');setTimeout(()=>_stgScrollTo('rotation'),200)" title="Configurer la rotation support">⚙️</button>
   </div>`;

@@ -20,6 +20,8 @@ function showView(view) {
   currentView = view;
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById('view-' + view).classList.add('active');
+  const _content = document.getElementById('content');
+  if (_content) _content.scrollTop = 0;
   document.querySelectorAll('.nav-item').forEach(n => {
     n.classList.toggle('active', n.dataset.view === view);
   });
@@ -28,10 +30,12 @@ function showView(view) {
     scrum:    `📋 Vue Scrum - ${CONFIG.sprint.label || 'Sprint actif'}`,
     kanban:   '🗂️ Vue Kanban',
     pi:       '🗓️ PI Planning',
-    reports:  '📊 Rapports de Fin de Sprint',
+    reports:  '📊 Rapports',
     support:  '🎫 Tickets de Support',
-    settings: '⚙️ Paramètres',
-    roadmap:  '🗺️ Roadmap & Planification',
+    inno:         '💡 Innovations',
+    amelioration: '🔄 Amélioration Continue',
+    settings:     '⚙️ Paramètres',
+    roadmap:      '🗺️ Roadmap & Planification',
   };
   // La vue Scrum met à jour son propre titre via renderScrum() - inutile de l'écraser ici
   if (view !== 'scrum') document.getElementById('topbar-title').textContent = titles[view] || '';
@@ -43,11 +47,13 @@ function showView(view) {
   if (view === 'pi')       renderPI();
   if (view === 'reports')  { if (currentTeam && currentTeam !== 'all') reportTeam = currentTeam; renderReportSections(); renderReport(); }
   if (view === 'support')  renderSupport();
-  if (view === 'settings') renderSettings();
+  if (view === 'inno')         renderInno();
+  if (view === 'amelioration') renderAmelioration();
+  if (view === 'settings')     renderSettings();
   if (view === 'roadmap')  renderRoadmap();
 
   // Sidebar progress is only built inside renderScrum - refresh it for other views too
-  if (view !== 'scrum') { _renderSidebarProgress(); _updateSidebarStats(); }
+  if (view !== 'scrum') { _renderSidebarProgress(); _renderSidebarBuffer(); _renderSidebarObjectives(); _renderSidebarRisks(); _updateSidebarStats(); }
   _updateBlockedBadge();
   _checkStaleBanner();
   _pushHash();
@@ -168,7 +174,29 @@ function _pushHash() {
     parts.push(supportFilter);
   }
 
-  history.replaceState(null, '', '#' + parts.join('/'));
+  if (currentView === 'settings') {
+    const activeTab = document.querySelector('.stg-tab.active');
+    if (activeTab?.dataset.sec) parts.push(activeTab.dataset.sec);
+  }
+
+  if (currentView === 'roadmap') {
+    const activeRmTab = document.querySelector('.rm-tab.active');
+    if (activeRmTab?.dataset.sec) parts.push(activeRmTab.dataset.sec);
+    if (typeof _ppCurrentPI === 'function') {
+      const pi = _ppCurrentPI();
+      if (pi) parts.push('pi:' + pi);
+    }
+  }
+
+  if (currentView === 'pi') {
+    const activePiTab = document.querySelector('#pi-tabs-bar .rm-tab.active');
+    if (activePiTab?.dataset.sec) parts.push(activePiTab.dataset.sec);
+  }
+
+  const newHash = '#' + parts.join('/');
+  if (location.hash !== newHash) {
+    history.pushState(null, '', newHash);
+  }
 }
 
 function _applyHash() {
@@ -179,7 +207,7 @@ function _applyHash() {
   let view  = parts[0];
   // Backward compat: old views merged into roadmap
   if (view === 'piprep' || view === 'releases') view = 'roadmap';
-  const views = ['scrum', 'kanban', 'pi', 'reports', 'support', 'settings', 'roadmap'];
+  const views = ['scrum', 'kanban', 'pi', 'reports', 'support', 'inno', 'amelioration', 'settings', 'roadmap'];
   if (!views.includes(view)) return false;
 
   // Contexte équipe / groupe
@@ -209,9 +237,40 @@ function _applyHash() {
     supportFilter = parts[2];
   }
 
+  // Settings tab: find a part matching a known settings section ID
+  const _stgIds = ['apparence','jira','sync','alerts','teams','groups','notif','rotation','absences'];
+  const settingsTab = view === 'settings' ? parts.find(p => _stgIds.includes(p)) : null;
+
+  // Roadmap section: find a part matching a known roadmap section ID
+  const _rmIds = ['vision','planification','capacite','risques','metriques','rituels','backlog'];
+  const roadmapSec = view === 'roadmap' ? parts.find(p => _rmIds.includes(p)) : null;
+
+  // PI Planning section
+  const _piIds = ['objectifs','buffer','capacite','velocite','roam','fist','mood','metriques'];
+  const piSec = view === 'pi' ? parts.find(p => _piIds.includes(p)) : null;
+
+  // PI selection from hash (e.g. pi:PI29)
+  const piPart = view === 'roadmap' ? parts.find(p => p.startsWith('pi:')) : null;
+  if (piPart && typeof _ppSwitchPI === 'function') {
+    _ppSwitchPI(piPart.slice(3));
+  }
+
   renderGroupBtns();
   renderTeamBtns();
   showView(view);
+
+  if (settingsTab && typeof _stgScrollTo === 'function') {
+    setTimeout(() => _stgScrollTo(settingsTab), 150);
+  }
+
+  if (roadmapSec && typeof _rmScrollTo === 'function') {
+    setTimeout(() => _rmScrollTo(roadmapSec), 200);
+  }
+
+  if (piSec && typeof _piScrollTo === 'function') {
+    setTimeout(() => _piScrollTo(piSec), 200);
+  }
+
   return true;
 }
 
@@ -264,7 +323,7 @@ document.addEventListener('keydown', e => {
     if (e.key === 'ArrowRight') { e.preventDefault(); _dailyNext(); return; }
   }
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
-  const map = { '1': 'scrum', '2': 'kanban', '3': 'roadmap', '4': 'pi', '5': 'reports', '6': 'support', '7': 'settings' };
+  const map = { '1': 'scrum', '2': 'kanban', '3': 'roadmap', '4': 'pi', '5': 'reports', '6': 'support', '7': 'inno', '8': 'amelioration', '9': 'settings' };
   if (map[e.key]) showView(map[e.key]);
 });
 
@@ -366,6 +425,33 @@ function _collectSections(currentPageOnly) {
         _viewId: 'view-roadmap',
         _rmSec: s.rmSec,
         _keywords: s.keywords || '',
+      });
+    });
+
+    // Static settings sections — always available
+    const stgSections = [
+      { id: 'apparence', title: '🎨 Apparence',           keywords: 'theme dark sombre clair mode' },
+      { id: 'jira',      title: '🔗 Connexion JIRA',      keywords: 'jira url token api projet connexion' },
+      { id: 'sync',      title: '⚙️ Synchronisation',      keywords: 'sync boards issues sprints champ' },
+      { id: 'alerts',    title: '🔔 Alertes Sprint',       keywords: 'alertes demo mood vote rituel' },
+      { id: 'teams',     title: '👥 Équipes',              keywords: 'equipes teams couleur velocity membres' },
+      { id: 'groups',    title: '🗂️ Groupes',              keywords: 'groupes groups filtrer' },
+      { id: 'notif',     title: '🔔 Notifications',        keywords: 'notifications slack email rapport' },
+      { id: 'rotation',  title: '🔄 Rotation Support',     keywords: 'rotation support shuffle generer planning semaine' },
+      { id: 'absences',  title: '📋 Congés / Absences',    keywords: 'absences conges excel coller membres' },
+    ];
+    stgSections.forEach(s => {
+      if (seen.has(s.title)) return;
+      seen.add(s.title);
+      const uid = 'sr-stg-' + s.id;
+      results.push({
+        group: 'section',
+        id: uid,
+        title: s.title,
+        meta: 'Paramètres',
+        _viewId: 'view-settings',
+        _stgSec: s.id,
+        _keywords: s.keywords,
       });
     });
   }
@@ -520,6 +606,13 @@ window._searchResultClick = function(group, id) {
       setTimeout(() => { if (typeof _rmScrollTo === 'function') _rmScrollTo(rmSec); }, 150);
       return;
     }
+    // Static settings section (sr-stg-*) → navigate to settings + scroll to tab
+    if (id.startsWith('sr-stg-')) {
+      const stgSec = id.replace('sr-stg-', '');
+      showView('settings');
+      setTimeout(() => { if (typeof _stgScrollTo === 'function') _stgScrollTo(stgSec); }, 150);
+      return;
+    }
     // Find element by data-search-target
     const target = document.querySelector(`[data-search-target="${id}"]`);
     if (target) {
@@ -550,7 +643,9 @@ window._searchResultClick = function(group, id) {
 };
 
 // Navigation arrière / avant du navigateur
-window.addEventListener('hashchange', () => { if (!_applyHash()) showView('scrum'); });
+function _onHashNav() { if (!_applyHash()) showView('scrum'); }
+window.addEventListener('hashchange', _onHashNav);
+window.addEventListener('popstate', _onHashNav);
 
 // ============================================================
 // Sidebar redimensionnable
@@ -607,13 +702,27 @@ renderTeamBtns();
 
   // Load team mood / rituals data
   if (typeof _moodLoad === 'function') await _moodLoad();
+  // Load supports data (rotation, absences) for capacity & sidebar
+  if (typeof _supLoad === 'function') await _supLoad();
+  if (typeof _rotLoadAbsForPI === 'function') _rotLoadAbsForPI();
+  // Load piprep data (objectives, risks, deps) for sidebar
+  if (typeof _ppLoad === 'function') await _ppLoad();
+  // Load piprep-local absences data for the selected PI (does not modify rotation globals)
+  if (typeof _ppLoadAbsData === 'function') _ppLoadAbsData();
 
   if (isLive) {
     const cachedAt = await loadJiraCache();
+    // Reload absences now that CONFIG.teams has sprintName from JIRA cache
+    // (first call above used piNum='unknown' because sprintName wasn't set yet)
+    if (typeof _rotLoadAbsForPI === 'function') _rotLoadAbsForPI();
+    if (typeof _ppLoadAbsData === 'function') _ppLoadAbsData();
     renderGroupBtns(); // re-rendre avec les groupes réels du cache
     renderTeamBtns();  // re-rendre avec les équipes réelles du cache
     _updateSidebarStats();
     _renderSidebarProgress();
+    _renderSidebarBuffer();
+    _renderSidebarObjectives();
+    _renderSidebarRisks();
     _updateBlockedBadge();
     if (cachedAt) {
       _updateLastSync(cachedAt);
@@ -626,6 +735,13 @@ renderTeamBtns();
 
   // Restaurer depuis le hash ou afficher la vue par défaut
   if (!_applyHash()) showView('scrum');
+
+  // Ensure sidebar panels are rendered after full init (piprep data loaded + cache)
+  _renderSidebarProgress();
+  _renderSidebarBuffer();
+  _renderSidebarObjectives();
+  _renderSidebarRisks();
+  _updateSidebarStats();
 })();
 
 // Formate l'âge d'un timestamp ISO en texte lisible ("il y a 2h", "12/03 à 14h30"…)

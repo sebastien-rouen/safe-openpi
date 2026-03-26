@@ -18,5 +18,5 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 - Export PNG pleine page via html2canvas
 - Sidebar redimensionnable, raccourcis clavier (1-8), recherche globale (Ctrl+K)
 - Groupes d'equipes configurables
-- Persistance piprep.json multi-PI avec detection automatique
+- Persistance pi-data.json multi-PI avec detection automatique
 - Theme clair/sombre

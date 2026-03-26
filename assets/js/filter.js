@@ -86,7 +86,9 @@ function selectTeam(team) {
     renderReport();
   }
   if (currentView === 'support') renderSupport();
-  if (currentView === 'roadmap')  renderRoadmap();
+  if (currentView === 'inno')         renderInno();
+  if (currentView === 'amelioration') renderAmelioration();
+  if (currentView === 'roadmap')      renderRoadmap();
   _pushHash();
 }
 
@@ -111,7 +113,9 @@ function selectGroup(gid) {
     renderReport();
   }
   if (currentView === 'support') renderSupport();
-  if (currentView === 'roadmap')  renderRoadmap();
+  if (currentView === 'inno')         renderInno();
+  if (currentView === 'amelioration') renderAmelioration();
+  if (currentView === 'roadmap')      renderRoadmap();
   _pushHash();
 }
 

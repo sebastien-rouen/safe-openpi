@@ -2,58 +2,6 @@
 // SCRUM VIEW - Board sprint, hiérarchie Feature>Epic, statistiques
 // ============================================================
 
-// ----------- Team mood / rituals persistence (data/team-mood.json) -----------
-let _moodCache  = null;
-let _moodLoaded = false;
-
-function _moodData() {
-  if (!_moodCache) _moodCache = { votes: {}, notes: {}, rituals: {} };
-  return _moodCache;
-}
-
-let _moodSaveTimer = null;
-function _moodSave() {
-  clearTimeout(_moodSaveTimer);
-  // Immediate localStorage
-  localStorage.setItem('team_mood', JSON.stringify(_moodCache));
-  // Debounced server persist
-  _moodSaveTimer = setTimeout(() => {
-    fetch('/data/team-mood.json', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(_moodCache, null, 2),
-    }).catch(() => { /* server unavailable - localStorage fallback */ });
-  }, 300);
-}
-
-async function _moodLoad() {
-  if (_moodLoaded) return;
-  // localStorage first
-  try {
-    const local = localStorage.getItem('team_mood');
-    if (local) _moodCache = JSON.parse(local);
-  } catch { /* ignore */ }
-  // Try server (silent fail)
-  try {
-    const res = await fetch('/data/team-mood.json');
-    if (res.ok) {
-      _moodCache = await res.json();
-      localStorage.setItem('team_mood', JSON.stringify(_moodCache));
-    }
-  } catch { /* no server */ }
-  _moodLoaded = true;
-}
-
-// Rituals helpers (vote de confiance, demo)
-function _ritualsData() { return _moodData().rituals || (_moodData().rituals = {}); }
-
-// Key for current sprint context (e.g. "Fuego__Ité 28.4")
-function _ritualsKey() {
-  const team = currentTeam && currentTeam !== 'all' ? currentTeam : 'all';
-  const s = _activeSprintCtx();
-  return `${team}__${s.label || 'sprint'}`;
-}
-
 // ----------- Sprint alerts -----------
 function _renderSprintAlerts() {
   const el = document.getElementById('sprint-alerts');
@@ -129,6 +77,7 @@ function _renderSprintAlerts() {
         type: 'health',
         icon: '📈',
         label: `Scope creep : ${addedMidSprint} ticket${addedMidSprint > 1 ? 's' : ''} ajouté${addedMidSprint > 1 ? 's' : ''} aujourd'hui`,
+        onclick: '_showScopeCreepDetail()',
       });
     }
   }
@@ -143,6 +92,7 @@ function _renderSprintAlerts() {
       type: 'health',
       icon: '🚧',
       label: `${blocked} bloqué${blocked > 1 ? 's' : ''} / ${inProg} en cours (${pct}%)`,
+      onclick: `_showScrumStatDetail('blocked')`,
     });
   }
 
@@ -161,6 +111,7 @@ function _renderSprintAlerts() {
         type: 'health',
         icon: '📉',
         label: `Vélocité en baisse : −${drop}% sur 3 sprints`,
+        onclick: '_showVelocityTrendDetail()',
       });
     }
   }
@@ -185,369 +136,6 @@ window._toggleRitual = function(type) {
   _renderSprintAlerts();
 };
 
-// ----------- Mood meter (ROTI) panel - like fist of five -----------
-let _moodPanelOpen = false;
-
-function _moodTeams() {
-  if (currentTeam && currentTeam !== 'all') return [currentTeam];
-  if (currentGroup) {
-    const g = GROUPS.find(x => x.id === currentGroup);
-    return g ? g.teams : Object.keys(CONFIG.teams);
-  }
-  return Object.keys(CONFIG.teams);
-}
-
-function _moodKey(teamId) {
-  const s = _activeSprintCtx();
-  return `${teamId}__${s.label || 'sprint'}`;
-}
-
-window._toggleMoodPanel = function() {
-  _moodPanelOpen = !_moodPanelOpen;
-  _renderMoodPanel();
-};
-
-window._moodVote = function(teamId, val) {
-  const md = _moodData();
-  if (!md.votes) md.votes = {};
-  const key = _moodKey(teamId);
-  if (!Array.isArray(md.votes[key])) md.votes[key] = [];
-  md.votes[key].push(val);
-  _moodSave();
-  _renderMoodPanel();
-  _renderSprintAlerts();
-};
-
-window._moodUndo = function(teamId) {
-  const md = _moodData();
-  const key = _moodKey(teamId);
-  if (Array.isArray(md.votes?.[key]) && md.votes[key].length) {
-    md.votes[key].pop();
-    _moodSave();
-    _renderMoodPanel();
-    _renderSprintAlerts();
-  }
-};
-
-window._moodReset = function(teamId) {
-  const md = _moodData();
-  const key = _moodKey(teamId);
-  if (md.votes) md.votes[key] = [];
-  if (md.notes) delete md.notes[key];
-  _moodSave();
-  _renderMoodPanel();
-  _renderSprintAlerts();
-};
-
-window._moodNote = function(teamId, val) {
-  const md = _moodData();
-  if (!md.notes) md.notes = {};
-  md.notes[_moodKey(teamId)] = val;
-  _moodSave();
-};
-
-// Build mood trend sparkline - shows average mood per sprint across teams
-function _moodTrendSparkline(teams) {
-  const md = _moodData();
-  if (!md.votes) return '';
-
-  // Collect all sprint keys that have votes for any of the given teams
-  const sprintSet = new Map(); // sprintLabel → [votes...]
-  Object.entries(md.votes).forEach(([k, votes]) => {
-    if (!Array.isArray(votes) || !votes.length) return;
-    const [tid, spLabel] = k.split('__');
-    if (!spLabel || !teams.includes(tid)) return;
-    if (!sprintSet.has(spLabel)) sprintSet.set(spLabel, []);
-    sprintSet.get(spLabel).push(...votes);
-  });
-
-  if (sprintSet.size < 2) return ''; // need at least 2 sprints for a trend
-
-  // Sort sprints (basic: by key string which includes iteration number)
-  const sorted = [...sprintSet.entries()].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
-  const last8 = sorted.slice(-8);
-  const points = last8.map(([label, votes]) => ({
-    label,
-    avg: Math.round(votes.reduce((s, v) => s + v, 0) / votes.length * 10) / 10,
-    count: votes.length,
-  }));
-
-  const maxV = 5, minV = 1;
-  const w = 220, h = 40, pad = 4;
-  const stepX = (w - pad * 2) / Math.max(points.length - 1, 1);
-
-  const pathPoints = points.map((p, i) => {
-    const x = pad + i * stepX;
-    const y = h - pad - ((p.avg - minV) / (maxV - minV)) * (h - pad * 2);
-    return { x, y, ...p };
-  });
-
-  const line = pathPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const dots = pathPoints.map(p => {
-    const c = p.avg < 2.5 ? '#DC2626' : p.avg < 3.5 ? '#F59E0B' : '#16A34A';
-    return `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="${c}" stroke="white" stroke-width="1">
-      <title>${p.label}: ${p.avg}/5 (${p.count} votes)</title>
-    </circle>`;
-  }).join('');
-
-  const labels = pathPoints.map(p => {
-    const short = p.label.replace(/.*Ité\.?\s*/, '').replace(/Sprint\s*/i, 'S');
-    return `<text x="${p.x.toFixed(1)}" y="${h + 10}" text-anchor="middle" fill="var(--text-muted)" font-size="7">${short}</text>`;
-  }).join('');
-
-  const lastP = points[points.length - 1];
-  const prevP = points[points.length - 2];
-  const delta = lastP.avg - prevP.avg;
-  const arrow = delta > 0.2 ? '↗' : delta < -0.2 ? '↘' : '→';
-  const trendColor = delta > 0.2 ? '#16A34A' : delta < -0.2 ? '#DC2626' : '#F59E0B';
-
-  return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
-    <span style="font-size:11px;color:var(--text-muted);font-weight:600;white-space:nowrap;">Tendance</span>
-    <svg width="${w}" height="${h + 14}" style="flex-shrink:0;">
-      <line x1="${pad}" y1="${h - pad - ((3 - minV) / (maxV - minV)) * (h - pad * 2)}" x2="${w - pad}" y2="${h - pad - ((3 - minV) / (maxV - minV)) * (h - pad * 2)}" stroke="var(--border)" stroke-dasharray="3,3"/>
-      <path d="${line}" fill="none" stroke="var(--text-muted)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-      ${dots}${labels}
-    </svg>
-    <span style="font-size:18px;font-weight:800;color:${trendColor};">${arrow}</span>
-    <span style="font-size:11px;color:${trendColor};font-weight:600;">${delta > 0 ? '+' : ''}${delta.toFixed(1)}</span>
-  </div>`;
-}
-
-function _renderMoodPanel() {
-  const el = document.getElementById('mood-panel');
-  if (!el) return;
-  if (!_moodPanelOpen) { el.innerHTML = ''; return; }
-
-  const teams = _moodTeams();
-  const md    = _moodData();
-  const emojis = ['😡', '😟', '😐', '🙂', '😍'];
-  const labels = ['', 'Très insatisfait', 'Insatisfait', 'Neutre', 'Satisfait', 'Très satisfait'];
-
-  const cards = teams.map(tid => {
-    const tc    = CONFIG.teams[tid];
-    const color = tc?.color || CLR.dark;
-    const key   = _moodKey(tid);
-    const votes = Array.isArray(md.votes?.[key]) ? md.votes[key] : [];
-    const count = votes.length;
-    const avg   = count ? Math.round(votes.reduce((s, v) => s + v, 0) / count * 10) / 10 : 0;
-    const vColor = !count ? '#94A3B8' : avg < 2.5 ? '#DC2626' : avg < 3.5 ? '#D97706' : '#16A34A';
-    const borderColor = !count ? 'var(--border)' : avg >= 3.5 ? '#86EFAC' : avg >= 2.5 ? '#FCD34D' : '#FECACA';
-    const note = (md.notes?.[key] || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-
-    // Distribution bars
-    const distrib = [1,2,3,4,5].map(n => votes.filter(v => v === n).length);
-    const maxD = Math.max(...distrib, 1);
-    const distribHtml = `<div style="display:flex;align-items:flex-end;gap:4px;height:36px;">
-      ${distrib.map((d, i) => `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
-        <div style="width:18px;height:${count ? Math.max(3, Math.round(d / maxD * 28)) : 3}px;background:${count && d ? (i < 2 ? '#FECACA' : i === 2 ? '#FEF3C7' : '#D1FAE5') : 'var(--border)'};border-radius:3px;${count ? '' : 'opacity:.4;'}"></div>
-        <span style="font-size:8px;color:var(--text-muted);">${d || ''}</span>
-      </div>`).join('')}
-    </div>`;
-
-    const btns = [1,2,3,4,5].map(n => `
-      <button onclick="_moodVote('${tid}',${n})"
-        class="sc-mood-btn"
-        title="${n} - ${labels[n]}">${emojis[n-1]}</button>`
-    ).join('');
-
-    const actions = count ? `
-      <button onclick="_moodUndo('${tid}')" class="sc-action-btn-sm" title="Annuler le dernier vote">↩</button>
-      <button onclick="_moodReset('${tid}')" class="sc-action-btn-sm" title="Réinitialiser">✕</button>` : '';
-
-    return `<div class="mood-card" style="border-left:3px solid ${color};border:1.5px solid ${borderColor};border-left:3px solid ${color};">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <div style="font-weight:700;font-size:14px;color:${color};min-width:100px;display:flex;align-items:center;gap:6px;">
-          <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
-          ${tc?.name || tid}
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;min-width:60px;">
-          <span style="font-size:28px;font-weight:900;color:${vColor};line-height:1;">${count ? avg : '?'}</span>
-          <span style="font-size:11px;color:${vColor};font-weight:600;">/5</span>
-        </div>
-        ${distribHtml}
-        <div style="display:flex;gap:4px;align-items:center;">${btns}</div>
-        ${count ? `<span style="font-size:11px;color:var(--text-muted);font-weight:600;">${count} vote${count > 1 ? 's' : ''}</span>` : ''}
-        <div style="display:flex;gap:4px;margin-left:auto;">${actions}</div>
-      </div>
-      <input type="text" value="${note}" placeholder="Note / commentaire…"
-        onchange="_moodNote('${tid}',this.value)"
-        style="width:100%;border:none;border-top:1px solid var(--border);background:transparent;padding:5px 0 0;font-size:11px;color:var(--text-muted);font-style:italic;outline:none;margin-top:6px;">
-    </div>`;
-  }).join('');
-
-  // Global average
-  const allVotes = teams.flatMap(t => { const v = md.votes?.[_moodKey(t)]; return Array.isArray(v) ? v : []; });
-  const totalV   = allVotes.length;
-  const gAvg     = totalV ? Math.round(allVotes.reduce((s, v) => s + v, 0) / totalV * 10) / 10 : null;
-  const teamsV   = teams.filter(t => { const v = md.votes?.[_moodKey(t)]; return Array.isArray(v) && v.length; }).length;
-  const gColor   = gAvg === null ? 'var(--text-muted)' : gAvg < 2.5 ? '#DC2626' : gAvg < 3.5 ? '#D97706' : '#16A34A';
-  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2.5 ? '#FEF2F2' : gAvg < 3.5 ? '#FFFBEB' : '#F0FDF4';
-
-  const avgBadge = gAvg !== null
-    ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:8px;background:${gBg};margin-left:auto;">
-        <span style="font-size:16px;font-weight:900;color:${gColor};">${gAvg}</span><span style="font-size:10px;color:${gColor};font-weight:600;">/5</span>
-        <span style="font-size:10px;color:var(--text-muted);">${totalV} vote${totalV > 1 ? 's' : ''} · ${teamsV}/${teams.length} équipe${teams.length > 1 ? 's' : ''}</span>
-      </div>`
-    : '';
-
-  // Mood trend sparkline - historical mood averages across sprints
-  const trendHtml = _moodTrendSparkline(teams);
-
-  el.innerHTML = `<div class="mood-panel">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:14px;font-weight:700;color:var(--text);">😊 Mood Meter (ROTI)</span>
-      ${avgBadge}
-      <button onclick="_toggleMoodPanel()" style="margin-left:${gAvg !== null ? '8px' : 'auto'};border:none;background:none;font-size:16px;cursor:pointer;color:var(--text-muted);">✕</button>
-    </div>
-    ${trendHtml}
-    <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
-  </div>`;
-}
-
-// ----------- Vote de confiance panel (same UX as ROTI) -----------
-let _votePanelOpen = false;
-
-function _voteKey(teamId) {
-  const s = _activeSprintCtx();
-  return `${teamId}__${s.label || 'sprint'}`;
-}
-
-function _voteData() {
-  const md = _moodData();
-  if (!md.confidence) md.confidence = {};
-  return md.confidence;
-}
-
-window._toggleVotePanel = function() {
-  _votePanelOpen = !_votePanelOpen;
-  _renderVotePanel();
-};
-
-window._confVote = function(teamId, val) {
-  const vd = _voteData();
-  const key = _voteKey(teamId);
-  if (!Array.isArray(vd[key])) vd[key] = [];
-  vd[key].push(val);
-  _moodSave();
-  _renderVotePanel();
-  _renderSprintAlerts();
-};
-
-window._confUndo = function(teamId) {
-  const vd = _voteData();
-  const key = _voteKey(teamId);
-  if (Array.isArray(vd[key]) && vd[key].length) {
-    vd[key].pop();
-    _moodSave();
-    _renderVotePanel();
-    _renderSprintAlerts();
-  }
-};
-
-window._confReset = function(teamId) {
-  const vd = _voteData();
-  const key = _voteKey(teamId);
-  vd[key] = [];
-  _moodSave();
-  _renderVotePanel();
-  _renderSprintAlerts();
-};
-
-window._confNote = function(teamId, val) {
-  const md = _moodData();
-  if (!md.confNotes) md.confNotes = {};
-  md.confNotes[_voteKey(teamId)] = val;
-  _moodSave();
-};
-
-function _renderVotePanel() {
-  const el = document.getElementById('vote-panel');
-  if (!el) return;
-  if (!_votePanelOpen) { el.innerHTML = ''; return; }
-
-  const teams = _moodTeams();
-  const vd    = _voteData();
-  const md    = _moodData();
-  const fists = ['✊', '☝️', '✌️', '🤟', '🖖', '🖐️'];
-  const labels = ['Pas confiant', 'Très peu confiant', 'Peu confiant', 'Modérément confiant', 'Confiant', 'Très confiant'];
-
-  const cards = teams.map(tid => {
-    const tc    = CONFIG.teams[tid];
-    const color = tc?.color || CLR.dark;
-    const key   = _voteKey(tid);
-    const votes = Array.isArray(vd[key]) ? vd[key] : [];
-    const count = votes.length;
-    const avg   = count ? Math.round(votes.reduce((s, v) => s + v, 0) / count * 10) / 10 : 0;
-    const vColor = !count ? '#94A3B8' : avg < 2 ? '#DC2626' : avg < 3.5 ? '#D97706' : '#16A34A';
-    const borderColor = !count ? 'var(--border)' : avg >= 3.5 ? '#86EFAC' : avg >= 2 ? '#FCD34D' : '#FECACA';
-    const note = ((md.confNotes?.[key]) || '').replace(/'/g, '&#39;').replace(/"/g, '&quot;');
-
-    // Distribution bars (0-5)
-    const distrib = [0,1,2,3,4,5].map(n => votes.filter(v => v === n).length);
-    const maxD = Math.max(...distrib, 1);
-    const distribHtml = `<div style="display:flex;align-items:flex-end;gap:3px;height:36px;">
-      ${distrib.map((d, i) => `<div style="display:flex;flex-direction:column;align-items:center;gap:1px;">
-        <div style="width:16px;height:${count ? Math.max(3, Math.round(d / maxD * 28)) : 3}px;background:${count && d ? (i < 2 ? '#FECACA' : i < 4 ? '#FEF3C7' : '#D1FAE5') : 'var(--border)'};border-radius:3px;${count ? '' : 'opacity:.4;'}"></div>
-        <span style="font-size:8px;color:var(--text-muted);">${d || ''}</span>
-      </div>`).join('')}
-    </div>`;
-
-    const btns = [0,1,2,3,4,5].map(n => `
-      <button onclick="_confVote('${tid}',${n})"
-        class="sc-mood-btn"
-        title="${n} - ${labels[n]}">${fists[n]}</button>`
-    ).join('');
-
-    const actions = count ? `
-      <button onclick="_confUndo('${tid}')" class="sc-action-btn-sm" title="Annuler le dernier vote">↩</button>
-      <button onclick="_confReset('${tid}')" class="sc-action-btn-sm" title="Réinitialiser">✕</button>` : '';
-
-    return `<div class="mood-card" style="border-left:3px solid ${color};border:1.5px solid ${borderColor};border-left:3px solid ${color};">
-      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-        <div style="font-weight:700;font-size:14px;color:${color};min-width:100px;display:flex;align-items:center;gap:6px;">
-          <span style="width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>
-          ${tc?.name || tid}
-        </div>
-        <div style="display:flex;align-items:center;gap:4px;min-width:60px;">
-          <span style="font-size:28px;font-weight:900;color:${vColor};line-height:1;">${count ? avg : '?'}</span>
-          <span style="font-size:11px;color:${vColor};font-weight:600;">/5</span>
-        </div>
-        ${distribHtml}
-        <div style="display:flex;gap:4px;align-items:center;">${btns}</div>
-        ${count ? `<span style="font-size:11px;color:var(--text-muted);font-weight:600;">${count} vote${count > 1 ? 's' : ''}</span>` : ''}
-        <div style="display:flex;gap:4px;margin-left:auto;">${actions}</div>
-      </div>
-      <input type="text" value="${note}" placeholder="Commentaire / risque identifié…"
-        onchange="_confNote('${tid}',this.value)"
-        style="width:100%;border:none;border-top:1px solid var(--border);background:transparent;padding:5px 0 0;font-size:11px;color:var(--text-muted);font-style:italic;outline:none;margin-top:6px;">
-    </div>`;
-  }).join('');
-
-  // Global average
-  const allVotes = teams.flatMap(t => { const v = vd[_voteKey(t)]; return Array.isArray(v) ? v : []; });
-  const totalV   = allVotes.length;
-  const gAvg     = totalV ? Math.round(allVotes.reduce((s, v) => s + v, 0) / totalV * 10) / 10 : null;
-  const teamsV   = teams.filter(t => { const v = vd[_voteKey(t)]; return Array.isArray(v) && v.length; }).length;
-  const gColor   = gAvg === null ? 'var(--text-muted)' : gAvg < 2 ? '#DC2626' : gAvg < 3.5 ? '#D97706' : '#16A34A';
-  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2 ? '#FEF2F2' : gAvg < 3.5 ? '#FFFBEB' : '#F0FDF4';
-
-  const avgBadge = gAvg !== null
-    ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:8px;background:${gBg};margin-left:auto;">
-        <span style="font-size:16px;font-weight:900;color:${gColor};">${gAvg}</span><span style="font-size:10px;color:${gColor};font-weight:600;">/5</span>
-        <span style="font-size:10px;color:var(--text-muted);">${totalV} vote${totalV > 1 ? 's' : ''} · ${teamsV}/${teams.length} équipe${teams.length > 1 ? 's' : ''}</span>
-      </div>`
-    : '';
-
-  el.innerHTML = `<div class="mood-panel">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-      <span style="font-size:14px;font-weight:700;color:var(--text);">🗳️ Vote de confiance PI Objectives</span>
-      ${avgBadge}
-      <button onclick="_toggleVotePanel()" style="margin-left:${gAvg !== null ? '8px' : 'auto'};border:none;background:none;font-size:16px;cursor:pointer;color:var(--text-muted);">✕</button>
-    </div>
-    <div style="font-size:11px;color:var(--text-muted);margin-bottom:8px;">Échelle : ✊ 0 (pas confiant) → 🖐️ 5 (très confiant)</div>
-    <div style="display:flex;flex-direction:column;gap:6px;">${cards}</div>
-  </div>`;
-}
 
 // Board view mode - 'columns' | 'deadlines' | 'list'
 let _boardViewMode = localStorage.getItem('board_view_mode') || 'columns';
@@ -559,44 +147,9 @@ let _scrumTypeFilter = localStorage.getItem('sqf_type')   || '';
 let _scrumAssignee   = localStorage.getItem('sqf_assignee') || '';
 let _scrumEpicFilter = localStorage.getItem('sqf_epic')   || '';
 
-// Standalone sidebar progress - callable from any view / init
-function _renderSidebarProgress() {
-  const sbWrap = document.getElementById('sb-progress-wrap');
-  if (!sbWrap) return;
-  const tickets  = (typeof getTickets === 'function') ? getTickets() : (typeof TICKETS !== 'undefined' ? TICKETS : []);
-  const done     = tickets.filter(t => isDone(t.status));
-  const inprog   = tickets.filter(t => t.status === 'inprog');
-  const review   = tickets.filter(t => t.status === 'review');
-  const blocked  = tickets.filter(t => t.status === 'blocked');
-  const ptsDone  = done.reduce((a, t) => a + (t.points || 0), 0);
-  const ptsTotal = tickets.reduce((a, t) => a + (t.points || 0), 0);
-  const pct      = ptsTotal > 0 ? Math.round(ptsDone / ptsTotal * 100) : 0;
-  const todo     = tickets.filter(t => t.status === 'todo').length;
-  const flagged  = tickets.filter(t => t.flagged).length;
-  const bufferTk  = tickets.filter(t => t.buffer);
-  const bufferCnt = bufferTk.length;
-  const bufferPts = bufferTk.reduce((a, t) => a + (t.points || 0), 0);
-  const pctTk     = tickets.length ? Math.round(done.length / tickets.length * 100) : 0;
-  const bufferPct = ptsTotal ? Math.round(bufferPts / ptsTotal * 100) : 0;
-  const sbBufDone = bufferTk.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
-  const sbFeatPct = ptsTotal > 0 ? Math.round((ptsDone - sbBufDone) / ptsTotal * 100) : 0;
-  const sbBufPct  = ptsTotal > 0 ? Math.round(sbBufDone / ptsTotal * 100) : 0;
-  const sbBufTip  = `Buffer : ${sbBufDone}/${bufferPts} pts done (${bufferCnt} tickets)`;
-  sbWrap.innerHTML = `
-    <div class="sb-prog-bar">
-      <div class="sb-prog-fill" style="width:${sbFeatPct}%" title="Feature : ${ptsDone - sbBufDone} pts done"></div>
-      ${sbBufPct > 0 ? `<div class="sb-prog-buf" style="width:${sbBufPct}%;left:${sbFeatPct}%" title="${sbBufTip}"></div>` : ''}
-    </div>
-    <div class="stat-row"><span class="stat-label">${pct}% pts · ${pctTk}% tickets</span><span class="stat-val green">${ptsDone}/${ptsTotal} pts</span></div>
-    <div class="stat-row"><span class="stat-label">Done</span><span class="stat-val green">${done.length}</span></div>
-    <div class="stat-row"><span class="stat-label">En cours / Review</span><span class="stat-val" style="color:#7DD3FC">${inprog.length + review.length}</span></div>
-    <div class="stat-row"><span class="stat-label">À faire</span><span class="stat-val">${todo}</span></div>
-    ${blocked.length ? `<div class="stat-row"><span class="stat-label">Bloqués</span><span class="stat-val red">${blocked.length}</span></div>` : ''}
-    ${flagged ? `<div class="stat-row"><span class="stat-label">🚩 Flaggés</span><span class="stat-val red">${flagged}</span></div>` : ''}
-    ${bufferCnt ? `<div class="stat-row"><span class="stat-label">🛡️ Buffer</span><span class="stat-val" style="color:#22C55E">${bufferCnt} · ${bufferPts} pts (${bufferPct}%)</span></div>` : ''}
-  `;
-}
+// _renderSidebarProgress — moved to sidebar.js
 
+// _renderSidebarBuffer, _renderSidebarObjectives, _renderSidebarRisks — moved to sidebar.js
 function renderScrum() {
   const tickets = getTickets();
   const done    = tickets.filter(t => isDone(t.status));
@@ -652,6 +205,9 @@ function renderScrum() {
   _renderSprintAlerts();
   if (_moodPanelOpen) _renderMoodPanel();
   _renderSidebarProgress();
+  _renderSidebarBuffer();
+  _renderSidebarObjectives();
+  _renderSidebarRisks();
 
   _updateSidebarStats();
 
@@ -710,6 +266,9 @@ function renderScrum() {
     // Mettre à jour les charts avec les nouvelles données
     refreshCharts();
   }
+
+  // Fist of Five evolution chart
+  if (typeof _renderFistChart === 'function') _renderFistChart('fistChartScrum', getActiveTeams());
 }
 
 // ============================================================
@@ -812,90 +371,7 @@ function _activeSprintCtx() {
   return { ...CONFIG.sprint, label: 'Sprint actif' };
 }
 
-// Met à jour le bloc contexte sprint/PI dans la sidebar.
-// Appelé depuis renderScrum() ET directement après chargement du cache.
-function _updateSidebarStats() {
-  const s        = _activeSprintCtx();
-  const teamCfgS = currentTeam && currentTeam !== 'all' ? CONFIG.teams[currentTeam] : null;
-  const url = CONFIG.jira?.url || '';
-  const _el = id => document.getElementById(id);
-
-  // Nom du sprint + lien board
-  const linkEl = _el('sb-sprint-link');
-  if (linkEl) {
-    linkEl.textContent = s.label || '-';
-    // Lien vers le board JIRA de l'équipe courante (si configuré)
-    const teamCfg  = teamCfgS;
-    const boardId  = teamCfg?.boardId;
-    const projKey  = teamCfg?.projectKey || (CONFIG.jira.projects || [])[0] || '';
-    const jiraBase = url && !url.includes('votre-jira') ? url : null;
-    if (jiraBase && boardId && projKey) {
-      linkEl.href  = `${jiraBase}/jira/software/c/projects/${projKey}/boards/${boardId}`;
-      linkEl.style.pointerEvents = '';
-      linkEl.style.opacity = '';
-    } else if (jiraBase && projKey) {
-      linkEl.href  = `${jiraBase}/jira/software/c/projects/${projKey}/boards`;
-      linkEl.style.pointerEvents = '';
-      linkEl.style.opacity = '';
-    } else {
-      linkEl.removeAttribute('href');
-      linkEl.style.pointerEvents = 'none';
-      linkEl.style.opacity = '.5';
-    }
-  }
-
-  // PI détecté depuis le nom du sprint (ex: "PI4 S2", "PI 3 - Sprint 1")
-  const piBadge = _el('sb-pi-badge');
-  if (piBadge) {
-    const piMatch = (s.label || '').match(/PI\s*(\d+)/i);
-    if (piMatch) {
-      piBadge.textContent  = `PI ${piMatch[1]}`;
-      piBadge.style.display = '';
-    } else {
-      piBadge.style.display = 'none';
-    }
-  }
-
-  // Jours restants
-  const remEl = _el('sb-remaining');
-  if (remEl) {
-    const endStr = s.endDate || '';
-    const end    = endStr ? new Date(endStr.split('/').reverse().join('-')) : null;
-    const diff   = end ? Math.ceil((end - new Date()) / 86400000) : null;
-    if (diff !== null && !isNaN(diff)) {
-      if (diff < 0) {
-        remEl.textContent = 'Terminé';
-        remEl.className   = 'sb-remaining urgent';
-      } else if (diff === 0) {
-        remEl.textContent = 'Aujourd\'hui';
-        remEl.className   = 'sb-remaining urgent';
-      } else {
-        remEl.textContent = `J-${diff}`;
-        remEl.className   = `sb-remaining ${diff <= 2 ? 'urgent' : diff <= 5 ? 'warn' : 'ok'}`;
-      }
-    } else {
-      remEl.textContent = '';
-    }
-  }
-
-  // Dates sprint - format "06 mar. → 19 mar. 2026"
-  const datesEl = _el('sb-sprint-dates');
-  if (datesEl && s.startDate && s.endDate) {
-    const _shortDate = (str) => {
-      const d = new Date(str.split('/').reverse().join('-'));
-      if (isNaN(d)) return str;
-      const months = ['jan.','fév.','mar.','avr.','mai','juin','juil.','août','sep.','oct.','nov.','déc.'];
-      return `${String(d.getDate()).padStart(2,'0')} ${months[d.getMonth()]}`;
-    };
-    const endD = new Date(s.endDate.split('/').reverse().join('-'));
-    const year = !isNaN(endD) ? ' ' + endD.getFullYear() : '';
-    datesEl.textContent = `${_shortDate(s.startDate)} → ${_shortDate(s.endDate)}${year}`;
-  } else if (datesEl) {
-    datesEl.textContent = '';
-  }
-}
-
-
+// _updateSidebarStats — moved to sidebar.js
 // ============================================================
 // DAILY ACTIVITY - snapshot + changelog for PO checklist
 // ============================================================
@@ -1580,6 +1056,149 @@ function _showScrumStatDetail(filter) {
         ${avatarBadge(t.assignee, avatarColor)}
       </div>`;
     }).join('')}`;
+
+  window._modalTicketList = [];
+  window._modalCurrentIdx = 0;
+  if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ----------- Velocity trend detail popin -----------
+function _showVelocityTrendDetail() {
+  const activeTeams = _moodTeams();
+  // Collect per-team velocity history
+  const teamData = activeTeams.map(t => ({
+    name: t,
+    color: CONFIG.teams[t]?.color || '#64748B',
+    history: (CONFIG.teams[t]?.velocityHistory || []).map(vh => ({
+      sprint: vh.name || '',
+      velocity: vh.velocity || 0,
+      tickets: vh.tickets || [],
+      startDate: vh.startDate || '',
+    })),
+  })).filter(td => td.history.length > 0);
+
+  if (!teamData.length) return;
+
+  // Current sprint velocity (from active tickets)
+  const currentTickets = getTickets();
+  const currentDone = currentTickets.filter(t => isDone(t.status));
+  const currentVel = currentDone.reduce((a, t) => a + (t.points || 0), 0);
+  // SVG sparkline per team
+  const sparkHeight = 60, sparkWidth = 220;
+  function _sparkSvg(values, color) {
+    if (values.length < 2) return '';
+    const max = Math.max(...values, 1);
+    const step = sparkWidth / (values.length - 1);
+    const pts = values.map((v, i) => `${i * step},${sparkHeight - (v / max) * (sparkHeight - 10)}`).join(' ');
+    const dots = values.map((v, i) => `<circle cx="${i * step}" cy="${sparkHeight - (v / max) * (sparkHeight - 10)}" r="3" fill="${color}"/>`).join('');
+    return `<svg width="${sparkWidth}" height="${sparkHeight}" style="overflow:visible;">
+      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+      ${dots}
+    </svg>`;
+  }
+
+  // Per-team sections
+  const teamSections = teamData.map(td => {
+    const velocities = td.history.map(h => h.velocity);
+    velocities.push(currentVel);
+    const sprintNames = td.history.map(h => {
+      const m = (h.sprint || '').match(/(\d{2,3}\.\d+)/);
+      return m ? m[1] : h.sprint;
+    });
+    sprintNames.push('Actuel');
+    const avg = velocities.length ? Math.round(velocities.reduce((a, v) => a + v, 0) / velocities.length) : 0;
+    const trend = velocities.length >= 2 ? velocities[velocities.length - 1] - velocities[0] : 0;
+    const trendIcon = trend > 0 ? '📈' : trend < 0 ? '📉' : '➡️';
+    const trendColor = trend > 0 ? '#22C55E' : trend < 0 ? '#EF4444' : '#94A3B8';
+
+    // Sprint table rows
+    const rows = td.history.map((h, i) => {
+      const v = h.velocity;
+      const prev = i > 0 ? td.history[i - 1].velocity : null;
+      const delta = prev != null ? v - prev : null;
+      const deltaHtml = delta != null
+        ? `<span style="color:${delta >= 0 ? '#22C55E' : '#EF4444'};font-size:11px;">${delta >= 0 ? '+' : ''}${delta}</span>`
+        : '';
+      const doneCount = (h.tickets || []).length;
+      return `<tr>
+        <td style="font-size:12px;white-space:nowrap;">${sprintNames[i]}</td>
+        <td style="text-align:right;font-weight:600;">${v} pts</td>
+        <td style="text-align:right;">${deltaHtml}</td>
+        <td style="text-align:right;font-size:11px;color:#64748B;">${doneCount} ticket${doneCount > 1 ? 's' : ''}</td>
+      </tr>`;
+    });
+    // Current sprint row
+    rows.push(`<tr style="background:#F0F9FF;">
+      <td style="font-size:12px;font-weight:600;">Actuel</td>
+      <td style="text-align:right;font-weight:600;">${currentVel} pts</td>
+      <td style="text-align:right;"><span style="color:${currentVel - (td.history.at(-1)?.velocity || 0) >= 0 ? '#22C55E' : '#EF4444'};font-size:11px;">${currentVel - (td.history.at(-1)?.velocity || 0) >= 0 ? '+' : ''}${currentVel - (td.history.at(-1)?.velocity || 0)}</span></td>
+      <td style="text-align:right;font-size:11px;color:#64748B;">${currentDone.filter(t => !activeTeams.length || activeTeams.length <= 1 || t.team === td.name).length} done</td>
+    </tr>`);
+
+    return `<div style="margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:8px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+        <span style="width:10px;height:10px;border-radius:50%;background:${td.color};display:inline-block;"></span>
+        <strong>${td.name}</strong>
+        <span style="font-size:12px;color:#64748B;">Moy. ${avg} pts</span>
+        <span style="font-size:12px;color:${trendColor};">${trendIcon} ${trend >= 0 ? '+' : ''}${trend} pts</span>
+      </div>
+      <div style="display:flex;gap:16px;align-items:flex-start;">
+        <div>${_sparkSvg(velocities, td.color)}</div>
+        <table style="flex:1;border-collapse:collapse;font-size:13px;">
+          ${rows.join('')}
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Global summary
+  const allVelocities = teamData.flatMap(td => td.history.map(h => h.velocity));
+  const globalAvg = allVelocities.length ? Math.round(allVelocities.reduce((a, v) => a + v, 0) / allVelocities.length) : 0;
+  const recent3 = allVelocities.slice(-3);
+  const globalDrop = recent3.length >= 2 && recent3[0] > 0
+    ? Math.round((1 - recent3[recent3.length - 1] / recent3[0]) * 100)
+    : 0;
+
+  document.getElementById('modal-title').innerHTML = `📉 Tendance vélocité <span style="font-size:14px;font-weight:400;color:#94A3B8;">−${globalDrop}% sur les 3 derniers sprints · Moy. ${globalAvg} pts</span>`;
+  document.getElementById('modal-body').innerHTML = teamSections;
+
+  window._modalTicketList = [];
+  window._modalCurrentIdx = 0;
+  if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+// ----------- Scope creep detail popin -----------
+function _showScopeCreepDetail() {
+  const all = getTickets();
+  const s = CONFIG.sprint || {};
+  const added = all.filter(t => {
+    if (!Array.isArray(t.todayChanges)) return false;
+    return t.todayChanges.some(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(s.label));
+  });
+  if (!added.length) return;
+
+  const totalPts = added.reduce((a, t) => a + (t.points || 0), 0);
+  document.getElementById('modal-title').innerHTML = `📈 Scope creep <span style="font-size:14px;font-weight:400;color:#94A3B8;">${added.length} ticket${added.length > 1 ? 's' : ''} ajouté${added.length > 1 ? 's' : ''} · ${totalPts} pts</span>`;
+  document.getElementById('modal-body').innerHTML = added.map(t => {
+    const epic = EPICS.find(e => e.id === t.epic);
+    const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
+    // Find who added it and when
+    const sprintChange = (t.todayChanges || []).find(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(s.label));
+    const addedBy = sprintChange ? sprintChange.author : '';
+    const addedAt = sprintChange ? sprintChange.time : '';
+    const timeStr = addedAt ? new Date(addedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';
+    return `<div class="sc-ticket-row" onclick="closeModalDirect();openModal('${t.id}')">
+      <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
+      <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
+      <span class="sc-truncate-title">${_jiraBrowse(t.id)} - ${t.title}</span>
+      ${epicTag(epic, t.epic)}
+      ${ptsBadge(t.points)}
+      ${avatarBadge(t.assignee, avatarColor)}
+      ${addedBy ? `<span style="font-size:11px;color:#64748B;white-space:nowrap;">par ${addedBy}${timeStr ? ' à ' + timeStr : ''}</span>` : ''}
+    </div>`;
+  }).join('');
 
   window._modalTicketList = [];
   window._modalCurrentIdx = 0;

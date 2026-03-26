@@ -19,6 +19,13 @@
 const JIRA_PROXY = 'http://localhost:3001/jira';
 const DATA_PROXY = '/data';
 
+// API call counter (reset at each sync, read by sync.js for toast/meta)
+let _jiraApiCalls = 0;
+function _jiraFetch(url, opts) {
+  _jiraApiCalls++;
+  return fetch(url, opts);
+}
+
 // Nom de fichier cache fixe (multi-board)
 function _cacheFile() { return 'jira-data.json'; }
 
@@ -401,13 +408,57 @@ function _extractDescription(doc) {
       // Rule / horizontal line
       if (node.type === 'rule') { lines.push('\n---\n'); return; }
 
+      // --- List items : add prefix before content ---
+      if (node.type === 'listItem') {
+        const prefix = node._listPrefix || '- ';
+        lines.push(prefix);
+        if (node.content) {
+          // Walk children but suppress trailing \n from inner paragraph
+          // (the list item itself controls line breaks)
+          node.content.forEach((child, ci) => {
+            if (child.type === 'paragraph') {
+              if (child.content) child.content.forEach(walk);
+            } else {
+              walk(child);
+            }
+          });
+        }
+        lines.push('\n');
+        return;
+      }
+
+      // Ordered / bullet lists : tag children with prefix
+      if (node.type === 'bulletList' || node.type === 'orderedList') {
+        const items = node.content || [];
+        items.forEach((child, idx) => {
+          if (child.type === 'listItem') {
+            child._listPrefix = node.type === 'orderedList' ? `${idx + 1}. ` : '- ';
+          }
+        });
+        items.forEach(walk);
+        return;
+      }
+
+      // Task list / decision list items
+      if (node.type === 'taskItem' || node.type === 'decisionItem') {
+        const checked = node.attrs?.state === 'DONE';
+        lines.push(checked ? '- [x] ' : '- [ ] ');
+        if (node.content) node.content.forEach(walk);
+        lines.push('\n');
+        return;
+      }
+      if (node.type === 'taskList' || node.type === 'decisionList') {
+        if (node.content) node.content.forEach(walk);
+        return;
+      }
+
       // --- Container nodes (have content) ---
       if (node.content) node.content.forEach(walk);
 
       // Block-level nodes → trailing newline
-      if (['paragraph','heading','bulletList','listItem','orderedList',
-           'blockquote','codeBlock','decisionList','decisionItem',
-           'taskList','taskItem','table','tableRow','tableCell','tableHeader',
+      if (['paragraph','heading',
+           'blockquote','codeBlock',
+           'table','tableRow','tableCell','tableHeader',
            'mediaSingle','mediaGroup','panel','expand','layoutSection','layoutColumn'
           ].includes(node.type)) {
         lines.push('\n');
@@ -438,7 +489,7 @@ function _extractComments(commentField) {
   if (!Array.isArray(comments)) return [];
   return comments.map(c => ({
     author: c.author?.displayName || c.updateAuthor?.displayName || '?',
-    date:   (c.updated || c.created || '').slice(0, 10),
+    date:   c.updated || c.created || '',
     body:   _extractDescription(c.body) || (typeof c.body === 'string' ? c.body : ''),
   })).filter(c => c.body);
 }
@@ -463,6 +514,27 @@ function _extractComponents(fields) {
   if (!Array.isArray(fields.components)) return [];
   return fields.components.map(c => c.name).filter(Boolean);
 }
+
+// Fetch remote (web) links for a single issue — called on demand from modal
+window._fetchRemoteLinks = async function(issueKey) {
+  if (!CONFIG.jira?.url) return [];
+  try {
+    const r = await _jiraFetch(`${JIRA_PROXY}/api/3/issue/${encodeURIComponent(issueKey)}/remotelink`);
+    if (!r.ok) return [];
+    const data = await r.json();
+    if (!Array.isArray(data)) return [];
+    return data.map(rl => ({
+      id:    rl.id,
+      title: rl.object?.title || rl.object?.url || '',
+      url:   rl.object?.url || '',
+      icon:  rl.object?.icon?.url16x16 || '',
+      status: rl.object?.status?.description || rl.object?.status?.resolved ? 'Résolu' : '',
+    })).filter(l => l.url);
+  } catch (e) {
+    console.warn('[JIRA] Remote links fetch failed for', issueKey, e.message);
+    return [];
+  }
+};
 
 // ============================================================
 // Transformation issues JIRA → objet cache (sans side-effects)
@@ -498,7 +570,7 @@ function _extractRecentChanges(issue) {
   return changes;
 }
 
-function _transform(issues, project, sprintId) {
+function _transform(issues, project, sprintId, teamConfigs) {
   _colorCursor = 0;
 
   const epicTypes    = ['epic'];
@@ -514,7 +586,7 @@ function _transform(issues, project, sprintId) {
   // Epics présents dans le sprint
   const epicMap = {};
   epicIssues.forEach(i => {
-    const team = i._boardTeam || 'A';
+    const team = i._boardTeam || '';
     epicMap[i.key] = { id: i.key, title: i.fields.summary, feature: 'F-1', team, color: _pickColor() };
   });
 
@@ -522,7 +594,7 @@ function _transform(issues, project, sprintId) {
   // (titre depuis parent si dispo - normalement résolu par l'étape 3.5 de loadJiraData)
   otherIssues.forEach(i => {
     const key = _getEpicKey(i.fields);
-    const team = i._boardTeam || 'A';
+    const team = i._boardTeam || '';
     if (key && !epicMap[key]) {
       const parentTitle = (i.fields.parent?.key === key) ? i.fields.parent?.fields?.summary : null;
       epicMap[key] = { id: key, title: parentTitle || key, feature: 'F-1', team, color: _pickColor() };
@@ -530,20 +602,21 @@ function _transform(issues, project, sprintId) {
   });
 
   if (Object.keys(epicMap).length === 0) {
-    epicMap['E-0'] = { id: 'E-0', title: project, feature: 'F-1', team: 'A', color: _pickColor() };
+    epicMap['E-0'] = { id: 'E-0', title: project, feature: 'F-1', team: '', color: _pickColor() };
   }
   const fallbackEpic = Object.keys(epicMap)[0];
 
   const tickets = otherIssues.map(i => {
     const f       = i.fields;
     const epicKey = _getEpicKey(f) || fallbackEpic;
-    const team    = i._boardTeam || epicMap[epicKey]?.team || 'A';
+    const team    = i._boardTeam || epicMap[epicKey]?.team || '';
     // Detect JIRA flagged field (impediment indicator)
     const flagged = _isFlagged(f);
     let   status  = _mapStatus(f.status?.name);
     if (flagged && !isDone(status)) status = 'blocked';
     const labels  = (f.labels || []).map(l => l.toLowerCase());
     const buffer  = _isBuffer(labels, epicKey, epicMap);
+    if (buffer) console.log(`[JIRA] Buffer détecté (sprint actif): ${i.key} (epic=${epicKey}, epicTitle=${epicMap[epicKey]?.title || '?'}, labels=[${labels.join(',')}])`);
     // Due date: duedate or Target end (customfield_10015)
     const dueDate = f.duedate || f.customfield_10015 || null;
     // Last comment
@@ -604,7 +677,7 @@ function _transform(issues, project, sprintId) {
       _jiraStatus: f.status?.name || '',
       _boardStatus: _mapStatus(f.status?.name) || 'todo',
       assignee:    (f.assignee?.displayName || '').trim() || null,
-      team:        i._boardTeam || 'A',
+      team:        i._boardTeam || '',
       date:        (f.created || '').slice(0, 10),
       dueDate:     f.duedate || null,
       labels,
@@ -624,6 +697,16 @@ function _transform(issues, project, sprintId) {
     if (!members[t.team]) members[t.team] = [];
     if (!members[t.team].includes(t.assignee)) members[t.team].push(t.assignee);
     if (!memberColors[t.assignee]) memberColors[t.assignee] = _pickColor();
+  });
+  // Enrich members from velocity history (covers all PI sprints, not just active)
+  Object.entries(teamConfigs).forEach(([team, tc]) => {
+    (tc.velocityHistory || []).forEach(vh => {
+      (vh.members || []).forEach(m => {
+        if (!members[team]) members[team] = [];
+        if (!members[team].includes(m)) members[team].push(m);
+        if (!memberColors[m]) memberColors[m] = _pickColor();
+      });
+    });
   });
 
   return {
@@ -665,7 +748,18 @@ function _extractTeamSprint(sprintList) {
   return null;
 }
 
-function _transformBacklog(issues) {
+function _transformBacklog(issues, epicMapOverride) {
+  // Build epic map for buffer detection (from override or empty)
+  const _blEpicMap = epicMapOverride || {};
+  // Enrichir avec les parents des issues elles-mêmes (Feature, Epic, Fonctionnalité)
+  // → même logique que le transform principal (lignes 530-536)
+  issues.forEach(i => {
+    const key = _getEpicKey(i.fields);
+    if (key && !_blEpicMap[key]) {
+      const parentTitle = (i.fields.parent?.key === key) ? (i.fields.parent?.fields?.summary || '') : '';
+      _blEpicMap[key] = { title: parentTitle || key };
+    }
+  });
   return issues.map(i => {
     const f          = i.fields;
     const sprintRaw  = f[CONFIG.sync.sprintField];
@@ -688,12 +782,12 @@ function _transformBacklog(issues) {
       title:       f.summary,
       type:        _mapType(f.issuetype?.name),
       epic:        epicKey,
-      team:        i._boardTeam || 'A',
+      team:        i._boardTeam || '',
       assignee:    (f.assignee?.displayName || '').trim() || null,
       points:      _getPoints(f),
       status:      _mapStatus(f.status?.name) || 'backlog',
       _jiraStatus: f.status?.name || '',
-      buffer:      labels.some(l => l.includes('buffer')),
+      buffer:      (() => { const b = _isBuffer(labels, epicKey, _blEpicMap); if (b) console.log(`[JIRA] Buffer détecté (backlog): ${i.key} (epic=${epicKey}, epicTitle=${_blEpicMap[epicKey]?.title || '?'}, labels=[${labels.join(',')}])`); return b; })(),
       priority:    _mapPriority(f.priority?.name),
       sprint:      0,
       sprintName:  sprintObj.name      || '',
@@ -739,6 +833,14 @@ async function _applyCache(cache) {
     if (t._jiraStatus) t.status = _mapStatus(t._jiraStatus);
     BACKLOG_TICKETS.push(t);
   });
+  INNO_FEATURES.length    = 0; (cache.inno_features     || []).forEach(f => {
+    if (f._jiraStatus) f.status = _mapStatus(f._jiraStatus);
+    INNO_FEATURES.push(f);
+  });
+  AMELIORATION_TICKETS.length = 0; (cache.amelioration_tickets || []).forEach(t => {
+    if (t._jiraStatus) t.status = _mapStatus(t._jiraStatus);
+    AMELIORATION_TICKETS.push(t);
+  });
 
   Object.keys(MEMBERS).forEach(k => delete MEMBERS[k]);
   Object.assign(MEMBERS, cache.members || {});
@@ -767,7 +869,7 @@ async function _applyCache(cache) {
     });
   }
 
-  console.log(`[JIRA] ${TICKETS.length} tickets · ${EPICS.length} epics · ${SUPPORT_TICKETS.length} support · ${BACKLOG_TICKETS.length} backlog · ${GROUPS.length} groupes`);
+  console.log(`[JIRA] ${TICKETS.length} tickets · ${EPICS.length} epics · ${SUPPORT_TICKETS.length} support · ${BACKLOG_TICKETS.length} backlog · ${INNO_FEATURES.length} inno · ${AMELIORATION_TICKETS.length} amélio · ${GROUPS.length} groupes`);
 }
 
 // ============================================================
@@ -799,11 +901,12 @@ async function loadJiraCache() {
  * Appelé sur clic "Synchroniser".
  */
 async function loadJiraData(opts = {}) {
+  _jiraApiCalls = 0; // Reset API call counter
   // Découverte automatique du champ Story Points via l'API /field
   // (son customfield_XXXXX varie selon les instances JIRA)
   let _spFieldId = null;
   try {
-    const fr = await fetch(`${JIRA_PROXY}/api/3/field`, { headers: { Accept: 'application/json' } });
+    const fr = await _jiraFetch(`${JIRA_PROXY}/api/3/field`, { headers: { Accept: 'application/json' } });
     if (fr.ok) {
       const allFields = await fr.json();
       const spField = allFields.find(f =>
@@ -843,7 +946,7 @@ async function loadJiraData(opts = {}) {
   const allBoards = [];
   let startAt = 0;
   while (true) {
-    const boardsRes = await fetch(`${JIRA_PROXY}/agile/1.0/board?maxResults=${CONFIG.sync.maxBoardsPerPage}&startAt=${startAt}`);
+    const boardsRes = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board?maxResults=${CONFIG.sync.maxBoardsPerPage}&startAt=${startAt}`);
     if (!boardsRes.ok) {
       const err = await boardsRes.json().catch(() => ({}));
       throw new Error(err.message || `Boards HTTP ${boardsRes.status}`);
@@ -931,12 +1034,12 @@ async function loadJiraData(opts = {}) {
     let sprintId = null;
 
     // Fetch board column configuration (non-blocking)
-    const _boardConfigPromise = fetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/configuration`, { headers: { Accept: 'application/json' } })
+    const _boardConfigPromise = _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/configuration`, { headers: { Accept: 'application/json' } })
       .then(r => r.ok ? r.json() : null)
       .catch(() => null);
 
     try {
-      const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/sprint?state=active&maxResults=1`);
+      const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/sprint?state=active&maxResults=1`);
       if (sr.ok) {
         const sb     = await sr.json();
         const sprint = (sb.values || [])[0];
@@ -1010,7 +1113,7 @@ async function loadJiraData(opts = {}) {
     try {
       const jql = `sprint=${sprintId} ORDER BY issuetype ASC, updated DESC`;
       const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${fields}&expand=changelog`;
-      const ir  = await fetch(url, { headers: { Accept: 'application/json' } });
+      const ir  = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
       if (ir.ok) {
         const ib = await ir.json();
         const issues = ib.issues || [];
@@ -1061,6 +1164,8 @@ async function loadJiraData(opts = {}) {
   // allFutureIssues declared here so it's accessible after the if/else block
   const allFutureIssues = [];
   const _futureSeenKeys = new Set();
+  // Shared epicMap for buffer detection across closed sprints + backlog
+  const _sharedEpicMap = {};
 
   // 3.6 Historique de vélocité - via board API (sprints fermés par board)
   // (Skipped in incremental mode - velocity doesn't change during sprint)
@@ -1073,18 +1178,20 @@ async function loadJiraData(opts = {}) {
     const _ptFields = fields;
 
     // Champs pour le calcul de vélocité + détail tickets par sprint (popin)
-    const _velFields = [
+    const _velFieldsArr = [
       'status', 'summary', 'issuetype', 'assignee', 'parent', 'labels',
       'customfield_10016', 'customfield_10028', 'customfield_10005',
       'customfield_10004', 'customfield_10115', 'customfield_10106',
       'customfield_10034', 'customfield_10193',
       ...(_spFieldId && !['customfield_10016','customfield_10028','customfield_10005','customfield_10004','customfield_10115','customfield_10106','customfield_10034','customfield_10193'].includes(_spFieldId) ? [_spFieldId] : []),
-    ].join(',');
+    ];
+    if (CONFIG.sync.enrichClosedSprints) _velFieldsArr.push('description', 'priority', 'components');
+    const _velFields = _velFieldsArr.join(',');
 
     await Promise.all(Object.entries(teamConfigs).map(async ([teamName, tc]) => {
       if (!tc.boardId || !tc.hasIssues) return;
       try {
-        const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=closed&maxResults=${CONFIG.sync.closedSprintsFetch}`);
+        const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=closed&maxResults=${CONFIG.sync.closedSprintsFetch}`);
         if (!sr.ok) return;
         const allClosed = (await sr.json()).values || [];
         // Filtrer les sprints PI (ex: "PI#28", "PI 29") - ce ne sont pas des sprints d'équipe
@@ -1104,7 +1211,7 @@ async function loadJiraData(opts = {}) {
             const jql = projKey
               ? `sprint=${sprint.id} AND project="${projKey}"`
               : `sprint=${sprint.id}`;
-            const ir  = await fetch(`${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${_velFields}`, { headers: { Accept: 'application/json' } });
+            const ir  = await _jiraFetch(`${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${_velFields}`, { headers: { Accept: 'application/json' } });
             if (!ir.ok) {
               console.warn(`[JIRA] Vélocité ${teamName} sprint ${sprint.name} : HTTP ${ir.status}`);
               return { sprint, issues: [] };
@@ -1130,15 +1237,27 @@ async function loadJiraData(opts = {}) {
         // Phase 3 : construire velocityHistory en excluant les tickets qui ont glissé
         // Construire un epicMap local pour la détection buffer
         const _closedEpicMap = {};
+        const _epicLikeTypes = new Set(['epic', 'feature', 'fonctionnalité']);
         sprintData.forEach(sd => sd.issues.forEach(i => {
           const t = (i.fields.issuetype?.name || '').toLowerCase();
-          if (t === 'epic') _closedEpicMap[i.key] = { title: i.fields.summary || '' };
+          if (_epicLikeTypes.has(t)) _closedEpicMap[i.key] = { title: i.fields.summary || '' };
+          // Aussi ajouter le parent référencé (même logique que transform principal)
+          const pk = _getEpicKey(i.fields);
+          if (pk && !_closedEpicMap[pk] && i.fields.parent?.key === pk) {
+            _closedEpicMap[pk] = { title: i.fields.parent?.fields?.summary || '' };
+          }
         }));
-        // Compléter avec les epics du sprint actif
+        // Compléter avec les epics/features du sprint actif
         allIssues.forEach(i => {
           const t = (i.fields.issuetype?.name || '').toLowerCase();
-          if (t === 'epic') _closedEpicMap[i.key] = { title: i.fields.summary || '' };
+          if (_epicLikeTypes.has(t)) _closedEpicMap[i.key] = { title: i.fields.summary || '' };
+          const pk = _getEpicKey(i.fields);
+          if (pk && !_closedEpicMap[pk] && i.fields.parent?.key === pk) {
+            _closedEpicMap[pk] = { title: i.fields.parent?.fields?.summary || '' };
+          }
         });
+        // Propager vers le epicMap partagé (accessible par _blEpicMap pour le backlog)
+        Object.assign(_sharedEpicMap, _closedEpicMap);
 
         tc.velocityHistory = sprintData.map((sd, idx) => {
           const doneIssues = sd.issues.filter(i => isDone(_mapStatus(i.fields.status?.name))).filter(i => {
@@ -1154,6 +1273,13 @@ async function loadJiraData(opts = {}) {
             return true;
           });
           const velocity = doneIssues.reduce((a, i) => a + _getPoints(i.fields), 0);
+          const _enrich = CONFIG.sync.enrichClosedSprints;
+          const _enrichFields = (i) => _enrich ? {
+            description: _extractDescription(i.fields.description),
+            priority:    (i.fields.priority?.name || '').toLowerCase(),
+            labels:      (i.fields.labels || []).map(l => l.toLowerCase()),
+            components:  (i.fields.components || []).map(c => c.name || c),
+          } : {};
           const tickets = doneIssues.map(i => ({
             id:       i.key,
             title:    i.fields.summary || '',
@@ -1162,6 +1288,7 @@ async function loadJiraData(opts = {}) {
             points:   _getPoints(i.fields),
             assignee: i.fields.assignee?.displayName || '',
             epic:     i.fields.parent?.key || '',
+            ..._enrichFields(i),
           }));
           // Buffer tickets : tous les tickets buffer de ce sprint (done ou non), hors glissés
           const bufferTickets = sd.issues
@@ -1182,8 +1309,11 @@ async function loadJiraData(opts = {}) {
               team:     teamName,
               buffer:   true,
               sprintName: sd.sprint.name,
+              ..._enrichFields(i),
             }));
-          return { name: sd.sprint.name, velocity, tickets, bufferTickets, startDate: sd.sprint.startDate || '', endDate: sd.sprint.endDate || '' };
+          // Collect all unique assignees from all sprint issues (not just done)
+          const sprintMembers = [...new Set(sd.issues.map(i => (i.fields.assignee?.displayName || '').trim()).filter(Boolean))];
+          return { name: sd.sprint.name, velocity, tickets, bufferTickets, members: sprintMembers, startDate: sd.sprint.startDate || '', endDate: sd.sprint.endDate || '' };
         });
         console.log(`[JIRA] Vélocité ${teamName} : ${tc.velocityHistory.map(s => `${s.name}=${s.velocity}`).join(', ')}`);
       } catch (e) {
@@ -1200,7 +1330,7 @@ async function loadJiraData(opts = {}) {
       if (!tc.boardId || !tc.hasIssues) return;
       try {
         // Récupérer les sprints futurs du board
-        const sr = await fetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=future&maxResults=${CONFIG.sync.maxFutureSprints}`);
+        const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=future&maxResults=${CONFIG.sync.maxFutureSprints}`);
         if (!sr.ok) return;
         const sb = await sr.json();
         const futureSprints = sb.values || [];
@@ -1210,7 +1340,7 @@ async function loadJiraData(opts = {}) {
         for (const fs of futureSprints) {
           const jql = `sprint=${fs.id} ORDER BY priority ASC`;
           const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${fields}`;
-          const ir  = await fetch(url, { headers: { Accept: 'application/json' } });
+          const ir  = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
           if (!ir.ok) continue;
           const issues = (await ir.json()).issues || [];
           issues.forEach(issue => {
@@ -1252,7 +1382,7 @@ async function loadJiraData(opts = {}) {
 
       try {
         const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(piJql)}&maxResults=${CONFIG.sync.maxPIIssues}&fields=${fields}`;
-        const ir  = await fetch(url, { headers: { Accept: 'application/json' } });
+        const ir  = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
         if (ir.ok) {
           const issues = (await ir.json()).issues || [];
           const _activeKeys = new Set(allIssues.map(i => i.key));
@@ -1342,7 +1472,7 @@ async function loadJiraData(opts = {}) {
       try {
         const jql = `issuekey in (${stubKeys.join(',')})`;
         const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxEpicsResolve}&fields=summary,status,issuetype,assignee`;
-        const res = await fetch(url, { headers: { Accept: 'application/json' } });
+        const res = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
         if (res.ok) {
           const body = await res.json();
           (body.issues || []).forEach(i => allIssues.push(i));
@@ -1351,6 +1481,152 @@ async function loadJiraData(opts = {}) {
       } catch (e) {
         console.warn('[JIRA] Résolution epics :', e.message);
       }
+    }
+  }
+
+  // 3.6 Innovation : Features avec label "inno" + leurs tickets enfants
+  //     Les Features JIRA (issuetype Feature/Fonctionnalité) avec l'étiquette "Inno"
+  //     sont des initiatives d'innovation. On récupère aussi leurs enfants (stories, bugs, etc.)
+  const _innoFeatureList = [];
+  if (!opts.incremental) {
+    const _innoProjFilter = (CONFIG.jira.projects || []).length
+      ? ` AND project IN (${CONFIG.jira.projects.map(p => `"${p}"`).join(',')})`
+      : '';
+    const _innoJql = `issuetype in (Feature, Fonctionnalité) AND labels in (Inno, inno, innovation, Innovation)${_innoProjFilter} ORDER BY priority ASC`;
+    console.log(`[JIRA] Innovation Features : ${_innoJql}`);
+    try {
+      const _innoUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_innoJql)}&maxResults=200&fields=${fields}`;
+      const _innoRes = await _jiraFetch(_innoUrl, { headers: { Accept: 'application/json' } });
+      if (_innoRes.ok) {
+        const _innoIssues = (await _innoRes.json()).issues || [];
+        const _innoKeys = _innoIssues.map(i => i.key);
+        console.log(`[JIRA] Innovation : ${_innoIssues.length} features trouvées (${_innoKeys.join(', ')})`);
+
+        // Stocker les Features en tant qu'INNO_FEATURES
+        _innoIssues.forEach(i => {
+          const f = i.fields;
+          const sprintRaw  = f[CONFIG.sync.sprintField];
+          const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
+          const piSprint   = _extractPISprint(sprintList);
+          _innoFeatureList.push({
+            id:          i.key,
+            title:       f.summary || '',
+            status:      _mapStatus(f.status?.name),
+            _jiraStatus: f.status?.name || '',
+            labels:      (f.labels || []).map(l => l.toLowerCase()),
+            assignee:    f.assignee?.displayName || '',
+            points:      _getPoints(f),
+            piSprint:    piSprint?.name || '',
+            dueDate:     f.duedate || f.customfield_10015 || null,
+          });
+        });
+
+        // Récupérer les tickets enfants des Features d'innovation
+        if (_innoKeys.length) {
+          const _childJql = `parent in (${_innoKeys.join(',')})${_innoProjFilter} ORDER BY priority ASC`;
+          console.log(`[JIRA] Innovation enfants : ${_childJql}`);
+          try {
+            const _childUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_childJql)}&maxResults=500&fields=${fields}`;
+            const _childRes = await _jiraFetch(_childUrl, { headers: { Accept: 'application/json' } });
+            if (_childRes.ok) {
+              const _childIssues = (await _childRes.json()).issues || [];
+              const _activeKeys = new Set(allIssues.map(i => i.key));
+              const _futureKeys = new Set(allFutureIssues.map(i => i.key));
+
+              // Construire un mapping assignee → team depuis les issues connues
+              const _memberTeamMap = {};
+              allIssues.forEach(i => {
+                if (i._boardTeam && i.fields?.assignee?.displayName) {
+                  _memberTeamMap[i.fields.assignee.displayName] = i._boardTeam;
+                }
+              });
+
+              let _childAdded = 0, _childEnriched = 0;
+              _childIssues.forEach(i => {
+                if (_activeKeys.has(i.key) || _futureKeys.has(i.key)) {
+                  _childEnriched++;
+                  return; // déjà connu
+                }
+                // Détecter l'équipe via assignee ou epic commun
+                const assignee = i.fields?.assignee?.displayName;
+                let team = (assignee && _memberTeamMap[assignee]) || null;
+                if (!team) {
+                  const epicKey = _getEpicKey(i.fields);
+                  if (epicKey) {
+                    const sameEpic = allIssues.find(ai => _getEpicKey(ai.fields) === epicKey && ai._boardTeam);
+                    if (sameEpic) team = sameEpic._boardTeam;
+                  }
+                }
+                i._boardTeam = team || '';
+                allIssues.push(i);
+                _childAdded++;
+              });
+              console.log(`[JIRA] Innovation enfants : ${_childIssues.length} trouvés, ${_childAdded} ajoutés, ${_childEnriched} déjà connus`);
+            }
+          } catch (e) {
+            console.warn('[JIRA] Innovation enfants :', e.message);
+          }
+        }
+      } else {
+        console.warn(`[JIRA] Innovation Features : HTTP ${_innoRes.status}`);
+      }
+    } catch (e) {
+      console.warn('[JIRA] Innovation Features :', e.message);
+    }
+  }
+
+  // 3.7 Amélioration continue : tickets rétro, post-mortem, CoP
+  const _ameliorationList = [];
+  if (!opts.incremental) {
+    const _amelProjFilter = (CONFIG.jira.projects || []).length
+      ? ` AND project IN (${CONFIG.jira.projects.map(p => `"${p}"`).join(',')})`
+      : '';
+    const _amelJql = `(labels in (Rétro, ActionRetro, Amélioration, postmortem, retro, retro-tech, RetroFonc, Adapt, CoP-méthodo, cop-dev, Methodo) OR summary ~ Rétro OR summary ~ Retro OR summary ~ postmortem OR summary ~ "post-mortem" OR summary ~ CoP) AND (statusCategory != Done OR resolved >= -15d)${_amelProjFilter} ORDER BY labels DESC, status DESC, Rank ASC`;
+    console.log(`[JIRA] Amélioration continue : ${_amelJql}`);
+    try {
+      const _amelUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_amelJql)}&maxResults=500&fields=${fields}`;
+      const _amelRes = await _jiraFetch(_amelUrl, { headers: { Accept: 'application/json' } });
+      if (_amelRes.ok) {
+        const _amelIssues = (await _amelRes.json()).issues || [];
+        console.log(`[JIRA] Amélioration continue : ${_amelIssues.length} tickets trouvés`);
+        _amelIssues.forEach(i => {
+          const f = i.fields;
+          const sprintRaw  = f[CONFIG.sync.sprintField];
+          const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
+          const piSprint   = _extractPISprint(sprintList);
+          // Detect team via assignee or board membership
+          const assignee = f.assignee?.displayName || '';
+          let team = '';
+          if (assignee) {
+            for (const ai of allIssues) {
+              if (ai.fields?.assignee?.displayName === assignee && ai._boardTeam) {
+                team = ai._boardTeam;
+                break;
+              }
+            }
+          }
+          _ameliorationList.push({
+            id:          i.key,
+            title:       f.summary || '',
+            status:      _mapStatus(f.status?.name),
+            _jiraStatus: f.status?.name || '',
+            labels:      (f.labels || []).map(l => l.toLowerCase()),
+            assignee:    assignee,
+            points:      _getPoints(f),
+            team:        team,
+            type:        _mapType(f.issuetype?.name),
+            priority:    _mapPriority(f.priority?.name),
+            piSprint:    piSprint?.name || '',
+            dueDate:     f.duedate || f.customfield_10015 || null,
+            epic:        _getEpicKey(f) || '',
+            description: _extractDescription(f.description),
+          });
+        });
+      } else {
+        console.warn(`[JIRA] Amélioration continue : HTTP ${_amelRes.status}`);
+      }
+    } catch (e) {
+      console.warn('[JIRA] Amélioration continue :', e.message);
     }
   }
 
@@ -1372,14 +1648,16 @@ async function loadJiraData(opts = {}) {
 
   // 5. Transformer
   const project = (CONFIG.jira.projects || []).join(', ') || 'JIRA';
-  const cache   = _transform(allIssues, project, CONFIG.sprint.current);
+  const cache   = _transform(allIssues, project, CONFIG.sprint.current, teamConfigs);
   cache.groups       = groups;
   // N'exporter que les équipes ayant effectivement chargé des issues
   cache.team_configs = Object.fromEntries(
     Object.entries(teamConfigs).filter(([, tc]) => tc.hasIssues)
   );
   // Board column configuration & dynamic status mapping
-  cache.board_status_map = { ..._boardColumnMap };
+  cache.inno_features        = _innoFeatureList;
+  cache.amelioration_tickets = _ameliorationList;
+  cache.board_status_map     = { ..._boardColumnMap };
   BOARD_COLUMNS = _allBoardColumns;
 
   // Save board columns to dedicated file for visibility
@@ -1402,7 +1680,12 @@ async function loadJiraData(opts = {}) {
   } else {
     const _seenActive = new Set(allIssues.map(i => i.key));
     const _uniqueFuture = allFutureIssues.filter(i => !_seenActive.has(i.key));
-    cache.backlog_tickets = _transformBacklog(_uniqueFuture);
+    // Build epicMap for buffer detection in backlog (active epics + closed sprints + PI epics)
+    const _blEpicMap = { ..._sharedEpicMap };
+    (cache.epics || []).forEach(e => { _blEpicMap[e.id] = { title: e.title || '' }; });
+    const bufferEpics = Object.entries(_blEpicMap).filter(([, v]) => (v.title || '').toLowerCase().includes('buffer'));
+    console.log(`[JIRA] EpicMap backlog: ${Object.keys(_blEpicMap).length} entrées (${bufferEpics.length} buffer: ${bufferEpics.map(([k, v]) => `${k}="${v.title}"`).join(', ')})`);
+    cache.backlog_tickets = _transformBacklog(_uniqueFuture, _blEpicMap);
     if (cache.backlog_tickets.length) console.log(`[JIRA] ${cache.backlog_tickets.length} tickets backlog/futurs`);
   }
 
@@ -1417,7 +1700,7 @@ async function loadJiraData(opts = {}) {
       for (const batch of batches) {
         await Promise.all(batch.map(async t => {
           try {
-            const r = await fetch(`${JIRA_PROXY}/api/3/issue/${t.id}?expand=changelog&fields=created`, { headers: { Accept: 'application/json' } });
+            const r = await _jiraFetch(`${JIRA_PROXY}/api/3/issue/${t.id}?expand=changelog&fields=created`, { headers: { Accept: 'application/json' } });
             if (!r.ok) return;
             const data = await r.json();
             const created = data.fields?.created ? new Date(data.fields.created) : null;

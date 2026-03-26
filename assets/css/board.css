@@ -142,7 +142,7 @@
 .bl-row.bl-done { opacity: .5; }
 .bl-row.bl-blocked { background: #FEF2F2; }
 .bl-row.bl-flagged { background: #FEF2F2; }
-.bl-row.bl-buffer { background: #F0FDF4; }
+.bl-row.bl-buffer { background: #F5F3FF; }
 .bl-cell { flex-shrink: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bl-title { font-size: 12px; font-weight: 600; color: var(--text); }
 .bl-sortable { cursor: pointer; user-select: none; transition: color .15s; }
@@ -155,7 +155,7 @@
 /* Dark mode overrides */
 [data-theme="dark"] .bl-row.bl-blocked { background: rgba(220,38,38,.08); }
 [data-theme="dark"] .bl-row.bl-flagged { background: rgba(220,38,38,.08); }
-[data-theme="dark"] .bl-row.bl-buffer  { background: rgba(34,197,94,.06); }
+[data-theme="dark"] .bl-row.bl-buffer  { background: rgba(139,92,246,.08); }
 [data-theme="dark"] .lane-body .ticket-card.blocked { background: rgba(220,38,38,.08); }
 
 /* ===== BOARD WITH SWIMLANES ===== */
@@ -228,5 +228,5 @@
 .ticket-card.flagged .ticket-title { color: #991B1B; }
 
 /* ===== BUFFER TICKET CARD ===== */
-.ticket-card.buffer { background: #F0FDF4; border-left: 3px solid #22C55E !important; }
-.buffer-badge { display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;background:#DCFCE7;color:#15803D;font-size:10px;font-weight:700;white-space:nowrap; }
+.ticket-card.buffer { background: #F5F3FF; border-left: 3px solid #8B5CF6 !important; }
+.buffer-badge { display:inline-flex;align-items:center;gap:3px;padding:1px 6px;border-radius:4px;background:#EDE9FE;color:#7C3AED;font-size:10px;font-weight:700;white-space:nowrap; }

@@ -8,7 +8,7 @@ JIRA-Dashboard/
 ├── demo/
 │   ├── demo-default.js     # Scénario démo par défaut (startup tech, équipes SAFe)
 │   └── demo-*.js           # Autres scénarios démo - changer le <script src> dans index.html
-├── data/                   # Cache JSON (jira-sprint-*.json, piprep.json)
+├── data/                   # Cache JSON (jira-sprint-*.json, pi-data.json)
 ├── assets/
 │   ├── css/
 │   │   ├── base.css        # Variables CSS :root, reset, sidebar (resizable), topbar, boutons, badges, modal, toast
@@ -28,14 +28,18 @@ JIRA-Dashboard/
 │       ├── modal.js        # openModal, closeModal, closeModalDirect, modalNavigate
 │       ├── export.js       # exportPNG() - capture pleine page via html2canvas (scale 2x)
 │       ├── charts.js       # initCharts() - burndown, burnup, velocity (6 sprints), donut type, CFD scrum
-│       ├── scrum.js        # renderScrum, renderBoard, ticketCard, _showScrumStatDetail, _renderScrumRisks
+│       ├── mood.js         # Mood/ROTI + Vote de confiance - panels, persistance, sparklines
+│       ├── sidebar.js      # Sidebar globale - progress, buffer, objectifs PI, risques, stats sprint
+│       ├── scrum.js        # renderScrum, renderBoard, ticketCard, alertes sprint, activité du jour
 │       ├── kanban.js       # renderKanban() - colonnes WIP, CFD chart, cycle time
-│       ├── pi.js           # renderPI() - grille SAFe, objectifs, capacity chart
+│       ├── pi.js           # renderPI() - objectifs, buffer, vélocité, capacity chart
 │       ├── reports.js      # renderReport - 8 sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Mood/Vélocité, Sondage) · Slack/Confluence · aperçu visuel
 │       ├── support.js      # renderSupport, renderSupportList, filterSupport
-│       ├── settings.js     # renderSettings, toggleGroupTeam, addGroup
+│       ├── settings.js     # renderSettings, rotation support, toggleGroupTeam, addGroup
+│       ├── absences.js     # Congés/absences - parsing Excel, calcul jours, indicateurs
 │       ├── roadmap.js      # renderRoadmap() - vélocité 80/20, chronologie, simulation sprints, calendrier PI, backlog
 │       ├── piprep.js       # Bibliothèque piprep (pas de vue autonome) - _pp*Section() consommées par roadmap.js · refresh ciblé (_ppRefreshROAM/Deps/Obj/Fist)
+│       ├── inno.js         # renderInno() - innovations (Features + label Inno), board par initiative, filtre PI, sprint IP
 │       ├── releases.js     # renderReleases() - Gantt features, burnup par feature, projection
 │       └── navigation.js   # showView(), raccourcis clavier (1-0 / Échap / Ctrl+K), sidebar resize, recherche globale, init
 ```
@@ -44,7 +48,7 @@ JIRA-Dashboard/
 
 Les `<script src>` dans `index.html` doivent respecter cet ordre strict :
 
-`config` → `data` → `demo/*` → `state` → `utils` → `filter` → **`jira`** → `sync` → `modal` → `export` → `charts` → `scrum` → `kanban` → `pi` → `reports` → `support` → `settings` → **`roadmap`** → **`piprep`** → `releases` → `navigation`
+`config` → `data` → `demo/*` → `state` → `utils` → `filter` → **`jira`** → `sync` → `modal` → `export` → `charts` → `mood` → `sidebar` → `scrum` → `kanban` → `pi` → `reports` → `support` → `settings` → `absences` → **`roadmap`** → **`piprep`** → `inno` → `releases` → `navigation`
 
 Le fichier `demo/*.js` (actif) est chargé juste après `data.js` pour pré-remplir les globals avec des données démo.
 Si JIRA est configuré (`CONFIG.jira.url` et `CONFIG.jira.token`), `navigation.js` appelle automatiquement `loadJiraData()` au démarrage et écrase les données démo.
@@ -57,7 +61,7 @@ Toutes les fonctions et variables sont globales (pas d'`import/export`).
 - **Chart.js 4.4.0** (local `assets/js/vendor/`) - burndown, burnup, velocity, donut, CFD (scrum + kanban), capacité PI
 - **html2canvas 1.4.1** (local `assets/js/vendor/`) - export PNG
 - **CSS custom properties** - palette complète dans `base.css :root`
-- **Persistance** - `data/piprep.json` via POST/GET serveur (debounced 300ms), `localStorage` pour préférences UI et rituels sprint
+- **Persistance** - `data/pi-data.json` via POST/GET serveur (debounced 300ms), `localStorage` pour préférences UI et rituels sprint
 
 ## Configuration centralisée
 
@@ -126,12 +130,11 @@ Ticket support (SUPPORT_TICKETS) - id, title, priority, status, assignee, date, 
 | `1` | Scrum | Board sprint (3 vues : colonnes/swimlanes/liste triable) · alertes sprint · activité du jour (changelog JIRA) · burndown/burnup/velocity/CFD |
 | `2` | Kanban | Colonnes WIP + CFD kanban + cycle time |
 | `3` | Roadmap | Vélocité 80/20, chronologie, simulation backlog, santé backlog (KPI cliquables), features cross-équipes |
-| `4` | Prépa PI | Calendrier PI, objectifs, ROAM, dépendances, heatmap, capacité individuelle, fist of five, multi-PI |
-| `5` | PI Planning | Grille SAFe · objectifs avec alertes risque · capacité vs charge · alertes dépendances |
-| `6` | Releases | Gantt features, burnup par feature, projection dates |
-| `7` | Rapports | Multi-sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Mood/Vélocité, Sondage) · Slack/Confluence |
-| `8` | Support | Tickets support/incidents |
-| `9` | Paramètres | Groupes d'équipes, configuration |
+| `4` | PI Planning | Objectifs PI · suivi buffer · vélocité réelle vs estimée · ROAM · fist of five · métriques |
+| `5` | Rapports | Multi-sections (Sprint, Kanban, PI, Support, Roadmap, Prépa PI, Mood/Vélocité, Sondage) · Slack/Confluence |
+| `6` | Support | Tickets support/incidents |
+| `7` | Innovations | Suivi des Features d'innovation (type Feature + label Inno) · board par initiative · filtre PI · sprint IP |
+| `8` | Paramètres | Groupes d'équipes, configuration |
 | `Échap` | - | Fermer le modal / recherche |
 | `Ctrl+K` | - | Recherche globale (tickets, epics, membres) |
 | `←` `→` | - | Navigation entre tickets dans le modal |
@@ -151,7 +154,8 @@ Le bouton "Synchroniser" et l'initialisation auto appellent `loadJiraData()` (da
 6. `FEATURES`, `MEMBERS`, `MEMBER_COLORS` construits synthétiquement depuis les assignees
 7. Backlog futur : `GET /agile/1.0/board/{id}/sprint?state=future` → sprints futurs par board, puis issues par sprint ID (team correcte)
 8. PI futurs : JQL `sprint IN ("PI#XX","PI#XX+1","PI#XX+2")` → tickets planifiés dans les sprints PI (indépendant des boards et de l'état du sprint - couvre `future`, `active`, `closed`). Enrichit les tickets existants avec `_piSprintName` ou ajoute de nouveaux tickets à `BACKLOG_TICKETS` avec `piSprint: "PI#29"`. Détection d'équipe par correspondance d'epic avec les tickets déjà connus.
-9. Velocity history : JQL `sprint in closedSprints() AND project="X"` → groupé par `customfield_10020` (ou `CONFIG.sync.sprintField`)
+9. Innovation : JQL `issuetype in (Feature, Fonctionnalité) AND labels in (Inno, inno, innovation, Innovation)` → Features d'innovation stockées dans `INNO_FEATURES`. Puis `parent in (feature_keys)` → enfants ajoutés aux tickets normaux. Détection d'équipe via assignee ou epic commun.
+10. Velocity history : JQL `sprint in closedSprints() AND project="X"` → groupé par `customfield_10020` (ou `CONFIG.sync.sprintField`)
 
 **Détection équipe :** nom du board (préfixes "Sprint ", "Équipe ", "Team " supprimés). Ex: "Sprint Fuego" → team "Fuego".
 
@@ -227,7 +231,7 @@ La vue Roadmap (`roadmap.js`) affiche :
 
 **Refresh ciblé** : chaque section CRUD (ROAM, dépendances, objectifs, fist of five) utilise un refresh partiel (`_ppRefreshROAM()`, `_ppRefreshDeps()`, `_ppRefreshObj()`, `_ppRefreshFist()`) qui remplace uniquement le `outerHTML` de la section concernée via son ID (`pp-roam`, `pp-deps`, `pp-objectives`, `pp-fist`). Le fallback `_ppRefresh()` re-rend la roadmap complète (changement de PI, dates).
 
-Données persistées dans `data/piprep.json` :
+Données persistées dans `data/pi-data.json` :
 
 - **Score de readiness** - indicateur global avec critères pondérés, lignes cliquables → scroll vers la section concernée
 - **Calendrier PI suivant** - détection auto date début (JIRA ou manuelle), jours fériés français (algorithme Pâques), présentiels, badge PIP
@@ -238,7 +242,31 @@ Données persistées dans `data/piprep.json` :
 - **Dépendances inter-équipes** - équipes issues des tickets réels (pas des clés config)
 - **Fist of Five** - vote de confiance par équipe
 
-**Persistance :** `_ppCache` en mémoire → debounced `POST /data/piprep.json` (300ms). Chargement async via `_ppLoad()`.
+**Persistance :** `_ppCache` en mémoire → debounced `POST /data/pi-data.json` (300ms). Chargement async via `_ppLoad()`.
+
+## Vue Innovations (inno.js)
+
+La vue Innovations affiche le suivi des initiatives d'innovation issues de JIRA.
+
+**Critères de détection :**
+- **Feature parent** : issue JIRA de type `Feature` (ou `Fonctionnalité`) avec l'étiquette `Inno` (ou `innovation`)
+- **Tickets enfants** : tous les tickets (stories, bugs, tâches…) dont le champ `parent` pointe vers une Feature d'innovation
+- Les Features sont récupérées via JQL dédié dans `jira.js` (section 3.6) : `issuetype in (Feature, Fonctionnalité) AND labels in (Inno, inno, innovation, Innovation)`
+- Les enfants sont récupérés via `parent in (feature_keys)` et stockés dans les tickets normaux
+
+**Données :**
+- `INNO_FEATURES` (global, `data.js`) : Features d'innovation `{ id, title, status, labels, assignee, points, piSprint, dueDate }`
+- Les tickets enfants sont dans `TICKETS` / `BACKLOG_TICKETS` avec `epic` pointant vers la Feature
+- Persisté dans le cache `jira-data.json` clé `inno_features`
+
+**Fonctionnalités :**
+1. **Sélecteur PI** (sticky en haut) - filtre par PI, auto-sélection du PI courant
+2. **Bannière sprint IP** - mise en avant quand le sprint courant est un x.5 (sprint innovation/IP)
+3. **KPIs** - avancement %, points terminés/engagés, tickets en cours, tickets à faire
+4. **Board par initiative** - chaque Feature a son mini-board avec 3-4 colonnes (À faire, En cours, Bloqué, Terminé)
+5. **Cartes tickets** - cliquables (→ modal), affichent type, assigné, points, équipe
+
+**Board JIRA associé :** les tickets d'innovation sont aussi visibles dans le board JIRA dédié (ex: board 86).
 
 ## Vue Rapports - multi-sections
 

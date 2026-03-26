@@ -16,3 +16,5 @@ let TICKETS           = [];
 let SUPPORT_TICKETS   = [];
 let BACKLOG_TICKETS   = []; // Tickets non planifiés / sprints futurs (vue Roadmap)
 let BOARD_COLUMNS     = {}; // Config colonnes JIRA par équipe - { teamName: [{ name, internal, statuses }] }
+let INNO_FEATURES     = []; // Features d'innovation (type Feature + label inno) - { id, title, status, labels, team, piSprint, points }
+let AMELIORATION_TICKETS = []; // Tickets amélioration continue (rétro, post-mortem, CoP)

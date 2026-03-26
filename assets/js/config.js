@@ -30,6 +30,7 @@ const CONFIG = {
     maxPIIssues:          500,  // Issues max pour la requête JQL PI
     piFutureCount:          2,  // Nb de PIs futurs à chercher (ex: 2 → PI courant + PI+1 + PI+2)
     cycleTimeBatchSize:    10,  // Taille de batch pour le calcul lead/cycle time
+    enrichClosedSprints: false, // Stocker description, priorité, labels des tickets de sprints fermés (augmente le cache ~+30%)
     sprintField: 'customfield_10020', // Champ sprint JIRA Cloud (peut varier selon les instances)
   },
 

@@ -66,7 +66,7 @@ function _computeDiff(before, after) {
   return changes;
 }
 
-function _showSyncDiff(changes) {
+function _showSyncDiff(changes, apiCalls) {
   if (!changes.length) return;
 
   // Remove existing diff panel
@@ -101,7 +101,7 @@ function _showSyncDiff(changes) {
       <div class="sync-diff-title">📋 Changements détectés</div>
       <button class="sync-diff-close" onclick="this.closest('#sync-diff-panel').remove()">✕</button>
     </div>
-    <div class="sync-diff-summary">${summary.join(' · ')}</div>
+    <div class="sync-diff-summary">${summary.join(' · ')}${apiCalls ? ` <span style="opacity:.5;font-size:10px;">· ${apiCalls} appels API</span>` : ''}</div>
     <div class="sync-diff-body">${rows}</div>
   `;
 
@@ -137,8 +137,10 @@ function doSync() {
   syncPromise
     .then(() => {
       _setBtnReady(btn);
-      _updateLastSync();
+      const _apiCalls = typeof _jiraApiCalls === 'number' ? _jiraApiCalls : 0;
+      _updateLastSync(null, _apiCalls);
       localStorage.setItem('lastSync', Date.now());
+      if (_apiCalls) localStorage.setItem('lastSyncApiCalls', _apiCalls);
       renderTeamBtns();
       renderGroupBtns();
       _updateSidebarStats();
@@ -148,18 +150,19 @@ function doSync() {
       if (currentView === 'scrum')  renderScrum();
       if (currentView === 'kanban') renderKanban();
 
+      const _apiSuffix = _apiCalls ? ` (${_apiCalls} appels API)` : '';
       // Compute and show diff
       if (_syncSnapshot) {
         const changes = _computeDiff(_syncSnapshot);
         if (changes.length) {
-          _showSyncDiff(changes);
+          _showSyncDiff(changes, _apiCalls);
         } else {
-          showToast('✅ Aucun changement détecté', 'success');
+          showToast(`✅ Aucun changement détecté${_apiSuffix}`, 'success');
         }
         _syncSnapshot = null;
       } else {
         const n = TICKETS.length;
-        showToast(`✅ ${n} ticket${n !== 1 ? 's' : ''} chargé${n !== 1 ? 's' : ''} depuis JIRA`, 'success');
+        showToast(`✅ ${n} ticket${n !== 1 ? 's' : ''} chargé${n !== 1 ? 's' : ''} depuis JIRA${_apiSuffix}`, 'success');
       }
     })
     .catch(err => {
@@ -197,11 +200,13 @@ function _syncProgress(step, total, label) {
   if (lbl)  lbl.textContent  = label || '';
 }
 
-function _updateLastSync(isoDate) {
+function _updateLastSync(isoDate, apiCalls) {
   const d  = isoDate ? new Date(isoDate) : new Date();
   const el = document.getElementById('lastSync');
   if (!el) return;
-  el.textContent = `Dernière sync: ${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  const calls = apiCalls || parseInt(localStorage.getItem('lastSyncApiCalls')) || 0;
+  const callsHtml = calls ? ` · ${calls} calls` : '';
+  el.innerHTML = `Dernière sync: ${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}${callsHtml ? `<span style="opacity:.6">${callsHtml}</span>` : ''}`;
   const stale = (Date.now() - d.getTime()) > 24 * 60 * 60 * 1000;
   el.classList.toggle('stale', stale);
 }

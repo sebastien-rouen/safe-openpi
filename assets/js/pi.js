@@ -3,498 +3,531 @@
 // Données réelles depuis TICKETS / EPICS / CONFIG.teams
 // ============================================================
 
+// ---- PI section toggle (collapse/expand) ----
+window._piToggleSection = function(id) {
+  const sec = document.getElementById('pi-sec-' + id);
+  if (!sec) return;
+  const isCollapsed = sec.classList.toggle('collapsed');
+  const body = sec.querySelector('.pi-section-body');
+  const arrow = sec.querySelector('.pi-section-arrow');
+  if (isCollapsed) {
+    if (body) body.style.display = 'none';
+    if (arrow) arrow.textContent = '▶';
+    localStorage.setItem('pi_sec_' + id, '0');
+  } else {
+    if (body) body.style.display = '';
+    if (arrow) arrow.textContent = '▼';
+    localStorage.setItem('pi_sec_' + id, '1');
+  }
+};
+
+// ---- PI scroll to section + open if collapsed ----
+window._piScrollTo = function(id) {
+  const sec = document.getElementById('pi-sec-' + id);
+  if (!sec) return;
+  if (sec.classList.contains('collapsed')) _piToggleSection(id);
+  setTimeout(() => {
+    const container = document.getElementById('content') || document.documentElement;
+    const rect = sec.getBoundingClientRect();
+    const contRect = container.getBoundingClientRect();
+    const offset = (document.getElementById('pi-tabs')?.offsetHeight || 0) + (document.getElementById('topbar')?.offsetHeight || 0) + 16;
+    container.scrollBy({ top: rect.top - contRect.top - offset, behavior: 'smooth' });
+    // Highlight section header for 3 seconds
+    sec.classList.add('pi-highlight');
+    setTimeout(() => sec.classList.remove('pi-highlight'), 3000);
+  }, 50);
+  // Highlight active tab
+  const bar = document.getElementById('pi-tabs-bar');
+  if (bar) bar.querySelectorAll('.rm-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === id));
+  if (typeof _pushHash === 'function') _pushHash();
+};
+
+// ---- PI scroll spy ----
+let _piSpyCleanup = null;
+function _piInitScrollSpy() {
+  if (_piSpyCleanup) _piSpyCleanup();
+  const content = document.getElementById('main') || window;
+  const handler = () => {
+    const bar = document.getElementById('pi-tabs-bar');
+    if (!bar) return;
+    const sections = document.querySelectorAll('.pi-section');
+    let activeId = null;
+    const offset = 120;
+    sections.forEach(sec => {
+      const rect = sec.getBoundingClientRect();
+      if (rect.top <= offset && rect.bottom > offset) activeId = sec.id.replace('pi-sec-', '');
+    });
+    if (activeId) {
+      const prev = bar.querySelector('.rm-tab.active')?.dataset.sec;
+      if (prev !== activeId) {
+        bar.querySelectorAll('.rm-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === activeId));
+      }
+    }
+  };
+  content.addEventListener('scroll', handler, { passive: true });
+  _piSpyCleanup = () => content.removeEventListener('scroll', handler);
+  handler();
+}
+
 function renderPI() {
-  const tickets  = getTickets(); // respecte le filtre sidebar (équipe / groupe)
-  // Include teams from backlog PI tickets too (e.g. teams with no active sprint tickets)
+  // Determine selected PI (from piprep selector or fallback to current sprint)
+  const _ppPI      = typeof _ppCurrentPI === 'function' ? _ppCurrentPI() : null;
+  const _ppPINum   = _ppPI ? (_ppPI.match(/\d+/) || [])[0] || '' : '';
+  const _detectedPI = typeof _ppDetectPI === 'function' ? _ppDetectPI() : null;
+  const _detectedNum = _detectedPI ? (_detectedPI.match(/\d+/) || [])[0] || '' : '';
+  // Fallback: derive from CONFIG.sprint.label
+  const _fallbackMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  const _piViewNum = _ppPINum || (_fallbackMatch ? _fallbackMatch[1] : '');
+  const _piViewIsCurrentPI = _piViewNum === (_detectedNum || (_fallbackMatch ? _fallbackMatch[1] : ''));
+
+  // PI Tabs definition
+  const _piTag = _piViewNum ? ` · PI ${_piViewNum}` : '';
+  const _piTabs = [
+    { id: 'objectifs', icon: '🎯', label: 'Objectifs' },
+    { id: 'buffer',    icon: '🛡️', label: 'Buffer' },
+    { id: 'capacite',  icon: '📊', label: 'Capacité' },
+    { id: 'velocite',  icon: '📈', label: 'Vélocité' },
+    { id: 'roam',      icon: '⚡', label: 'ROAM' },
+    { id: 'fist',      icon: '✋', label: 'Fist of Five' },
+    { id: 'mood',      icon: '😊', label: 'Mood Meter' },
+    { id: 'metriques', icon: '📈', label: 'Métriques' },
+  ];
+
+  // Render tabs bar with PI selector
+  const _piTabsEl = document.getElementById('pi-tabs');
+  if (_piTabsEl) {
+    const piLabel = _piViewNum ? `PI ${_piViewNum}` : 'PI';
+    const ppSel   = typeof _ppPISelector === 'function' ? _ppPISelector() : '';
+    const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
+    const teamCount = typeof getActiveTeams === 'function' ? getActiveTeams().length : Object.keys(CONFIG.teams || {}).length;
+    _piTabsEl.innerHTML = `
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 0 4px;">
+        <div class="section-title">🗓️ PI Planning - ${piLabel}</div>
+        <span style="font-size:12px;color:var(--text-muted)">${sprintsPerPI} Sprints × ${teamCount} Équipes</span>
+        <span style="flex:1"></span>
+        ${ppSel}
+      </div>
+      <div class="rm-tabs" id="pi-tabs-bar">
+        ${_piTabs.map(t => `<button class="rm-tab" data-sec="${t.id}" onclick="_piScrollTo('${t.id}')">${t.icon} ${t.label}</button>`).join('')}
+      </div>`;
+  }
+
+  // Update section titles with PI tag
+  const _piSecTitles = {
+    'objectifs': `Objectifs PI${_piTag}`,
+    'buffer':    `Suivi Buffer${_piTag}`,
+    'capacite':  `Vélocité réelle vs estimée${_piTag}`,
+    'velocite':  `Vélocité historique${_piTag}`,
+    'roam':      `ROAM Board${_piTag}`,
+    'fist':      `Fist of Five${_piTag}`,
+    'mood':      `Mood Meter (ROTI)${_piTag}`,
+    'metriques': `Métriques${_piTag}`,
+  };
+  Object.entries(_piSecTitles).forEach(([id, title]) => {
+    const sec = document.getElementById('pi-sec-' + id);
+    if (sec) {
+      const titleEl = sec.querySelector('.pi-section-title');
+      if (titleEl) titleEl.textContent = title;
+    }
+  });
+
+  // Restore collapsed state from localStorage
+  _piTabs.forEach(t => {
+    const stored = localStorage.getItem('pi_sec_' + t.id);
+    const sec = document.getElementById('pi-sec-' + t.id);
+    if (sec && stored === '0') {
+      sec.classList.add('collapsed');
+      const arrow = sec.querySelector('.pi-section-arrow');
+      if (arrow) arrow.textContent = '▶';
+      const body = sec.querySelector('.pi-section-body');
+      if (body) body.style.display = 'none';
+    }
+  });
+
+  // Add "+ Ajouter" button to Objectifs section header
+  const _ppObjSec = document.getElementById('pi-sec-objectifs');
+  if (_ppObjSec) {
+    const hdr = _ppObjSec.querySelector('.pi-section-header');
+    if (hdr && !hdr.querySelector('.pp-btn-add')) {
+      const btn = document.createElement('button');
+      btn.className = 'pp-btn-add';
+      btn.textContent = '+ Ajouter';
+      btn.onclick = (e) => { e.stopPropagation(); if (typeof _ppObjAdd === 'function') _ppObjAdd(); };
+      hdr.appendChild(btn);
+    }
+  }
+
+  // Init scroll spy
+  _piInitScrollSpy();
+
+  // Build PI regex for matching sprint names (e.g. "28.1", "28.2")
+  const _piViewRe = _piViewNum ? new RegExp(`(^|\\D)${_piViewNum}\\.\\d+`) : null;
+
+  // Tickets: for the current PI use getTickets(), for other PIs use BACKLOG_TICKETS
   const activeTeamFilter = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+  let tickets;
+  if (_piViewIsCurrentPI) {
+    tickets = getTickets(); // sprint actif
+  } else {
+    // Non-current PI: gather tickets from BACKLOG_TICKETS + velocityHistory
+    const _blAll = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : []);
+    tickets = _blAll.filter(bt => {
+      if (!_piViewNum) return false;
+      if (activeTeamFilter.length && !activeTeamFilter.includes(bt.team)) return false;
+      return (bt.piSprint || '').includes(_piViewNum) ||
+             (_piViewRe && _piViewRe.test(bt.sprintName || ''));
+    });
+  }
+  // Include teams from backlog PI tickets too (e.g. teams with no active sprint tickets)
   const _blTeams = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
-    .filter(bt => !activeTeamFilter.length || activeTeamFilter.includes(bt.team))
+    .filter(bt => {
+      if (activeTeamFilter.length && !activeTeamFilter.includes(bt.team)) return false;
+      if (!_piViewNum) return false;
+      return (bt.piSprint || '').includes(_piViewNum) ||
+             (_piViewRe && _piViewRe.test(bt.sprintName || ''));
+    })
     .map(bt => bt.team).filter(Boolean);
   const allTeams = [...new Set([...tickets.map(t => t.team).filter(Boolean), ..._blTeams])].sort();
   if (!allTeams.length) {
-    document.getElementById('pi-table').innerHTML = '<tr><td colspan="4" style="padding:1rem;color:var(--text-muted)">Synchronisez les données JIRA pour afficher le PI Planning.</td></tr>';
+    const _piVelEl = document.getElementById('pi-velocity');
+    if (_piVelEl) _piVelEl.innerHTML = `<div class="pi-empty">
+      <div class="pi-empty-icon">📈</div>
+      <div class="pi-empty-title">Vélocité non disponible</div>
+      <div class="pi-empty-desc">L'historique de vélocité est alimenté par les sprints fermés chargés lors de la synchronisation JIRA.</div>
+    </div>`;
+    const _piCapCtx = document.getElementById('piCapacityChart');
+    if (_piCapCtx) { if (_piCapCtx._chart) _piCapCtx._chart.destroy(); _piCapCtx._chart = null; }
+    const _piCapCard = _piCapCtx?.closest('.chart-card');
+    if (_piCapCard) _piCapCard.insertAdjacentHTML('afterbegin', `<div class="pi-empty" id="pi-cap-empty" style="position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--card)">
+      <div class="pi-empty-icon">📊</div>
+      <div class="pi-empty-title">Vélocité réelle vs estimée indisponible</div>
+      <div class="pi-empty-desc">Ce graphique nécessite l'historique de vélocité et les données de capacité (membres, absences) des PI précédents.</div>
+    </div>`);
+    const _piProgEl = document.getElementById('pi-progress-bar');
+    if (_piProgEl) _piProgEl.innerHTML = '';
+    // PI Objectives (piprep) — render for future PIs too
+    const _piPPObjEmpty = document.getElementById('pi-pp-objectives');
+    if (_piPPObjEmpty && typeof _ppObjectivesSection === 'function') {
+      const _atObj = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+      _piPPObjEmpty.innerHTML = _ppObjectivesSection(_atObj.length ? _atObj : Object.keys(CONFIG.teams || {}));
+    }
+    // Buffer — empty state for future PIs
+    const _piBufEmpty = document.getElementById('pi-buffer');
+    if (_piBufEmpty) _piBufEmpty.innerHTML = `<div class="pi-empty">
+      <div class="pi-empty-icon">🛡️</div>
+      <div class="pi-empty-title">Suivi buffer indisponible</div>
+      <div class="pi-empty-desc">Le suivi buffer nécessite les tickets du PI avec le flag ou label <em>buffer</em>.</div>
+    </div>`;
+    // ROAM + Fist + Métriques still render even without ticket data
+    const _at = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+    const _piRoamEl = document.getElementById('pi-roam');
+    if (_piRoamEl) {
+      _piRoamEl.innerHTML = typeof _ppROAMSection === 'function' ? _ppROAMSection(_at) : '';
+    }
+    const _piF = document.getElementById('pi-fist');
+    if (_piF) _piF.innerHTML = typeof _ppFistSection === 'function' ? _ppFistSection(_at, _piViewNum) : '';
+    if (typeof _renderFistChart === 'function') _renderFistChart('fistChartPI', _at);
+    const _piM = document.getElementById('pi-mood');
+    if (_piM) _piM.innerHTML = typeof _piRenderMoodSection === 'function' ? _piRenderMoodSection(_at, _piViewNum) : '';
+    // Métriques — skeleton
+    const _piMetEmpty = document.getElementById('pi-metriques');
+    if (_piMetEmpty) _piMetEmpty.innerHTML = `<div class="pi-empty">
+      <div class="pi-empty-icon">📈</div>
+      <div class="pi-empty-title">Métriques indisponibles</div>
+      <div class="pi-empty-desc">Les graphiques de métriques nécessitent des données de tickets et de vélocité pour ce PI.<br>Synchronisez les données ou sélectionnez un PI avec des sprints fermés.</div>
+    </div>`;
     return;
   }
+  // Clear any previous empty overlay on capacity chart
+  const _prevCapEmpty = document.getElementById('pi-cap-empty');
+  if (_prevCapEmpty) _prevCapEmpty.remove();
 
-  // Sprints : précédent / actuel / prochain
-  const _sprintCtx   = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
-  const currentLabel = _sprintCtx.label || `Sprint ${CONFIG.sprint.current}`;
-  const sprintCols   = [
-    {
-      label: '◀ Précédent', isCurrent: false, isNext: false, isPrev: true,
-      hint: '<strong>Sprint précédent</strong> - estimation<br>Epics ayant au moins un ticket <em>terminé</em> dans le sprint actif.<br>Indique le travail accompli qui était probablement en cours lors du sprint précédent.',
-    },
-    {
-      label: `▶ ${currentLabel}`, isCurrent: true, isNext: false, isPrev: false,
-      hint: `<strong>${currentLabel}</strong> - sprint actif<br>Tous les epics du sprint en cours, tels que remontés par JIRA.<br>Données réelles issues de la synchronisation.`,
-    },
-    {
-      label: '⏭ Prochain', isCurrent: false, isNext: true, isPrev: false,
-      hint: '<strong>Prochain sprint</strong> - prévisionnel<br>Epics avec au moins un ticket <em>non terminé</em> (carry-over probable).<br>Ces epics continueront vraisemblablement dans le sprint suivant.',
-    },
-  ];
+  // PI Sprint columns — one column per sprint in the PI (e.g. 28.1, 28.2, …, 28.5)
+  const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
+  const _piReSprint = /(\d{2,3})\.(\d+)/;
+  // Detect current sprint index within PI (for highlighting)
+  const _curSprintMatch = (CONFIG.sprint.label || '').match(_piReSprint);
+  const _curSprintIdx = (_piViewIsCurrentPI && _curSprintMatch) ? parseInt(_curSprintMatch[2]) - 1 : -1;
 
-  // Helper : un epic appartient-il à cette équipe ? (filtre les epics cross-team)
-  const _isTeamEpic = (eid, team) => {
-    const epic = EPICS.find(x => x.id === eid);
-    return !epic || !epic.team || epic.team === team;
-  };
-
-  // Epics par équipe dans le sprint courant (données réelles)
-  const epicsByTeam = {};
-  allTeams.forEach(team => {
-    epicsByTeam[team] = [...new Set(
-      tickets.filter(t => t.team === team).map(t => t.epic).filter(Boolean)
-    )].filter(eid => _isTeamEpic(eid, team));
-  });
-
-  // Epics "sprint précédent" : epics avec au moins un ticket terminé (travail accompli)
-  const prevEpicsByTeam = {};
-  allTeams.forEach(team => {
-    const doneEpics = new Set(tickets.filter(t => t.team === team && isDone(t.status)).map(t => t.epic).filter(Boolean));
-    prevEpicsByTeam[team] = [...doneEpics].filter(eid => _isTeamEpic(eid, team));
-  });
-
-  // Epics "prochain sprint" : epics avec des tickets non terminés (carry-over probable)
-  const nextEpicsByTeam = {};
-  allTeams.forEach(team => {
-    nextEpicsByTeam[team] = [...new Set(
-      tickets.filter(t => t.team === team && !isDone(t.status)).map(t => t.epic).filter(Boolean)
-    )].filter(eid => _isTeamEpic(eid, team));
-  });
-
-  // Helper : data-tip enrichi pour un chip (title + progression + points + bloqués)
-  function _chipTip(eid, team) {
-    const e       = EPICS.find(x => x.id === eid);
-    const title   = e?.title || eid;
-    const tks     = getTickets().filter(t => t.team === team && t.epic === eid);
-    const done    = tks.filter(t => isDone(t.status)).length;
-    const blocked = tks.filter(t => t.status === 'blocked').length;
-    const pts     = tks.reduce((a, t) => a + (t.points || 0), 0);
-    const pct     = tks.length ? Math.round(done / tks.length * 100) : 0;
-    const bar     = '█'.repeat(Math.round(pct / 10)) + '░'.repeat(10 - Math.round(pct / 10));
-    let tip = `<strong>${eid}</strong><br>${title}`;
-    tip += `<hr class="pi-divider" style="margin:5px 0">`;
-    tip += `${bar} ${pct}%<br>${done}/${tks.length} tickets`;
-    if (pts)     tip += ` · ${pts} pts`;
-    if (blocked) tip += ` · <span style="color:#FCA5A5">⚠ ${blocked} bloqué${blocked > 1 ? 's' : ''}</span>`;
-    return tip;
-  }
-
-  // Helper : rendu d'une liste d'epics dans une cellule du tableau
-  function _epicLines(epics, team, chipClass, _bgColor) {
-    if (!epics.length) return '<span style="color:var(--text-muted);font-size:11px">-</span>';
-    // Sort epics by completion % ascending (least complete first) - improvement #5
-    const sortedEpics = epics.slice().sort((a, b) => {
-      const tksA = tickets.filter(t => t.team === team && t.epic === a);
-      const tksB = tickets.filter(t => t.team === team && t.epic === b);
-      const pctA = tksA.length ? Math.round(tksA.filter(t => isDone(t.status)).length / tksA.length * 100) : 0;
-      const pctB = tksB.length ? Math.round(tksB.filter(t => isDone(t.status)).length / tksB.length * 100) : 0;
-      return pctA - pctB;
-    });
-    return sortedEpics.map(eid => {
-      const e       = EPICS.find(x => x.id === eid);
-      if (!e) return '';
-      const tks     = tickets.filter(t => t.team === team && t.epic === eid);
-      const done    = tks.filter(t => isDone(t.status)).length;
-      const pct     = tks.length ? Math.round(done / tks.length * 100) : 0;
-      const pctClr  = pct < 30 ? '#EF4444' : pct < 70 ? '#F59E0B' : '#22C55E';
-      const blocked = tks.some(t => t.status === 'blocked');
-      const statuses = [...new Set(tks.map(t => t.status))].join(',');
-      return `<div class="pi-tbl-epic pi-epic-row" data-eid="${eid}" data-etitle="${(e.title || '').replace(/"/g, '&quot;').toLowerCase()}" data-statuses="${statuses}" style="background:${e.color}11;border:1px solid ${e.color}33;" data-tip="${eid}|${team}">
-        <span class="pi-chip ${chipClass}" style="background:${e.color};flex-shrink:0;margin:0;cursor:default" onclick="event.stopPropagation()">${e.id}</span>
-        <span class="pi-epic-title" title="${e.title || ''}">${e.title || eid}</span>
-        ${blocked ? '<span style="color:#EF4444;font-size:11px;flex-shrink:0" title="Ticket(s) bloqué(s)">⚠</span>' : ''}
-        <div class="pi-mini-progress" title="${pct}%"><div style="height:100%;width:${pct}%;background:${pctClr};border-radius:2px"></div></div>
-      </div>`;
-    }).join('');
-  }
-
-  // Barre de filtres au-dessus du tableau
-  const allStatuses = [
-    { key: 'inprog',  label: 'En cours',  color: '#3B82F6' },
-    { key: 'blocked', label: 'Bloqués',   color: '#EF4444' },
-    { key: 'review',  label: 'En review', color: '#A855F7' },
-    { key: 'test',    label: 'En test',   color: '#F59E0B' },
-    { key: 'todo',    label: 'À faire',   color: '#94A3B8' },
-    { key: 'done',    label: 'Terminés',  color: '#22C55E' },
-  ];
-  const filterBarEl = document.getElementById('pi-table-filters');
-  if (filterBarEl) {
-    filterBarEl.innerHTML = `
-      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;padding:12px 16px;background:#fff;border-radius:var(--radius);box-shadow:var(--shadow)">
-        <input id="_pi-search" type="text" placeholder="🔍  Rechercher un epic…" style="padding:6px 12px;border:1px solid var(--border);border-radius:99px;font-size:12px;outline:none;width:200px" oninput="_piTableFilter()">
-        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
-          <span class="pi-filter-label">Statut :</span>
-          <button class="pi-tf-btn active" data-tf="all" onclick="_piTableFilterStatus(this)" style="padding:4px 10px;border-radius:99px;border:1px solid var(--border);background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
-          ${allStatuses.map(s => `<button class="pi-tf-btn" data-tf="${s.key}" data-color="${s.color}" onclick="_piTableFilterStatus(this)" style="padding:4px 10px;border-radius:99px;border:1px solid ${s.color}44;background:#fff;color:${s.color};font-size:11px;font-weight:600;cursor:pointer">${s.label}</button>`).join('')}
-        </div>
-      </div>`;
-  }
-
-  // Table
-  let html = `<thead><tr>
-    <th>Équipe</th>
-    ${sprintCols.map(s => {
-      const bg = s.isCurrent ? 'background:rgba(2,132,199,.08);font-weight:700'
-               : s.isNext   ? 'background:rgba(245,158,11,.05)'
-               : s.isPrev   ? 'background:rgba(16,185,129,.04)'
-               : '';
-      return `<th class="pi-th-hint" style="${bg}" data-hint="${s.hint.replace(/"/g, '&quot;')}">${s.label} <span class="pi-th-icon">?</span></th>`;
-    }).join('')}
-  </tr></thead><tbody>`;
-
-  allTeams.forEach(team => {
-    const teamCfg = CONFIG.teams[team] || {};
-    const color   = teamCfg.color || CLR.muted;
-    const name    = teamCfg.name  || `Équipe ${team}`;
-    html += `<tr>
-      <td class="team-cell" style="color:${color}">${name}</td>`;
-    sprintCols.forEach(s => {
-      if (s.isCurrent) {
-        const epics = epicsByTeam[team] || [];
-        html += `<td style="background:rgba(2,132,199,.04);vertical-align:top" data-pi-cell="${team}|${epics.join(',')}">${_epicLines(epics, team, '', 'rgba(2,132,199,.04)')}</td>`;
-      } else if (s.isPrev) {
-        const epics = prevEpicsByTeam[team] || [];
-        html += `<td style="background:rgba(16,185,129,.03);vertical-align:top" data-pi-cell="${team}|${epics.join(',')}">${_epicLines(epics, team, 'pi-chip-prev', 'rgba(16,185,129,.03)')}</td>`;
-      } else if (s.isNext) {
-        const epics = nextEpicsByTeam[team] || [];
-        html += `<td style="background:rgba(245,158,11,.03);vertical-align:top" data-pi-cell="${team}|${epics.join(',')}">${_epicLines(epics, team, 'pi-chip-next', 'rgba(245,158,11,.03)')}</td>`;
-      } else {
-        html += `<td style="opacity:.3;vertical-align:top">-</td>`;
-      }
-    });
-    html += '</tr>';
-  });
-
-  document.getElementById('pi-table').innerHTML = html + '</tbody>';
-
-  // Tooltip flottant partagé (chips + headers)
-  let _tipEl = document.getElementById('_pi-chip-tip');
-  if (!_tipEl) {
-    _tipEl = document.createElement('div');
-    _tipEl.id = '_pi-chip-tip';
-    _tipEl.className = 'pi-tooltip';
-    _tipEl.style.maxWidth = '300px';
-    document.body.appendChild(_tipEl);
-  }
-  const _showTip = (html, e) => { _tipEl.innerHTML = html; _tipEl.style.display = 'block'; _moveTip(e); };
-  const _moveTip = e => { _tipEl.style.left = (e.clientX + 14) + 'px'; _tipEl.style.top = (e.clientY - _tipEl.offsetHeight - 10) + 'px'; };
-  const _hideTip = () => { _tipEl.style.display = 'none'; };
-
-  // Tooltip sur les lignes epic du tableau
-  document.querySelectorAll('.pi-tbl-epic[data-tip]').forEach(row => {
-    row.addEventListener('mouseenter', e => { const [eid, team] = row.dataset.tip.split('|'); _showTip(_chipTip(eid, team), e); });
-    row.addEventListener('mousemove', _moveTip);
-    row.addEventListener('mouseleave', _hideTip);
-  });
-
-  document.querySelectorAll('.pi-th-hint[data-hint]').forEach(th => {
-    th.addEventListener('mouseenter', e => _showTip(th.dataset.hint, e));
-    th.addEventListener('mousemove', _moveTip);
-    th.addEventListener('mouseleave', _hideTip);
-  });
-
-  // Clic sur une ligne epic → modal tickets de cet epic pour cette équipe
-  document.querySelectorAll('.pi-tbl-epic[data-tip]').forEach(row => {
-    row.addEventListener('click', e => {
-      if (e.target.closest('.pi-chip')) return;
-      const [eid, team] = row.dataset.tip.split('|');
-      _hideTip();
-      _piShowCellDetail(team, [eid]);
-    });
-  });
-
-  // Surbrillance colonne au survol
-  const _piTbl = document.querySelector('#pi-table');
-  _piTbl.addEventListener('mouseover', ev => {
-    const td = ev.target.closest('td[data-pi-cell]');
-    if (!td) return;
-    const colIdx = [...td.parentElement.children].indexOf(td);
-    _piTbl.querySelectorAll('tbody tr').forEach(tr => {
-      [...tr.children].forEach((cell, i) => cell.classList.toggle('pi-col-hover', i === colIdx));
-    });
-    _piTbl.querySelectorAll('thead th').forEach((th, i) => th.classList.toggle('pi-col-hover-th', i === colIdx));
-  });
-  _piTbl.addEventListener('mouseleave', () => {
-    _piTbl.querySelectorAll('.pi-col-hover').forEach(c => c.classList.remove('pi-col-hover'));
-    _piTbl.querySelectorAll('.pi-col-hover-th').forEach(c => c.classList.remove('pi-col-hover-th'));
-  });
-
-  // Clic sur une cellule (zone vide entre epics) → modal tous les epics de la cellule
-  document.querySelectorAll('[data-pi-cell]').forEach(td => {
-    td.addEventListener('click', e => {
-      if (e.target.closest('.pi-tbl-epic')) return; // géré par la ligne epic
-      const [team, eidsRaw] = td.dataset.piCell.split('|');
-      const epicIds = eidsRaw ? eidsRaw.split(',').filter(Boolean) : [];
-      if (!epicIds.length) return;
-      _hideTip();
-      _piShowCellDetail(team, epicIds);
-    });
-  });
-
-  // Objectifs PI - epics par équipe, groupés par sprint, avec progress live
-  // Cross-reference piprep objectives if available
-  // ppObjs removed - was unused
-
-  // Aggregate stats for global summary
-  let _piObjStats = { totalEpics: 0, doneEpics: 0, totalTk: 0, doneTk: 0, atRisk: [] };
-
-  // --- Helper: render one team's objectives ---
-  const _piObjTeamHtml = (team) => {
-    const teamCfg     = CONFIG.teams[team] || {};
-    const color       = teamCfg.color || CLR.muted;
-    const name        = teamCfg.name  || `Équipe ${team}`;
-    const teamTickets = tickets.filter(t => t.team === team);
-
-    const sprintMap = {};
-    teamTickets.forEach(t => {
-      const sp = t.sprint || 'Sprint actif';
-      if (!sprintMap[sp]) sprintMap[sp] = new Set();
-      if (t.epic) sprintMap[sp].add(t.epic);
-    });
-    const sprintKeys = Object.keys(sprintMap);
-
-    if (!sprintKeys.length) {
-      return `<div class="pi-obj" style="border-left-color:${color}">
-        <div class="pi-obj-header"><span class="pi-obj-team" style="color:${color}">${name}</span></div>
-        <p style="color:var(--text-muted);font-size:12px;margin:0">Aucun ticket actif</p>
-      </div>`;
+  // Map a ticket to its sprint index within the selected PI
+  const _ticketSprintIdx = (t) => {
+    const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || ''];
+    for (const s of sources) {
+      if (!s) continue;
+      const m = s.match(_piReSprint);
+      if (m && m[1] === _piViewNum) return parseInt(m[2]) - 1;
     }
-
-    const teamDone  = teamTickets.filter(t => isDone(t.status)).length;
-    const teamTotal = teamTickets.length;
-    const teamPct   = teamTotal ? Math.round(teamDone / teamTotal * 100) : 0;
-    const teamPts   = teamTickets.reduce((a, t) => a + (t.points || 0), 0);
-    const teamPtsDone = teamTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
-    const teamPctClr = teamPct < 30 ? '#EF4444' : teamPct < 70 ? '#F59E0B' : '#22C55E';
-
-    const sprintGroupsHtml = sprintKeys.map(sp => {
-      const epicIds = [...sprintMap[sp]];
-      const rows = epicIds.map(eid => {
-        const e        = EPICS.find(x => x.id === eid);
-        const ec       = e?.color || CLR.muted;
-        const etitle   = e?.title || eid;
-        const eTickets = teamTickets.filter(t => t.epic === eid);
-        const done     = eTickets.filter(t => isDone(t.status)).length;
-        const total    = eTickets.length;
-        const pct      = total ? Math.round(done / total * 100) : 0;
-        const pts      = eTickets.reduce((a, t) => a + (t.points || 0), 0);
-        const blocked  = eTickets.filter(t => t.status === 'blocked').length;
-        const url      = typeof _jiraBrowseUrl === 'function' ? _jiraBrowseUrl(eid) : '#';
-        const isComplete = pct === 100 && total > 0;
-
-        _piObjStats.totalEpics++;
-        _piObjStats.totalTk += total;
-        _piObjStats.doneTk += done;
-        if (isComplete) _piObjStats.doneEpics++;
-
-        const remaining = total - done;
-        if (pct < 50 && remaining > 2 && blocked > 0) {
-          _piObjStats.atRisk.push({ eid, title: etitle, team: name, pct, blocked, remaining });
-        }
-
-        return `<div class="pi-epic-row">
-          <span class="pi-epic-dot" style="background:${ec}"></span>
-          <div class="pi-epic-info">
-            <a class="pi-epic-link" href="${url}" target="_blank" onclick="event.stopPropagation()">${eid}</a>
-            <span class="pi-epic-title${isComplete ? ' pi-epic-done' : ''}">${etitle}</span>
-          </div>
-          <div class="pi-epic-meta">
-            <div class="pi-epic-progress"><div class="pi-epic-fill" style="width:${pct}%;background:${ec}"></div></div>
-            <span class="pi-epic-pts">${done}/${total}${pts ? ` · ${pts}pts` : ''}</span>
-          </div>
-        </div>`;
-      }).join('');
-
-      return `<div class="pi-sprint-group">
-        <div class="pi-sprint-label">${sp}</div>
-        ${rows}
-      </div>`;
-    }).join('');
-
-    const teamSummary = `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">
-      <div class="pi-progress-track">
-        <div style="height:100%;width:${teamPct}%;background:${teamPctClr};border-radius:3px;transition:width .3s;"></div>
-      </div>
-      <span style="font-size:11px;font-weight:700;color:${teamPctClr};white-space:nowrap;">${teamPct}%</span>
-      <span style="font-size:10px;color:var(--text-muted);white-space:nowrap;">${teamPtsDone}/${teamPts} pts</span>
-    </div>`;
-
-    return `<div class="pi-obj" style="border-left-color:${color}">
-      <div class="pi-obj-header"><span class="pi-obj-team" style="color:${color}">${name}</span></div>
-      ${teamSummary}
-      ${sprintGroupsHtml}
-    </div>`;
+    return null;
   };
 
-  // --- Group teams by GROUPS, render grouped sections ---
-  const activeTeamSet = new Set(allTeams);
-  const teamsInGroups = new Set();
-  const groupSections = (typeof GROUPS !== 'undefined' ? GROUPS : []).map(g => {
-    const gTeams = (g.teams || []).filter(t => activeTeamSet.has(t));
-    if (!gTeams.length) return '';
-    gTeams.forEach(t => teamsInGroups.add(t));
+  // Build sprint columns metadata
+  const sprintCols = Array.from({ length: sprintsPerPI }, (_, i) => {
+    const label = _piViewNum ? `${_piViewNum}.${i + 1}` : `S${i + 1}`;
+    const isIP = i === sprintsPerPI - 1;
+    const isCurrent = i === _curSprintIdx;
+    const isPast = _curSprintIdx >= 0 && i < _curSprintIdx;
+    const isFuture = _curSprintIdx >= 0 && i > _curSprintIdx;
+    return {
+      idx: i, label: isIP ? `${label} (IP)` : label,
+      isCurrent, isPast, isFuture, isIP,
+      hint: isCurrent
+        ? `<strong>${label}</strong> — sprint actif<br>Epics du sprint en cours, données réelles JIRA.`
+        : isPast
+        ? `<strong>${label}</strong> — sprint terminé<br>Epics des tickets livrés sur ce sprint.`
+        : `<strong>${label}</strong> — sprint ${isIP ? 'IP (Innovation & Planning)' : 'à venir'}<br>Epics planifiés pour ce sprint.`,
+    };
+  });
 
-    // Group-level aggregate
-    const gTickets  = tickets.filter(t => gTeams.includes(t.team));
-    const gDone     = gTickets.filter(t => isDone(t.status)).length;
-    const gTotal    = gTickets.length;
-    const gPct      = gTotal ? Math.round(gDone / gTotal * 100) : 0;
-    const gPts      = gTickets.reduce((a, t) => a + (t.points || 0), 0);
-    const gPtsDone  = gTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
-    const gPctClr   = gPct < 30 ? '#EF4444' : gPct < 70 ? '#F59E0B' : '#22C55E';
-    const gColor    = g.color || CLR.muted;
-
-    const teamsHtml = gTeams.map(t => _piObjTeamHtml(t)).join('');
-
-    return `<div class="pi-obj-group" style="margin-bottom:20px;">
-      <div class="pi-group-header" style="background:${gColor}0C;border:1px solid ${gColor}22;">
-        <span class="pi-status-dot" style="background:${gColor};"></span>
-        <span style="font-weight:700;font-size:14px;color:${gColor};flex:1;">${g.name || g.id}</span>
-        <div style="display:flex;align-items:center;gap:6px;">
-          <div style="width:80px;height:5px;background:rgba(0,0,0,.08);border-radius:3px;overflow:hidden;">
-            <div style="height:100%;width:${gPct}%;background:${gPctClr};border-radius:3px;"></div>
-          </div>
-          <span style="font-size:11px;font-weight:700;color:${gPctClr};">${gPct}%</span>
-          <span style="font-size:10px;color:var(--text-muted);">${gPtsDone}/${gPts} pts</span>
-        </div>
-      </div>
-      ${teamsHtml}
-    </div>`;
-  }).filter(Boolean);
-
-  // Teams not in any group
-  const ungroupedTeams = allTeams.filter(t => !teamsInGroups.has(t));
-  const ungroupedHtml  = ungroupedTeams.map(t => _piObjTeamHtml(t)).join('');
-
-  document.getElementById('pi-objectives').innerHTML =
-    groupSections.join('') +
-    (ungroupedHtml ? `<div class="pi-obj-group" style="margin-bottom:20px;">
-      <div class="pi-group-header" style="background:rgba(0,0,0,.03);border:1px solid var(--border);">
-        <span style="font-weight:700;font-size:14px;color:var(--text-muted);flex:1;">Autres équipes</span>
-      </div>
-      ${ungroupedHtml}
-    </div>` : '');
-
-  // ---- PI Objective Risk Alerts ----
-  _renderPIObjRiskAlerts(_piObjStats, tickets, allTeams);
-
-  // Buffer tracking — combine sprint actif + backlog PI + sprints fermés du PI
-  const _piMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
-  const _piNum   = _piMatch ? _piMatch[1] : null;
+  // Combine all PI tickets (active + backlog + closed buffer) for epic mapping
+  const _piNum   = _piViewNum || null;
   const _piRe    = _piNum ? new RegExp(`(^|\\D)${_piNum}\\.\\d+`) : null;
   const _activeIds = new Set(tickets.map(t => t.id));
-  // 1) Backlog PI tickets
-  const _blAll   = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
+  const _blPIAll = (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [])
     .filter(bt => !_activeIds.has(bt.id))
     .filter(bt => _piNum && (
       (bt.piSprint || '').includes(_piNum) ||
       (_piRe && _piRe.test(bt.sprintName || ''))
     ));
-  // 2) Buffer tickets from closed sprints of the current PI (via velocityHistory)
-  const _closedBufferTickets = [];
-  const _activeTeamSet2 = new Set(allTeams);
+  const _closedPIBuf = [];
   if (_piRe) {
     Object.entries(CONFIG.teams || {}).forEach(([tid, tc]) => {
-      if (!_activeTeamSet2.has(tid)) return;
       (tc.velocityHistory || []).forEach(vh => {
         if (!_piRe.test(vh.name || '')) return;
         (vh.bufferTickets || []).forEach(bt => {
-          if (!_activeIds.has(bt.id) && !_closedBufferTickets.some(x => x.id === bt.id)) {
-            _closedBufferTickets.push(bt);
-          }
+          if (!_activeIds.has(bt.id) && !_closedPIBuf.some(x => x.id === bt.id)) _closedPIBuf.push(bt);
         });
       });
     });
   }
-  const allPITickets = tickets.concat(_blAll, _closedBufferTickets);
-  _renderPIBuffer(allPITickets, allTeams);
+  const _allPITix = tickets.concat(_blPIAll, _closedPIBuf);
 
-  // Capacity chart - par sprint du PI (stacked par équipe + ligne capacité)
+  // ---- Progress bar globale du PI (basée sur vélocité historique centralisée) ----
+  const _progEl = document.getElementById('pi-progress-bar');
+  if (_progEl) {
+    const _vs = _piVelocityStats(allTeams, _piViewNum);
+    const _totalTix = _allPITix.length;
+    const _doneTix  = _allPITix.filter(t => isDone(t.status)).length;
+    const _inpTix   = _allPITix.filter(t => ['inprog','review','test'].includes(t.status)).length;
+    const _blkTix   = _allPITix.filter(t => t.status === 'blocked').length;
+    const _todoTix  = _totalTix - _doneTix - _inpTix - _blkTix;
+    const _totalPts = _allPITix.reduce((s, t) => s + (t.points || 0), 0);
+    const _donePts  = _allPITix.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
+    const _inpPts   = _allPITix.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
+    const _blkPts   = _allPITix.filter(t => t.status === 'blocked').reduce((s, t) => s + (t.points || 0), 0);
+    const _bufTix   = _allPITix.filter(t => t.buffer);
+    const _bufPts   = _bufTix.reduce((s, t) => s + (t.points || 0), 0);
+    const _todoPts  = _totalPts - _donePts - _inpPts - _blkPts;
+    const _piLbl    = _piViewNum ? `PI ${_piViewNum}` : 'PI';
+
+    const _velCapacity   = _vs.capacity;
+    const _velDelivered  = _vs.delivered;
+    const _velSprintsDone = _vs.sprintsDone;
+    const _base      = _velCapacity || _totalPts || 1;
+    const _pct       = Math.round(_donePts / _base * 100);
+    const _pctInp    = Math.round(_inpPts / _base * 100);
+    const _pctBlk    = Math.round(_blkPts / _base * 100);
+    const _pctBuf    = Math.round(_bufPts / _base * 100);
+    const _remaining = Math.max(0, _velCapacity - _donePts - _inpPts);
+
+    const _velTeamTip = _vs.teamDetails.filter(r => r.avgVel || r.delivered).map(r =>
+      `<tr><td style="color:${r.color};font-weight:600">${r.name}</td><td style="text-align:right"><strong>${r.delivered}</strong> / ${r.teamCap} pts</td><td style="text-align:right;color:var(--text-muted)">${r.sprintsDone} spr.</td></tr>`
+    ).join('');
+
+    const _progTip = `<div style="min-width:260px">
+      <div style="font-weight:700;margin-bottom:6px">${_piLbl} — État des lieux</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:6px">
+        <tr><td style="color:#22C55E">✅ Terminé</td><td style="text-align:right;font-weight:600">${_donePts} pts</td><td style="text-align:right;color:var(--text-muted)">${_doneTix} tix</td></tr>
+        <tr><td style="color:#3B82F6">🔄 En cours</td><td style="text-align:right;font-weight:600">${_inpPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_inpTix} tix</td></tr>
+        ${_blkTix ? `<tr><td style="color:#EF4444">🚫 Bloqué</td><td style="text-align:right;font-weight:600">${_blkPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_blkTix} tix</td></tr>` : ''}
+        <tr><td style="color:#94A3B8">📋 À faire</td><td style="text-align:right;font-weight:600">${_todoPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_todoTix} tix</td></tr>
+        ${_bufPts ? `<tr><td style="color:#8B5CF6">🛡️ Buffer</td><td style="text-align:right;font-weight:600">${_bufPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_bufTix.length} tix</td></tr>` : ''}
+      </table>
+      <hr style="border:none;border-top:1px solid rgba(255,255,255,.15);margin:6px 0">
+      <div style="font-weight:700;margin-bottom:4px;font-size:11px">📈 Vélocité — Capacité PI</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:4px">${_velTeamTip}</table>
+      <div style="font-size:11px;display:flex;justify-content:space-between;margin-top:4px">
+        <span>Capacité totale : <strong>${_velCapacity} pts</strong></span>
+        <span>Livré : <strong style="color:#22C55E">${_velDelivered} pts</strong></span>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Reste estimé : <strong>${_remaining} pts</strong> · ${sprintsPerPI - _velSprintsDone} sprint${sprintsPerPI - _velSprintsDone > 1 ? 's' : ''} restant${sprintsPerPI - _velSprintsDone > 1 ? 's' : ''}</div>
+    </div>`.replace(/"/g, '&quot;');
+
+    const _pctColor = _pct >= 80 ? '#22C55E' : _pct >= 40 ? '#F59E0B' : '#94A3B8';
+    const _capLabel = _velCapacity ? `${_donePts}/${_velCapacity} pts` : `${_donePts}/${_totalPts} pts`;
+
+    _progEl.innerHTML = `<div class="pi-prog" data-tip-prog="${_progTip}">
+      <div class="pi-prog-info">
+        <span class="pi-prog-label">${_piLbl}</span>
+        <span class="pi-prog-pct" style="color:${_pctColor}">${_pct}%</span>
+        <span class="pi-prog-detail">${_capLabel} · ${_totalTix} tickets${_velCapacity ? ` · capacité ${_velCapacity} pts` : ''}</span>
+      </div>
+      <div class="pi-prog-track">
+        <div class="pi-prog-fill" style="width:${_pct}%;background:#22C55E"></div>
+        <div class="pi-prog-fill" style="width:${_pctInp}%;background:#3B82F6"></div>
+        <div class="pi-prog-fill" style="width:${_pctBlk}%;background:#EF4444"></div>
+        ${_pctBuf ? `<div class="pi-prog-fill" style="width:${_pctBuf}%;background:#8B5CF6;opacity:.5"></div>` : ''}
+      </div>
+    </div>`;
+
+    // Tooltip on progress bar
+    const _progBar = _progEl.querySelector('.pi-prog');
+    if (_progBar) {
+      let _tipEl = document.getElementById('_pi-chip-tip');
+      if (!_tipEl) { _tipEl = document.createElement('div'); _tipEl.id = '_pi-chip-tip'; _tipEl.className = 'pi-tooltip'; _tipEl.style.maxWidth = '300px'; document.body.appendChild(_tipEl); }
+      _progBar.addEventListener('mouseenter', e => { _tipEl.innerHTML = _progBar.dataset.tipProg.replace(/&quot;/g, '"'); _tipEl.style.display = 'block'; _tipEl.style.left = (e.clientX + 14) + 'px'; _tipEl.style.top = (e.clientY - 80) + 'px'; });
+      _progBar.addEventListener('mousemove', e => { _tipEl.style.left = (e.clientX + 14) + 'px'; _tipEl.style.top = (e.clientY - _tipEl.offsetHeight - 10) + 'px'; });
+      _progBar.addEventListener('mouseleave', () => { _tipEl.style.display = 'none'; });
+    }
+  }
+
+  // Buffer tracking — reuse _allPITix computed earlier (active + backlog + closed buffer)
+  _renderPIBuffer(_allPITix, allTeams);
+
+
+  // Velocity chart - réelle vs estimée (basée sur la capacité membres des 2 derniers PI)
   setTimeout(() => {
     const ctx = document.getElementById('piCapacityChart');
     if (!ctx) return;
     if (ctx._chart) ctx._chart.destroy();
 
-    const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
-    const piRe = /(\d{2,3})\.(\d+)/;
-    const piMatch = (CONFIG.sprint.label || '').match(piRe);
-    const piNum = piMatch ? piMatch[1] : null;
-    const currentIdx = piMatch ? parseInt(piMatch[2]) - 1 : 0; // 0-based
+    const _capPiNum = _piViewNum || null;
+    const _capCurrentIdx = _curSprintIdx >= 0 ? _curSprintIdx : 0;
+    const sprintLabels = sprintCols.map(s => s.label);
 
-    // Sprint labels: "XX.1", "XX.2", …, "XX.N (IP)"
-    const sprintLabels = Array.from({ length: sprintsPerPI }, (_, i) => {
-      const label = piNum ? `${piNum}.${i + 1}` : `S${i + 1}`;
-      return i === sprintsPerPI - 1 ? `${label} (IP)` : label;
-    });
-
-    // Match each ticket to a sprint index within the PI
-    const _sprintIdx = (t) => {
-      // Check sprintName, allSprints, piSprint for "XX.Y" pattern
-      const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || ''];
-      for (const s of sources) {
-        if (!s) continue;
-        const m = s.match(piRe);
-        if (m && (!piNum || m[1] === piNum)) return parseInt(m[2]) - 1;
+    // ---- Vélocité réelle par sprint (somme des équipes) ----
+    const realVel = Array(sprintsPerPI).fill(0);
+    allTeams.forEach(t => {
+      const hist = CONFIG.teams[t]?.velocityHistory || [];
+      for (let si = 0; si < sprintsPerPI; si++) {
+        const suffix = _capPiNum ? `${_capPiNum}.${si + 1}` : null;
+        if (!suffix) continue;
+        const entry = hist.find(h => h.name && h.name.includes(suffix));
+        if (entry) realVel[si] += entry.velocity || 0;
       }
-      return null;
+    });
+    // Sprint actif : compter les pts du sprint courant
+    if (_capCurrentIdx >= 0 && _capCurrentIdx < sprintsPerPI) {
+      const curPts = _allPITix
+        .filter(t => { const si = _ticketSprintIdx(t); return si === _capCurrentIdx; })
+        .reduce((s, t) => s + (t.points || 0), 0);
+      if (curPts > realVel[_capCurrentIdx]) realVel[_capCurrentIdx] = curPts;
+    }
+
+    // ---- Vélocité estimée : ratio capacité actuelle / capacité historique × vélocité historique ----
+    const _piOffset = typeof _ppPIOffset === 'function' ? _ppPIOffset() : 0;
+    const focusFactor = 0.8;
+
+    // Capacité disponible (jours ouvrés - absences - fériés) par sprint du PI courant
+    const _computeCapPerSprint = (piOff) => {
+      const wInfos = typeof _rotWeekInfos === 'function' ? _rotWeekInfos(piOff) : [];
+      return Array.from({ length: sprintsPerPI }, (_, si) => {
+        let totalDays = 0;
+        const sprintWeeks = wInfos.filter(w => w.sprintIdx === si);
+        allTeams.forEach(tid => {
+          const members = (typeof MEMBERS !== 'undefined' ? MEMBERS[tid] : null) || [];
+          members.forEach(m => {
+            sprintWeeks.forEach(w => {
+              const wd = w.workDays ?? 5;
+              const abs = typeof _getAbsDaysForRange === 'function'
+                ? _getAbsDaysForRange(m, w._start, w._end) : 0;
+              totalDays += Math.max(0, wd - abs);
+            });
+          });
+        });
+        return Math.round(totalDays * focusFactor);
+      });
     };
 
-    // Build per-sprint per-team points matrix
-    const teamColors = allTeams.map(t => _teamColor(t));
-    const perSprintTeam = allTeams.map(() => Array(sprintsPerPI).fill(0));
+    const currentCap = _computeCapPerSprint(_piOffset);
 
-    allPITickets.forEach(t => {
-      const ti = allTeams.indexOf(t.team);
-      if (ti < 0) return;
-      let si = _sprintIdx(t);
-      if (si === null) si = currentIdx; // fallback: current sprint
-      if (si < 0 || si >= sprintsPerPI) return;
-      perSprintTeam[ti][si] += (t.points || 0);
+    // Historique des 2 derniers PI : vélocité moyenne par sprint et capacité moyenne
+    const _prevPIs = [_piOffset - 1, _piOffset - 2];
+    let histAvgVelPerSprint = 0;
+    let histAvgCapPerSprint = 0;
+    let histPICount = 0;
+    _prevPIs.forEach(off => {
+      const prevWInfos = typeof _rotWeekInfos === 'function' ? _rotWeekInfos(off) : [];
+      if (!prevWInfos.length || !prevWInfos._piNum) return;
+      const prevPiNum = prevWInfos._piNum;
+      const prevRe = new RegExp(`\\b${prevPiNum}\\.\\d+`);
+      // Vélocité totale de ce PI
+      let prevTotalVel = 0, prevSprintCount = 0;
+      allTeams.forEach(t => {
+        const hist = CONFIG.teams[t]?.velocityHistory || [];
+        hist.filter(s => prevRe.test(s.name)).forEach(s => {
+          prevTotalVel += s.velocity || 0;
+        });
+        prevSprintCount = Math.max(prevSprintCount, hist.filter(s => prevRe.test(s.name)).length);
+      });
+      if (!prevSprintCount) return;
+      // Capacité de ce PI
+      const prevCap = _computeCapPerSprint(off);
+      const prevTotalCap = prevCap.reduce((s, v) => s + v, 0);
+      histAvgVelPerSprint += prevTotalVel / prevSprintCount;
+      histAvgCapPerSprint += prevTotalCap / prevSprintCount;
+      histPICount++;
     });
 
-    // Fill past sprints from velocityHistory when ticket data is missing
-    // velocityHistory entries have names like "Ité 28.1", "Team X - Ité 28.2", etc.
-    allTeams.forEach((t, ti) => {
-      const hist = CONFIG.teams[t]?.velocityHistory || [];
-      if (!hist.length) return;
-      for (let si = 0; si < currentIdx; si++) {
-        if (perSprintTeam[ti][si] > 0) continue; // already has ticket data
-        const sprintSuffix = piNum ? `${piNum}.${si + 1}` : null;
-        if (!sprintSuffix) continue;
-        const entry = hist.find(h => h.name && h.name.includes(sprintSuffix));
-        if (entry && entry.velocity > 0) perSprintTeam[ti][si] = entry.velocity;
+    // Estimation : vélocité projetée = (capacité sprint courant / capacité moy historique) × vélocité moy historique
+    const estimatedVel = Array(sprintsPerPI).fill(null);
+    if (histPICount > 0) {
+      const avgVel = histAvgVelPerSprint / histPICount;
+      const avgCap = histAvgCapPerSprint / histPICount;
+      for (let si = 0; si < sprintsPerPI; si++) {
+        const ratio = avgCap > 0 ? currentCap[si] / avgCap : 1;
+        estimatedVel[si] = Math.round(avgVel * ratio);
       }
+    }
+
+    // Holiday warnings in labels
+    const wInfosCurrent = typeof _rotWeekInfos === 'function' ? _rotWeekInfos(_piOffset) : [];
+    sprintLabels.forEach((lbl, si) => {
+      const sprintWeeks = wInfosCurrent.filter(w => w.sprintIdx === si);
+      const holSet = new Set();
+      sprintWeeks.forEach(w => (w.holidays || []).forEach(h => holSet.add(h)));
+      if (holSet.size) sprintLabels[si] = lbl + ` ⚠️${holSet.size}j`;
     });
 
-    // Capacity per sprint = sum of team velocities (IP sprint = 0)
-    const totalCap = allTeams.reduce((s, t) => s + (CONFIG.teams[t]?.velocity || 80), 0);
-    const capLine = Array.from({ length: sprintsPerPI }, (_, i) =>
-      i === sprintsPerPI - 1 ? 0 : totalCap
-    );
+    // Bar: réelle, Line: estimée
+    const datasets = [
+      {
+        label: 'Vélocité réelle',
+        data: realVel.map((v, i) => i <= _capCurrentIdx ? v : null),
+        backgroundColor: realVel.map((v, i) => {
+          if (i > _capCurrentIdx) return 'transparent';
+          if (estimatedVel[i] && v >= estimatedVel[i]) return 'rgba(34,197,94,.7)';
+          if (estimatedVel[i] && v >= estimatedVel[i] * 0.8) return 'rgba(245,158,11,.7)';
+          return 'rgba(239,68,68,.6)';
+        }),
+        borderColor: realVel.map((v, i) => {
+          if (i > _capCurrentIdx) return 'transparent';
+          if (estimatedVel[i] && v >= estimatedVel[i]) return '#22C55E';
+          if (estimatedVel[i] && v >= estimatedVel[i] * 0.8) return '#F59E0B';
+          return '#EF4444';
+        }),
+        borderWidth: 2,
+        borderRadius: 3,
+      },
+      {
+        label: 'Vélocité estimée (2 PI préc.)',
+        data: estimatedVel,
+        type: 'line',
+        borderColor: '#6366F1',
+        borderWidth: 2,
+        borderDash: [6, 3],
+        pointRadius: 4,
+        pointBackgroundColor: '#6366F1',
+        fill: false,
+      },
+    ];
 
-    // Stacked bar datasets (one per team) + capacity line
-    const datasets = allTeams.map((t, ti) => ({
-      label: CONFIG.teams[t]?.name || `Équipe ${t}`,
-      data: perSprintTeam[ti],
-      backgroundColor: teamColors[ti] + 'BB',
-      borderColor: teamColors[ti],
-      borderWidth: 1,
-      stack: 'load',
-    }));
-    datasets.push({
-      label: 'Capacité cible',
-      data: capLine,
-      type: 'line',
-      borderColor: '#94A3B8',
-      borderWidth: 2,
-      borderDash: [6, 3],
-      pointRadius: 3,
-      pointBackgroundColor: '#94A3B8',
-      fill: false,
-      stack: false,
-    });
+    const _tooltipStyle = {
+      backgroundColor: 'rgba(15,23,42,.94)',
+      titleColor: '#F8FAFC', bodyColor: '#CBD5E1',
+      borderColor: 'rgba(255,255,255,.10)', borderWidth: 1,
+      padding: 12, cornerRadius: 10,
+      titleFont: { size: 12, weight: 'bold' }, bodyFont: { size: 11 },
+    };
 
     ctx._chart = new Chart(ctx.getContext('2d'), {
       type: 'bar',
@@ -504,24 +537,27 @@ function renderPI() {
         plugins: {
           legend: { labels: { font: { size: 11 } } },
           tooltip: {
-            mode: 'index',
+            ..._tooltipStyle, mode: 'index', intersect: false,
             callbacks: {
-              afterBody: function(items) {
-                const idx = items[0]?.dataIndex;
-                if (idx == null) return '';
-                const load = allTeams.reduce((s, _, ti) => s + perSprintTeam[ti][idx], 0);
-                const cap = capLine[idx] || 0;
-                if (!cap) return '';
-                const delta = load - cap;
-                const sign = delta > 0 ? '+' : '';
-                return `\nTotal : ${load} / ${cap} pts (${sign}${delta})`;
-              }
-            }
+              label: item => {
+                if (item.raw == null) return null;
+                return ` ${item.dataset.label}: ${item.raw} pts`;
+              },
+              footer: items => {
+                const real = items.find(i => i.dataset.label === 'Vélocité réelle' && i.raw != null);
+                const est  = items.find(i => i.dataset.label?.includes('estimée') && i.raw != null);
+                if (!real || !est || !est.raw) return [];
+                const pct = Math.round(real.raw / est.raw * 100);
+                const icon = pct >= 100 ? '✅' : pct >= 80 ? '🟡' : '⚠️';
+                const capDay = currentCap[items[0]?.dataIndex] || 0;
+                return [`${icon}  ${pct}% de l'estimation`, `📅 Capacité : ${capDay} j/h dispo`];
+              },
+            },
+            footerColor: '#6366F1', footerFont: { size: 11, weight: '600' },
           },
         },
         scales: {
-          x: { stacked: true },
-          y: { stacked: true, beginAtZero: true, title: { display: true, text: 'Story Points' } },
+          y: { beginAtZero: true, title: { display: true, text: 'Story Points' } },
         },
       },
     });
@@ -532,6 +568,39 @@ function renderPI() {
 
   // Vélocité historique - sprints fermés récents (stockés dans CONFIG.teams après sync)
   _renderVelocityHistory(allTeams);
+
+  // PI Objectives (from piprep) — moved from Roadmap to PI Planning
+  const _piPPObjEl = document.getElementById('pi-pp-objectives');
+  if (_piPPObjEl && typeof _ppObjectivesSection === 'function') {
+    _piPPObjEl.innerHTML = _ppObjectivesSection(activeTeamFilter.length ? activeTeamFilter : Object.keys(CONFIG.teams || {}));
+  }
+
+  // ROAM Board — moved from Roadmap to PI Planning
+  const _piRoamEl = document.getElementById('pi-roam');
+  if (_piRoamEl && typeof _ppROAMSection === 'function') {
+    _piRoamEl.innerHTML = _ppROAMSection(activeTeamFilter.length ? activeTeamFilter : Object.keys(CONFIG.teams || {}));
+  }
+
+  // Fist of Five — moved from Roadmap to PI Planning
+  const _piFistTeams = activeTeamFilter.length ? activeTeamFilter : Object.keys(CONFIG.teams || {});
+  const _piFistEl = document.getElementById('pi-fist');
+  if (_piFistEl && typeof _ppFistSection === 'function') {
+    _piFistEl.innerHTML = _ppFistSection(_piFistTeams, _piViewNum);
+  }
+  if (typeof _renderFistChart === 'function') _renderFistChart('fistChartPI', _piFistTeams);
+
+  // Mood Meter (ROTI)
+  const _piMoodEl = document.getElementById('pi-mood');
+  if (_piMoodEl && typeof _piRenderMoodSection === 'function') {
+    _piMoodEl.innerHTML = _piRenderMoodSection(_piFistTeams, _piViewNum);
+  }
+
+  // Métriques section
+  const _piMetEl = document.getElementById('pi-metriques');
+  if (_piMetEl && typeof _metricsChartsHTML === 'function') {
+    _piMetEl.innerHTML = _metricsChartsHTML('piM');
+    if (typeof _renderMetricsCharts === 'function') _renderMetricsCharts('piM', _piFistTeams);
+  }
 }
 
 // ---- Filtres du tableau PI ----
@@ -761,29 +830,51 @@ function _renderVelocityHistory(allTeams) {
   const el = document.getElementById('pi-velocity');
   if (!el) return;
 
-  // Collecter tous les sprints connus (union de tous les historiques), triés du plus ancien au plus récent
-  const sprintMap = new Map(); // name → { name, startDate }
+  // Extract iteration key from sprint name: "Fuego - Ité 29.1" → "29.1"
+  function _iterKey(spName) {
+    const m = spName.match(/(\d+\.\d+|\d+)\s*$/);
+    return m ? m[1] : spName;
+  }
+  // Short label for header: "29.1" → "Ité 29.1"
+  function _iterLabel(key) {
+    return /^\d/.test(key) ? `Ité ${key}` : key;
+  }
+
+  // Collect unique iteration keys, sorted numerically
+  const iterSet = new Map(); // iterKey → { key, startDate }
   allTeams.forEach(t => {
     (CONFIG.teams[t]?.velocityHistory || []).forEach(s => {
-      if (!sprintMap.has(s.name)) sprintMap.set(s.name, s);
+      const k = _iterKey(s.name);
+      if (!iterSet.has(k) || (s.startDate && (!iterSet.get(k).startDate || s.startDate < iterSet.get(k).startDate))) {
+        iterSet.set(k, { key: k, startDate: s.startDate });
+      }
     });
   });
-  const allSprints = [...sprintMap.values()]
+  const allIters = [...iterSet.values()]
     .sort((a, b) => {
       if (a.startDate && b.startDate) return a.startDate.localeCompare(b.startDate);
-      const numA = (a.name.match(/(\d+\.\d+|\d+)\s*$/) || [])[1];
-      const numB = (b.name.match(/(\d+\.\d+|\d+)\s*$/) || [])[1];
-      if (numA && numB) return parseFloat(numA) - parseFloat(numB);
-      return a.name.localeCompare(b.name);
+      const na = parseFloat(a.key), nb = parseFloat(b.key);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.key.localeCompare(b.key);
     })
-    .map(s => s.name);
+    .map(s => s.key);
 
-  if (!allSprints.length) {
-    el.innerHTML = `<p style="color:var(--text-muted);font-size:12px;padding:8px 0">
-      Aucun historique disponible. Synchronisez pour charger les derniers sprints fermés depuis JIRA.
-    </p>`;
+  if (!allIters.length) {
+    el.innerHTML = `<div class="pi-empty">
+      <div class="pi-empty-icon">📈</div>
+      <div class="pi-empty-title">Historique de vélocité vide</div>
+      <div class="pi-empty-desc">Les sprints fermés n'ont pas encore été chargés depuis JIRA.<br>Lancez une synchronisation pour récupérer l'historique de vélocité par équipe.</div>
+    </div>`;
     return;
   }
+
+  // Build per-team lookup: iterKey → velocity entry
+  const teamIterMap = {};
+  allTeams.forEach(t => {
+    const map = {};
+    (CONFIG.teams[t]?.velocityHistory || []).forEach(s => { map[_iterKey(s.name)] = s; });
+    teamIterMap[t] = map;
+  });
 
   // Tableau récapitulatif - cible empirique = moyenne des sprints fermés
   const _velTipData = {}; // per-team tip data for hover
@@ -800,12 +891,12 @@ function _renderVelocityHistory(allTeams) {
     const median    = histVals.length ? [...histVals].sort((a,b) => a-b)[Math.floor(histVals.length / 2)] : 0;
     _velTipData[t]  = { name, color, history, histVals, empirical, minVal, maxVal, median };
 
-    const cells   = allSprints.map(spName => {
-      const entry = history.find(s => s.name === spName);
+    const cells   = allIters.map(iterKey => {
+      const entry = teamIterMap[t][iterKey];
       if (!entry) return `<td style="color:var(--text-muted);text-align:center">-</td>`;
       const pct   = empirical ? Math.round(entry.velocity / empirical * 100) : null;
       const color2 = pct === null ? '' : pct >= 90 ? '#22C55E' : pct >= 70 ? '#F59E0B' : '#EF4444';
-      return `<td class="pi-vel-cell" data-vel-detail="${t}|${spName}" style="cursor:pointer">
+      return `<td class="pi-vel-cell" data-vel-detail="${t}|${entry.name}" style="cursor:pointer">
         <strong style="color:${color2 || 'inherit'}">${entry.velocity}</strong>
         ${pct !== null ? `<span class="pi-vel-pct">${pct}%</span>` : ''}
       </td>`;
@@ -818,20 +909,35 @@ function _renderVelocityHistory(allTeams) {
         <strong>${currentPts}</strong>
         ${empirical ? `<span class="pi-vel-pct">${Math.round(currentPts / empirical * 100)}%</span>` : ''}
       </td>
-      <td class="pi-vel-target" data-vel-team="${t}" style="cursor:default">${empirical ? `${empirical} pts` : '-'}</td>
+      <td class="pi-vel-target" data-vel-team="${t}" style="cursor:default">${empirical ? `<strong>${empirical}</strong> <span style="font-size:10px;color:var(--text-muted)">pts/sprint</span>${histVals.length >= 2 ? `<br><span style="font-size:10px;color:var(--text-muted)">Min: ${minVal} · Max: ${maxVal}</span>` : ''}` : '-'}</td>
     </tr>`;
   }).join('');
+
+  // Total row
+  const _vsTotals = _piVelocityStats(allTeams, _piDetect().piNum || '');
+  const totalCells = allIters.map(iterKey => {
+    let sum = 0;
+    allTeams.forEach(t => { const e = teamIterMap[t][iterKey]; if (e) sum += e.velocity; });
+    return sum ? `<td style="text-align:center;font-weight:700">${sum}</td>` : `<td style="color:var(--text-muted);text-align:center">-</td>`;
+  }).join('');
+  const totalCurrentPts = getTickets().reduce((a, x) => a + x.points, 0);
+  const totalRow = `<tr style="border-top:2px solid var(--border);background:rgba(0,0,0,.02)">
+    <td class="pi-vel-team" style="font-weight:700;color:var(--text)">Total</td>
+    ${totalCells}
+    <td class="pi-vel-cell" style="font-weight:700"><strong>${totalCurrentPts}</strong></td>
+    <td class="pi-vel-target" style="font-weight:700">${_vsTotals.avg ? `<strong>${_vsTotals.avg}</strong> <span style="font-size:10px;color:var(--text-muted)">pts/sprint</span>${_vsTotals.piSprints.length >= 2 ? `<br><span style="font-size:10px;color:var(--text-muted)">Min: ${_vsTotals.min} · Max: ${_vsTotals.max}</span>` : ''}` : '-'}</td>
+  </tr>`;
 
   el.innerHTML = `
     <div class="card pi-vel-wrap">
       <table class="pi-vel-table">
         <thead><tr>
-          <th>Équipe</th>
-          ${allSprints.map(s => `<th>${s}</th>`).join('')}
+          <th class="pi-vel-sticky-col">Équipe</th>
+          ${allIters.map(k => `<th>${_iterLabel(k)}</th>`).join('')}
           <th style="background:rgba(2,132,199,.08)">Sprint actif</th>
           <th title="Moyenne empirique des sprints fermés">Cible (moy.)</th>
         </tr></thead>
-        <tbody>${teamRows}</tbody>
+        <tbody>${teamRows}${totalRow}</tbody>
       </table>
     </div>`;
 
@@ -906,8 +1012,8 @@ function _renderVelocityHistory(allTeams) {
       .map(t => {
         const cfg   = CONFIG.teams[t] || {};
         const color = cfg.color || CLR.muted;
-        const data  = allSprints.map(spName => {
-          const e = (cfg.velocityHistory || []).find(s => s.name === spName);
+        const data  = allIters.map(iterKey => {
+          const e = teamIterMap[t]?.[iterKey];
           return e ? e.velocity : null;
         });
         return {
@@ -925,7 +1031,7 @@ function _renderVelocityHistory(allTeams) {
     if (!datasets.length) return;
     canvas._chart = new Chart(canvas.getContext('2d'), {
       type: 'line',
-      data: { labels: allSprints, datasets },
+      data: { labels: allIters.map(k => _iterLabel(k)), datasets },
       options: {
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { labels: { font: { size: 11 } } } },
@@ -1163,14 +1269,22 @@ function _renderPIBuffer(tickets, allTeams) {
   const el = document.getElementById('pi-buffer');
   if (!el) return;
 
-  // PI context
-  const _bufPiMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
-  const _piNum      = _bufPiMatch ? _bufPiMatch[1] : null;
-  const _piRe       = _piNum ? new RegExp(`(^|\\D)${_piNum}\\.\\d+`) : null;
+  // PI context — use selected PI from piprep selector
+  const _ppPI2     = typeof _ppCurrentPI === 'function' ? _ppCurrentPI() : null;
+  const _bufPiNum  = _ppPI2 ? (_ppPI2.match(/\d+/) || [])[0] || null : null;
+  const _fallback2 = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  const _piNum     = _bufPiNum || (_fallback2 ? _fallback2[1] : null);
+  const _piRe      = _piNum ? new RegExp(`(^|\\D)${_piNum}\\.\\d+`) : null;
 
-  const bufferTickets = tickets.filter(t => t.buffer);
+  const _teamSet = new Set(allTeams);
+  const bufferTickets = tickets.filter(t => t.buffer && (!_teamSet.size || _teamSet.has(t.team)));
   if (!bufferTickets.length) {
-    el.innerHTML = '<p style="color:var(--text-muted);font-size:12px;padding:8px 0">Aucun ticket buffer détecté dans le PI en cours.</p>';
+    const _bufLabel = _piNum ? `PI ${_piNum}` : 'ce PI';
+    el.innerHTML = `<div class="pi-empty">
+      <div class="pi-empty-icon">🛡️</div>
+      <div class="pi-empty-title">Aucun ticket buffer sur ${_bufLabel}</div>
+      <div class="pi-empty-desc">Les tickets buffer sont détectés via le label <em>buffer</em> ou un epic parent contenant "buffer" dans son titre.<br>Aucun ticket correspondant n'a été trouvé pour ce PI.</div>
+    </div>`;
     return;
   }
 
@@ -1209,6 +1323,22 @@ function _renderPIBuffer(tickets, allTeams) {
     blocked: { label: 'Bloqué',    color: '#EF4444', icon: '🚫' },
   };
 
+  // Sprint columns for the PI
+  const _bufSprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
+  const _bufReSprint = /(\d{2,3})\.(\d+)/;
+  const _bufTicketSprintIdx = (t) => {
+    const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || ''];
+    for (const s of sources) {
+      if (!s) continue;
+      const m = s.match(_bufReSprint);
+      if (m && m[1] === _piNum) return parseInt(m[2]) - 1;
+    }
+    return null;
+  };
+  const _bufSprintLabels = Array.from({ length: _bufSprintsPerPI }, (_, i) =>
+    _piNum ? `${_piNum}.${i + 1}` : `S${i + 1}`
+  );
+
   // Per-team breakdown
   const teamRows = allTeams.map(tid => {
     const tc      = CONFIG.teams[tid] || {};
@@ -1221,18 +1351,28 @@ function _renderPIBuffer(tickets, allTeams) {
     const tInprog = tBuf.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
     const tDonePct   = tTotal ? Math.round(tDone / tTotal * 100) : 0;
     const tInprogPct = tTotal ? Math.round(tInprog / tTotal * 100) : 0;
+    const pctColor   = tDonePct >= 80 ? '#22C55E' : tDonePct >= 50 ? '#F59E0B' : '#94A3B8';
+    // Per-sprint cells
+    const sprintCells = _bufSprintLabels.map((_, si) => {
+      const sBuf  = tBuf.filter(t => _bufTicketSprintIdx(t) === si);
+      if (!sBuf.length) return `<td style="text-align:center;font-size:11px;color:var(--text-muted)">-</td>`;
+      const sDone = sBuf.filter(t => isDone(t.status)).length;
+      const sClr  = sDone === sBuf.length ? '#22C55E' : sDone > 0 ? '#F59E0B' : '#94A3B8';
+      return `<td style="text-align:center;font-size:11px;font-weight:600;color:${sClr}">${sDone}/${sBuf.length}</td>`;
+    }).join('');
     return `<tr>
       <td style="font-weight:600;color:${color};font-size:12px;white-space:nowrap">${name}</td>
       <td style="text-align:center;font-size:12px">${tBuf.length}</td>
       <td style="text-align:center;font-size:12px;font-weight:600">${tTotal} pts</td>
       <td style="text-align:center;font-size:12px;font-weight:600;color:#22C55E">${tDone} pts</td>
-      <td style="width:120px">
-        <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;background:#F1F5F9">
-          <div style="width:${tDonePct}%;background:#22C55E"></div>
-          <div style="width:${tInprogPct}%;background:#3B82F6"></div>
+      <td style="min-width:100px">
+        <div style="position:relative;height:14px;border-radius:4px;overflow:hidden;background:#F1F5F9">
+          <div style="height:100%;width:${tDonePct}%;background:#22C55E;float:left"></div>
+          <div style="height:100%;width:${tInprogPct}%;background:#3B82F6;float:left"></div>
+          <span style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;color:${tDonePct > 40 ? '#fff' : pctColor}">${tDonePct}%</span>
         </div>
       </td>
-      <td style="text-align:center;font-size:12px;font-weight:700;color:${tDonePct >= 80 ? '#22C55E' : tDonePct >= 50 ? '#F59E0B' : '#94A3B8'}">${tDonePct}%</td>
+      ${sprintCells}
     </tr>`;
   }).filter(Boolean).join('');
 
@@ -1301,10 +1441,10 @@ function _renderPIBuffer(tickets, allTeams) {
         <thead><tr style="border-bottom:1px solid var(--border)">
           <th class="pi-table-th" style="text-align:left">Équipe</th>
           <th class="pi-table-th" style="text-align:center">Tickets</th>
-          <th class="pi-table-th" style="text-align:center">Total PI</th>
-          <th class="pi-table-th" style="text-align:center">Done PI</th>
+          <th class="pi-table-th" style="text-align:center">Total</th>
+          <th class="pi-table-th" style="text-align:center">Done</th>
           <th class="pi-table-th" style="text-align:center">Progression</th>
-          <th class="pi-table-th" style="text-align:center">%</th>
+          ${_bufSprintLabels.map(l => `<th class="pi-table-th" style="text-align:center;font-size:10px">${l}</th>`).join('')}
         </tr></thead>
         <tbody>${teamRows}</tbody>
       </table>` : ''}

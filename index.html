@@ -66,14 +66,16 @@
     <div class="nav-item"        onclick="showView('pi')"       data-view="pi">       <span class="nav-icon">🗓️</span> PI Planning</div>
     <div class="nav-item"        onclick="showView('reports')"  data-view="reports">  <span class="nav-icon">📊</span> Rapports</div>
     <div class="nav-item"        onclick="showView('support')"  data-view="support">  <span class="nav-icon">🎫</span> Support</div>
-    <div class="nav-item"        onclick="showView('settings')" data-view="settings"> <span class="nav-icon">⚙️</span> Paramètres</div>
-    <div class="shortcut-hint">⌨️ Raccourcis: 1-7</div>
+    <div class="nav-item"        onclick="showView('inno')"         data-view="inno">         <span class="nav-icon">💡</span> Innovations</div>
+    <div class="nav-item"        onclick="showView('amelioration')" data-view="amelioration"> <span class="nav-icon">🔄</span> Amélioration</div>
+    <div class="nav-item"        onclick="showView('settings')"     data-view="settings">     <span class="nav-icon">⚙️</span> Paramètres</div>
+    <div class="shortcut-hint">⌨️ Raccourcis: 1-9</div>
   </nav>
 
   <div class="sidebar-stats">
     <div id="sb-group-label" style="display:none;margin-bottom:6px;"></div>
 
-    <!-- Contexte sprint / PI -->
+    <!-- Contexte sprint / PI + Avancement -->
     <div class="sb-sprint-card">
       <div class="sb-sprint-top">
         <span class="sb-pi-badge" id="sb-pi-badge" style="display:none"></span>
@@ -83,10 +85,14 @@
         <span class="sb-sprint-dates" id="sb-sprint-dates"></span>
         <span class="sb-remaining" id="sb-remaining"></span>
       </div>
+      <!-- Avancement sprint (intégré dans la carte) -->
+      <div id="sb-progress-wrap"></div>
     </div>
 
-    <!-- Avancement sprint -->
-    <div id="sb-progress-wrap"></div>
+    <!-- Infos complémentaires -->
+    <div id="sb-buffer-wrap"></div>
+    <div id="sb-objectives-wrap"></div>
+    <div id="sb-risks-wrap"></div>
   </div>
 </aside>
 <div id="sidebar-resizer" title="Redimensionner la sidebar"></div>
@@ -144,6 +150,7 @@
       <div class="charts-row charts-row-2" id="charts-row-2">
         <div class="chart-card"><div class="chart-title">📈 Burnup Chart</div><div class="chart-wrap"><canvas id="burnupChart"></canvas></div></div>
         <div class="chart-card"><div class="chart-title">📊 CFD - Flux Sprint</div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">✋ Confiance PI (Fist of Five)</div><div class="chart-wrap" style="height:200px"><canvas id="fistChartScrum"></canvas></div></div>
       </div>
     </div>
 
@@ -164,22 +171,43 @@
 
     <!-- VUE PI PLANNING -->
     <div class="view" id="view-pi">
-      <div class="section-header">
-        <div class="section-title">🗓️ PI Planning - PI 4 (Q1 2025)</div>
-        <span style="font-size:12px;color:var(--text-muted)">4 Sprints × 4 Équipes</span>
+      <div id="pi-tabs"></div>
+      <div id="pi-progress-bar"></div>
+      <div class="pi-section" id="pi-sec-objectifs">
+        <div class="pi-section-header" onclick="_piToggleSection('objectifs')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🎯</span><span class="pi-section-title">Objectifs PI</span></div>
+        <div class="pi-section-body">
+          <div id="pi-ppobj-actions"></div>
+          <div id="pi-pp-objectives"></div>
+        </div>
       </div>
-      <div id="pi-table-filters"></div>
-      <div class="card" style="margin-bottom:16px;">
-        <div class="pi-grid"><table class="pi-table" id="pi-table"></table></div>
+      <div class="pi-section" id="pi-sec-buffer">
+        <div class="pi-section-header" onclick="_piToggleSection('buffer')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🛡️</span><span class="pi-section-title">Suivi Buffer</span></div>
+        <div class="pi-section-body"><div id="pi-buffer"></div></div>
       </div>
-      <div class="section-header"><div class="section-title">🎯 Objectifs PI</div></div>
-      <div class="pi-objectives" id="pi-objectives"></div>
-      <div style="margin-top:16px;" class="section-header"><div class="section-title">🛡️ Suivi Buffer</div></div>
-      <div id="pi-buffer"></div>
-      <div style="margin-top:16px;" class="section-header"><div class="section-title">📊 Capacité vs Charge par Équipe</div></div>
-      <div class="chart-card" style="margin-top:0"><div class="chart-wrap" style="height:220px"><canvas id="piCapacityChart"></canvas></div></div>
-      <div style="margin-top:16px;" class="section-header"><div class="section-title">📈 Vélocité historique par équipe</div><span style="font-size:12px;color:var(--text-muted)">3 derniers sprints fermés · chargés à la synchronisation</span></div>
-      <div id="pi-velocity"></div>
+      <div class="pi-section" id="pi-sec-capacite">
+        <div class="pi-section-header" onclick="_piToggleSection('capacite')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📊</span><span class="pi-section-title">Vélocité réelle vs estimée</span></div>
+        <div class="pi-section-body"><div class="chart-card" style="margin-top:0;position:relative"><div class="chart-wrap" style="height:220px"><canvas id="piCapacityChart"></canvas></div></div></div>
+      </div>
+      <div class="pi-section" id="pi-sec-velocite">
+        <div class="pi-section-header" onclick="_piToggleSection('velocite')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Vélocité historique</span></div>
+        <div class="pi-section-body"><div id="pi-velocity"></div></div>
+      </div>
+      <div class="pi-section" id="pi-sec-roam">
+        <div class="pi-section-header" onclick="_piToggleSection('roam')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">⚡</span><span class="pi-section-title">ROAM Board</span></div>
+        <div class="pi-section-body"><div id="pi-roam"></div></div>
+      </div>
+      <div class="pi-section" id="pi-sec-fist">
+        <div class="pi-section-header" onclick="_piToggleSection('fist')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">✋</span><span class="pi-section-title">Fist of Five</span></div>
+        <div class="pi-section-body"><div id="pi-fist"></div><div class="chart-card" style="margin-top:12px;"><div class="chart-title">📈 Évolution Confiance PI</div><div class="chart-wrap" style="height:200px"><canvas id="fistChartPI"></canvas></div></div></div>
+      </div>
+      <div class="pi-section" id="pi-sec-mood">
+        <div class="pi-section-header" onclick="_piToggleSection('mood')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">😊</span><span class="pi-section-title">Mood Meter (ROTI)</span></div>
+        <div class="pi-section-body"><div id="pi-mood"></div></div>
+      </div>
+      <div class="pi-section" id="pi-sec-metriques">
+        <div class="pi-section-header" onclick="_piToggleSection('metriques')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Métriques</span></div>
+        <div class="pi-section-body"><div id="pi-metriques"></div></div>
+      </div>
     </div>
 
     <!-- VUE RAPPORTS -->
@@ -188,9 +216,12 @@
       <div class="report-sticky-bar">
         <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
           <div class="report-sections" id="report-sections" style="margin-bottom:0;padding-bottom:0;border-bottom:none;"></div>
-          <div class="format-toggle">
-            <button class="fmt-btn active" id="fmt-slack" onclick="setFormat('slack')">💬 Slack</button>
-            <button class="fmt-btn"        id="fmt-conf"  onclick="setFormat('confluence')">📝 Confluence</button>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <div id="report-pi-sprint" class="rpt-pi-sprint-bar"></div>
+            <div class="format-toggle">
+              <button class="fmt-btn active" id="fmt-slack" onclick="setFormat('slack')">💬 Slack</button>
+              <button class="fmt-btn"        id="fmt-conf"  onclick="setFormat('confluence')">📝 Confluence</button>
+            </div>
           </div>
         </div>
         <div class="report-tabs" id="report-tabs"></div>
@@ -217,6 +248,16 @@
     <!-- VUE PARAMÈTRES -->
     <div class="view" id="view-settings">
       <div class="settings-grid" id="settings-content"></div>
+    </div>
+
+    <!-- VUE INNOVATIONS -->
+    <div class="view" id="view-inno">
+      <div id="inno-content"></div>
+    </div>
+
+    <!-- VUE AMÉLIORATION CONTINUE -->
+    <div class="view" id="view-amelioration">
+      <div id="amelioration-content"></div>
     </div>
 
     <!-- VUE ROADMAP -->
@@ -269,15 +310,20 @@
 <script src="assets/js/modal.js"></script>
 <script src="assets/js/export.js"></script>
 <script src="assets/js/charts.js"></script>
+<script src="assets/js/mood.js"></script>
+<script src="assets/js/sidebar.js"></script>
 <script src="assets/js/scrum.js"></script>
 <script src="assets/js/kanban.js"></script>
 <script src="assets/js/pi.js"></script>
 <script src="assets/js/reports.js"></script>
 <script src="assets/js/support.js"></script>
 <script src="assets/js/settings.js"></script>
+<script src="assets/js/absences.js"></script>
 <script src="assets/js/roadmap.js"></script>
 <script src="assets/js/piprep.js"></script>
 <script src="assets/js/releases.js"></script>
+<script src="assets/js/inno.js"></script>
+<script src="assets/js/amelioration.js"></script>
 <script src="assets/js/navigation.js"></script>
 
 </body>

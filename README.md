@@ -45,7 +45,7 @@ JIRA-Dashboard/
 ├── index.html              # 🌐 Application principale (SPA vanilla)
 ├── demo/
 │   └── demo-default.js     # 🎭 Données démo (startup tech, équipes, SAFe)
-├── data/                   # 💾 Cache JSON (jira-sprint-*.json, piprep.json)
+├── data/                   # 💾 Cache JSON (jira-sprint-*.json, pi-data.json)
 ├── assets/
 │   ├── css/
 │   │   ├── base.css        # 🎨 Variables, layout, sidebar redimensionnable, modal, toast
@@ -122,7 +122,7 @@ Tous les tooltips utilisent un style sombre unifié avec footer coloré contextu
 
 ### 📐 Vue Prépa PI Planning
 
-Outil complet de préparation PI Planning (persisté dans `data/piprep.json`) :
+Outil complet de préparation PI Planning (persisté dans `data/pi-data.json`) :
 
 - **🎯 Score de readiness** - indicateur global avec critères pondérés, lignes cliquables qui scrollent vers la section concernée
 - **📅 Calendrier PI suivant** - détection auto de la date de début (depuis JIRA ou saisie manuelle), jours ouvrés par sprint, jours fériés français, présentiels configurables, badge PIP (PI Planning)
@@ -137,6 +137,17 @@ Outil complet de préparation PI Planning (persisté dans `data/piprep.json`) :
 - **🔗 Dépendances inter-équipes** - source → cible avec livrables
 - **✋ Fist of Five** - vote de confiance par équipe
 - **💾 Export JSON** - téléchargement du fichier de préparation complet
+
+### 💡 Vue Innovations
+
+Suivi des initiatives d'innovation issues de JIRA :
+
+- **Critères** : Features JIRA (type `Feature`) avec l'étiquette `Inno` — les tickets enfants (stories, bugs, tâches…) sont automatiquement regroupés sous leur Feature parent
+- **🔎 Sélecteur PI** (sticky) - filtrage par PI avec auto-sélection du PI courant
+- **🔥 Sprint IP** - bannière mise en avant quand le sprint actif est un x.5 (sprint innovation/IP SAFe)
+- **📊 KPIs** - avancement %, points terminés/engagés, tickets en cours, tickets à faire
+- **📋 Board par initiative** - chaque Feature d'innovation a son mini-board avec colonnes À faire / En cours / Bloqué / Terminé
+- **🎫 Cartes tickets** - cliquables (→ modal détail), affichent type, assigné, points, équipe
 
 ### 📝 Vue Rapports - multi-sections
 
