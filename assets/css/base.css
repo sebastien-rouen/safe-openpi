@@ -226,7 +226,10 @@ nav { flex: 1; padding: 4px 0; }
 .sb-extra-count { font-size: 10px; font-weight: 700; margin-left: auto; }
 .sb-extra-body { padding: 8px 10px 4px; }
 .sb-risk-row { display: flex; align-items: center; gap: 6px; font-size: 10px; padding: 2px 0; }
-.sb-risk-row[onclick]:hover { opacity: .8; }
+.sb-risk-clickable { cursor: pointer; }
+.sb-risk-clickable:hover, .sb-risk-nav:hover { opacity: .8; }
+.sb-risk-nav { margin-left: auto; font-size: 10px; color: var(--text-muted); cursor: pointer; opacity: .4; transition: opacity .15s; flex-shrink: 0; }
+.sb-risk-nav:hover { opacity: 1; color: var(--primary); }
 .sb-risk-detail > summary { cursor: pointer; list-style: none; }
 .sb-risk-detail > summary::-webkit-details-marker { display: none; }
 .sb-risk-detail[open] > summary .sb-extra-chevron { transform: rotate(90deg); }

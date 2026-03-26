@@ -279,7 +279,7 @@ function _renderSidebarRisks() {
     const catItems = roamActive.filter(r => r.cat === cat);
     if (catItems.length) {
       items.push({ icon: ROAM_ICONS[cat], label: `${catItems.length} ${ROAM_LABELS[cat]}`, color: cat === 'O' ? '#F59E0B' : cat === 'A' ? '#94A3B8' : '#34D399',
-        sub: catItems.map(r => r.title || '(sans titre)') });
+        sub: catItems.map(r => r.title || '(sans titre)'), nav: 'risques' });
     }
   });
 
@@ -308,7 +308,7 @@ function _renderSidebarRisks() {
     const blocked = interDeps.filter(d => d.status === 'blocked').length;
     const blockedBadge = blocked ? ` <span class="sb-risk-blocked">(${blocked} bloqué${blocked > 1 ? 's' : ''})</span>` : '';
     items.push({ icon: '🔗', label: `${interDeps.length} dep. inter-équipes${blockedBadge}`, color: '#A78BFA',
-      detail: interDetail });
+      detail: interDetail, nav: 'risques' });
   }
   if (intraDeps.length) {
     const intraDetail = intraDeps.map(d => {
@@ -325,7 +325,7 @@ function _renderSidebarRisks() {
     const blocked = intraDeps.filter(d => d.status === 'blocked').length;
     const blockedBadge = blocked ? ` <span class="sb-risk-blocked">(${blocked} bloqué${blocked > 1 ? 's' : ''})</span>` : '';
     items.push({ icon: '🔁', label: `${intraDeps.length} risque${intraDeps.length > 1 ? 's' : ''} intra${blockedBadge}`, color: '#818CF8',
-      detail: intraDetail });
+      detail: intraDetail, nav: 'risques' });
   }
 
   // Sprint risks (blocked, flagged)
@@ -349,30 +349,43 @@ function _renderSidebarRisks() {
   const atRisk = objs.filter(o => o.status === 'atrisk');
   if (atRisk.length) {
     items.push({ icon: '🔴', label: `${atRisk.length} objectif${atRisk.length > 1 ? 's' : ''} à risque`, color: '#F87171',
-      sub: atRisk.map(o => o.title || '(sans titre)') });
+      sub: atRisk.map(o => o.title || '(sans titre)'), nav: 'risques' });
   }
 
   if (!items.length) { el.innerHTML = ''; return; }
 
+  const _navGo = (sec) => `event.preventDefault();event.stopPropagation();showView('roadmap');setTimeout(()=>_rmScrollTo('${sec}'),120);`;
   const rows = items.map(it => {
     if (it.detail) {
+      const navSpan = it.nav ? `<span class="sb-risk-nav" onclick="${_navGo(it.nav)}" style="cursor:pointer" title="Voir dans Roadmap">↗</span>` : '';
       return `<details class="sb-risk-detail">
         <summary class="sb-risk-row">
           <span>${it.icon}</span>
           <span class="sb-risk-label" style="color:${it.color}">${it.label}</span>
+          ${navSpan}
           <span class="sb-extra-chevron">›</span>
         </summary>
         <div class="sb-risk-detail-body">${it.detail}</div>
       </details>`;
     }
     const hasSub = it.sub?.length;
+    if (it.nav) {
+      return `<div class="sb-risk-row sb-risk-clickable" ${hasSub ? `title="${it.sub.join('\n')}"` : ''} onclick="${_navGo(it.nav)}">
+        <span>${it.icon}</span>
+        <span class="sb-risk-label" style="color:${it.color}">${it.label}</span>
+        <span class="sb-risk-nav" title="Voir dans Roadmap">↗</span>
+      </div>`;
+    }
     return `<div class="sb-risk-row" ${hasSub ? `title="${it.sub.join('\n')}"` : ''}>
       <span>${it.icon}</span>
       <span class="sb-risk-label" style="color:${it.color}">${it.label}</span>
     </div>`;
   }).join('');
 
-  el.innerHTML = `<details class="sb-extra-details" id="sb-risks-details">
+  // Preserve open state across re-renders
+  const _prevOpen = document.getElementById('sb-risks-details')?.open || false;
+
+  el.innerHTML = `<details class="sb-extra-details" id="sb-risks-details"${_prevOpen ? ' open' : ''}>
     <summary class="sb-extra-header sb-extra-toggle">
       <span>⚠️ Risques & Qualité</span>
       <span class="sb-extra-count" style="color:#F87171">${items.length}</span>
