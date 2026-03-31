@@ -69,32 +69,40 @@ function renderTeamBtns() {
   el.innerHTML = html;
 }
 
+// ---- Rafraîchir la vue active (extrait pour éviter la duplication) ----
+
+function _refreshCurrentView(opts) {
+  if (currentView === 'scrum')         renderScrum();
+  if (currentView === 'kanban')        renderKanban();
+  if (currentView === 'pi')            renderPI();
+  if (currentView === 'reports') {
+    if (opts && opts.reportTeam !== undefined) reportTeam = opts.reportTeam;
+    renderReport();
+  }
+  if (currentView === 'support')       renderSupport();
+  if (currentView === 'inno')          renderInno();
+  if (currentView === 'amelioration')  renderAmelioration();
+  if (currentView === 'roadmap')       renderRoadmap();
+}
+
 // ---- Sélection équipe / groupe ----------------
 
 function selectTeam(team) {
   currentTeam  = team;
   currentGroup = null;
+  _memoInvalidate();
   renderTeamBtns();
   renderGroupBtns();
   updateSidebarGroupLabel();
   if (typeof _updateBlockedBadge === 'function') _updateBlockedBadge();
-  renderScrum();
-  if (currentView === 'kanban')  renderKanban();
-  if (currentView === 'pi')      renderPI();
-  if (currentView === 'reports') {
-    if (team !== 'all') reportTeam = team;
-    renderReport();
-  }
-  if (currentView === 'support') renderSupport();
-  if (currentView === 'inno')         renderInno();
-  if (currentView === 'amelioration') renderAmelioration();
-  if (currentView === 'roadmap')      renderRoadmap();
+  _refreshCurrentView({ reportTeam: team !== 'all' ? team : undefined });
   _pushHash();
 }
 
 function selectGroup(gid) {
   currentGroup = gid;
   currentTeam  = 'all';
+  _memoInvalidate();
   const g = GROUPS.find(x => x.id === gid);
   renderTeamBtns();
   document.querySelectorAll('.team-btn').forEach(b => {
@@ -104,17 +112,7 @@ function selectGroup(gid) {
   renderGroupBtns();
   updateSidebarGroupLabel();
   if (typeof _updateBlockedBadge === 'function') _updateBlockedBadge();
-  renderScrum();
-  if (currentView === 'kanban') renderKanban();
-  if (currentView === 'pi')     renderPI();
-  if (currentView === 'reports') {
-    reportTeam = 'group';
-    renderReport();
-  }
-  if (currentView === 'support') renderSupport();
-  if (currentView === 'inno')         renderInno();
-  if (currentView === 'amelioration') renderAmelioration();
-  if (currentView === 'roadmap')      renderRoadmap();
+  _refreshCurrentView({ reportTeam: 'group' });
   _pushHash();
 }
 

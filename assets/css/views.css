@@ -513,9 +513,11 @@
 [data-theme="dark"] .rm-tab.active { background: rgba(56,189,248,.1); }
 .stg-tab { font-size: 11px; padding: 5px 10px; }
 
-/* Tab overflow scroll indicators */
-.rm-tabs { position: relative; overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; }
-.rm-tabs::-webkit-scrollbar { display: none; }
+/* Tab overflow scroll on mobile only (overflow-x on desktop breaks sticky) */
+@media (max-width: 768px) {
+  .rm-tabs { overflow-x: auto; scrollbar-width: none; -ms-overflow-style: none; flex-wrap: nowrap; }
+  .rm-tabs::-webkit-scrollbar { display: none; }
+}
 
 /* PI selector in tabs bar */
 .rm-tabs-spacer { flex: 1; }

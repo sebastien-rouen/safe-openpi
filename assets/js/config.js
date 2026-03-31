@@ -12,7 +12,7 @@ const CONFIG = {
   // --- Connexion JIRA ---
   jira: {
     url:      E.JIRA_URL     || 'https://votre-jira.atlassian.net',
-    token:    E.JIRA_TOKEN   || '',
+    hasToken: !!E.JIRA_HAS_TOKEN,
     projects: (E.JIRA_PROJECT || '').split(',').map(s => s.trim()).filter(Boolean),
     excludeTeams: (E.JIRA_EXCLUDE_TEAMS || '').split(',').map(s => s.trim()).filter(Boolean),
   },

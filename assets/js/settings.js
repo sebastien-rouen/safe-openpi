@@ -904,7 +904,7 @@ function renderSettings() {
       <div class="stg-grid-3">
         <div class="form-group"><label>URL JIRA</label><input type="text" value="${CONFIG.jira.url}"/></div>
         <div class="form-group"><label>Projets (virgule)</label><input type="text" value="${(CONFIG.jira.projects || []).join(', ')}"/></div>
-        <div class="form-group"><label>API Token</label><input type="password" value="${CONFIG.jira.token}" placeholder="••••••"/></div>
+        <div class="form-group"><label>API Token</label><input type="password" value="${CONFIG.jira.hasToken ? '••••••••' : ''}" placeholder="Configuré dans .env" disabled title="Le token est géré côté serveur (fichier .env)"/></div>
       </div>
       <div class="stg-grid-2" style="margin-top:6px;">
         <div class="form-group"><label>Durée Sprint (jours)</label><input type="number" value="${CONFIG.sprint.durationDays}"/></div>

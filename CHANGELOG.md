@@ -6,6 +6,25 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publie] - 2026-03-31
 
+### Securite
+
+- **Token JIRA retire du client** : `JIRA_TOKEN` n'est plus expose dans `window.ENV` / `env.js` — le proxy `server.js` gere l'auth. `generate-env.js` n'exporte plus que `JIRA_HAS_TOKEN: true` (`env.js`, `generate-env.js`, `config.js`, `navigation.js`, `settings.js`)
+- **Protection XSS** : ajout de `escapeHtml()` globale dans `utils.js` pour echapper les donnees JIRA avant injection HTML. Le doublon local `_escHtml` dans `pi.js` utilise desormais la globale
+- **Protection SSRF proxy** : validation du path dans `server.js` — seuls `/api/` et `/agile/` sont autorises, traversal (`..`) bloque
+
+### Performance
+
+- **renderScrum() conditionnel** : n'est plus appele a chaque changement d'equipe/groupe si la vue active n'est pas Scrum (`filter.js`)
+- **_refreshCurrentView()** : extraction d'une fonction commune pour le re-render conditionnel, eliminant 4 blocs dupliques (`filter.js`, `sync.js`)
+- **Memoisation _piAllTickets()** : cache par cle `teams:piNum`, invalide apres sync ou changement d'equipe (`utils.js`)
+- **Memoisation _piDetect()** : resultat cache entre les appels, invalide apres sync (`utils.js`)
+
+### Nettoyage
+
+- **Code mort retire** : `releases.js` retire du chargement dans `index.html` (fonction `renderReleases()` jamais appelee). `standup.js` n'etait deja pas charge
+- **Doublon _initials() supprime** : fonction morte dans `jira.js`, doublon de `initials()` dans `utils.js`
+- **Variable CSS --surface dedoublonnee** : declaration dupliquee dans `:root` supprimee (`base.css`)
+
 ### Tableau JIRA PI — ameliorations
 
 - **Colonne Sprint** : affichage du sprint complet avec nom d'equipe (`pi.js`, `views.css`)

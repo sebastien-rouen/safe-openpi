@@ -102,7 +102,13 @@ app.get('/jira/*', async (req, res) => {
   if (!JIRA_URL)  return res.status(503).json({ error: 'JIRA_URL non configuré' });
   if (!JIRA_AUTH) return res.status(503).json({ error: 'JIRA_USER / JIRA_TOKEN non configurés' });
 
-  const target = JIRA_URL + '/rest' + req.path.slice(5) + (req.url.includes('?') ? '?' + req.url.split('?')[1] : '');
+  // Validation : seuls /api/ et /agile/ sont autorisés, pas de traversal
+  const restPath = req.path.slice(5);
+  if (restPath.includes('..') || !/^\/(api|agile)\//.test(restPath)) {
+    return res.status(400).json({ error: 'Chemin JIRA non autorisé' });
+  }
+
+  const target = JIRA_URL + '/rest' + restPath + (req.url.includes('?') ? '?' + req.url.split('?')[1] : '');
   console.log(`[JIRA]  GET ${target}`);
   try {
     const { status, body } = await proxyRequest(target, {

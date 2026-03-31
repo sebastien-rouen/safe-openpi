@@ -137,6 +137,7 @@ function doSync() {
   syncPromise
     .then(() => {
       _setBtnReady(btn);
+      _memoInvalidate();
       const _apiCalls = typeof _jiraApiCalls === 'number' ? _jiraApiCalls : 0;
       _updateLastSync(null, _apiCalls);
       localStorage.setItem('lastSync', Date.now());
@@ -147,14 +148,7 @@ function doSync() {
       if (typeof _updateBlockedBadge === 'function') _updateBlockedBadge();
       const banner = document.getElementById('stale-banner');
       if (banner) banner.remove();
-      if (currentView === 'scrum')         renderScrum();
-      if (currentView === 'kanban')        renderKanban();
-      if (currentView === 'pi')            renderPI();
-      if (currentView === 'reports')       renderReport();
-      if (currentView === 'support')       renderSupport();
-      if (currentView === 'roadmap')       renderRoadmap();
-      if (currentView === 'inno'    && typeof renderInno === 'function')         renderInno();
-      if (currentView === 'amelioration' && typeof renderAmelioration === 'function') renderAmelioration();
+      _refreshCurrentView();
       _renderSidebarProgress();
       _renderSidebarBuffer();
       _renderSidebarObjectives();

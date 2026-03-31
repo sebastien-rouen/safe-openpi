@@ -33,12 +33,20 @@ fs.readFileSync(envFile, 'utf8').split('\n').forEach(line => {
   env[key] = val;
 });
 
+// Ne pas exposer le token JIRA côté client — le proxy server.js gère l'auth.
+const safeEnv = { ...env };
+if (safeEnv.JIRA_TOKEN) {
+  safeEnv.JIRA_HAS_TOKEN = true;
+  delete safeEnv.JIRA_TOKEN;
+}
+if (safeEnv.JIRA_USER) delete safeEnv.JIRA_USER;
+
 const output = `// ============================================================
 // env.js - Généré automatiquement par scripts/generate-env.js
 // NE PAS COMMITTER CE FICHIER (contient des informations sensibles).
 // ============================================================
 
-window.ENV = ${JSON.stringify(env, null, 2)};
+window.ENV = ${JSON.stringify(safeEnv, null, 2)};
 `;
 
 fs.writeFileSync(outFile, output, 'utf8');

@@ -711,8 +711,7 @@ renderTeamBtns();
 
 (async function init() {
   const jiraUrl   = CONFIG.jira.url   || '';
-  const jiraToken = CONFIG.jira.token || '';
-  const isLive    = jiraUrl && jiraToken && !jiraUrl.includes('votre-jira');
+  const isLive    = jiraUrl && CONFIG.jira.hasToken && !jiraUrl.includes('votre-jira');
 
   // Load team mood / rituals data
   if (typeof _moodLoad === 'function') await _moodLoad();

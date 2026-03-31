@@ -2,6 +2,16 @@
 // UTILS - Fonctions utilitaires partagées
 // ============================================================
 
+// Échappe les caractères HTML pour prévenir les injections XSS (données JIRA → innerHTML)
+function escapeHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ---- Cache mémo pour fonctions PI coûteuses (invalidé après sync) ----
+const _memoCache = {};
+function _memoInvalidate() { Object.keys(_memoCache).forEach(k => delete _memoCache[k]); }
+
 // Ticket considéré "terminé" et comptabilisé dans la vélocité (basé sur CONFIG.statuses)
 function isDone(status) {
   return CONFIG.statuses[status]?.countsInVelocity === true;
@@ -227,6 +237,8 @@ function showToast(msg, type = 'success') {
  * @returns {{ piNum: string|null, isCurrent: boolean, sprintsPerPI: number }}
  */
 function _piDetect() {
+  const cacheKey = '_piDetect';
+  if (_memoCache[cacheKey]) return _memoCache[cacheKey];
   const ppPI      = typeof _ppCurrentPI === 'function' ? _ppCurrentPI() : null;
   const ppNum     = ppPI ? (ppPI.match(/\d+/) || [])[0] || null : null;
   const detected  = typeof _ppDetectPI === 'function' ? _ppDetectPI() : null;
@@ -235,7 +247,9 @@ function _piDetect() {
   const piNum     = ppNum || (fallMatch ? fallMatch[1] : null);
   const isCurrent = piNum === (detNum || (fallMatch ? fallMatch[1] : null));
   const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
-  return { piNum, isCurrent, sprintsPerPI };
+  const result = { piNum, isCurrent, sprintsPerPI };
+  _memoCache[cacheKey] = result;
+  return result;
 }
 
 /**
@@ -313,6 +327,8 @@ function _piSelectOptions(selected, opts = {}) {
  */
 function _piAllTickets(teams, piNum) {
   if (!piNum) return [];
+  const cacheKey = `_piAllTickets:${teams.sort().join(',')}:${piNum}`;
+  if (_memoCache[cacheKey]) return _memoCache[cacheKey];
   const piRe = new RegExp(`(^|\\D)${piNum}\\.\\d+`);
   const teamSet = new Set(teams);
 
@@ -441,7 +457,9 @@ function _piAllTickets(teams, piNum) {
     });
   });
 
-  return filtered.concat(blPI, closedTix);
+  const result = filtered.concat(blPI, closedTix);
+  _memoCache[cacheKey] = result;
+  return result;
 }
 
 /**

@@ -1750,7 +1750,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     story: '📗', storytech: '📘', bug: '🐛', incident: '🔥', support: '🎫',
     ops: '⚙️', tache: '📝', dette: '🧹', feature: '📦', epic: '🏷️',
   }[t] || '📄');
-  const _escHtml = s => (s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const _escHtml = escapeHtml;
   const _jiraBase = (CONFIG.jira?.url || '').replace(/\/$/, '');
   const _jiraLink = id => {
     if (_jiraBase && !_jiraBase.includes('votre-jira')) {
