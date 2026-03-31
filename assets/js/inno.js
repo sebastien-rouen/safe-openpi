@@ -154,9 +154,9 @@ function renderInno() {
   const donePct  = total ? Math.round(doneTix / total * 100) : 0;
 
   // --- PI selector sticky bar ---
-  const piOptions = availablePIs.map(pi =>
-    `<option value="${pi}" ${pi === _innoSelectedPI ? 'selected' : ''}>PI ${pi}</option>`
-  ).join('');
+  const piOptions = typeof _piSelectOptions === 'function'
+    ? _piSelectOptions(String(_innoSelectedPI || ''), { allOption: 'Tous les PIs' })
+    : availablePIs.map(pi => `<option value="${pi}" ${pi === _innoSelectedPI ? 'selected' : ''}>PI ${pi}</option>`).join('');
 
   const isIP = sprintInfo?.isIP;
   const ipBanner = isIP ? `
@@ -167,7 +167,6 @@ function renderInno() {
   const stickyBar = `
     <div style="position:sticky;top:0;z-index:10;background:var(--bg-main);padding:12px 0 8px;border-bottom:1px solid var(--border);margin-bottom:16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
       <select onchange="_innoSelectPI(this.value)" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:600;cursor:pointer;">
-        <option value="" ${!_innoSelectedPI ? 'selected' : ''}>Tous les PIs</option>
         ${piOptions}
       </select>
       ${ipBanner}

@@ -153,12 +153,10 @@ function _rptRenderPISprintSelector() {
     reportSprint = inPI ? activeIter : (sprints.length ? sprints[0].iter : null);
   }
 
-  // PI dropdown — marquer actuel et futurs
-  const piOpts = pis.map(p => {
-    const n = parseInt(p.num) || 0;
-    const suffix = p.num === currentPI ? ' (actuel)' : n > currentPINum ? ' (futur)' : '';
-    return `<option value="${p.num}"${p.num === reportPI ? ' selected' : ''}>${p.label}${suffix}</option>`;
-  }).join('');
+  // PI dropdown — source centralisée avec fallback sur pis locaux
+  const piOpts = typeof _piSelectOptions === 'function'
+    ? _piSelectOptions(reportPI)
+    : pis.map(p => `<option value="${p.num}"${p.num === reportPI ? ' selected' : ''}>${p.label}</option>`).join('');
 
   // Sprint dropdown — visible mais disabled pour PI futur / MIRO
   const sprintOpts = sprints.map(sp => {

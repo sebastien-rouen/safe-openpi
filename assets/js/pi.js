@@ -1551,15 +1551,15 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
   const epicToFeature = {};
   epics.forEach(e => { if (e.feature) epicToFeature[e.id] = e.feature; });
 
-  // Detect PI features/epics (by title or by parent chain)
+  // Detect PI features/epics (by piSprint or title starting with PIxx)
   const piTitleRe = piNum ? new RegExp(`PI\\s*#?\\s*${piNum}\\b`, 'i') : null;
   const piFeatIds = new Set();
   const piEpicIds = new Set();
   const piSprintRe = piNum ? new RegExp(`(^|\\D)${piNum}(\\.\\d+)?(\\D|$)`) : null;
   if (piTitleRe) {
-    // 1. Features/epics par titre OU par piSprint
-    features.filter(f => piTitleRe.test(f.title || '') || piTitleRe.test(f.piSprint || '')).forEach(f => piFeatIds.add(f.id));
-    epics.filter(e => piTitleRe.test(e.title || '') || piTitleRe.test(e.piSprint || '')).forEach(e => piEpicIds.add(e.id));
+    // 1. Features/epics par piSprint
+    features.filter(f => piTitleRe.test(f.piSprint || '')).forEach(f => piFeatIds.add(f.id));
+    epics.filter(e => piTitleRe.test(e.piSprint || '')).forEach(e => piEpicIds.add(e.id));
 
     // 2. Tickets backlog/actifs avec sprint PI → remonter vers epic → feature
     const blAll = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
@@ -1881,6 +1881,18 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     });
   }
 
+  // Ajouter les points des features sans enfants (points propres)
+  let featureOwnPts = 0;
+  sortedFeatures.forEach(feat => {
+    if (feat.id === '_no_feature') return;
+    const featEpics = Object.values(feat.epics);
+    const childCount = featEpics.reduce((s, e) => s + e._normalTix.length, 0);
+    if (!childCount) {
+      const ownPts = tickets.find(tx => tx.id === feat.id)?.points || 0;
+      if (ownPts) { totalPts += ownPts; featureOwnPts += ownPts; }
+    }
+  });
+
   const treeHasContent = Object.keys(tree).some(k => k !== '_no_feature');
   if (!totalTix && !treeHasContent) {
     return `<div class="pi-empty">
@@ -1890,9 +1902,13 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     </div>`;
   }
 
+  const bufPts = bufferTickets.reduce((s, t) => s + (t.points || 0), 0);
+  const buildPts = totalPts - bufPts;
+  const featCount = sortedFeatures.filter(f => f.id !== '_no_feature').length;
+
   return `
     <div class="pj-toolbar">
-      <span class="pj-summary-label">${totalTix} tickets · ${sortedFeatures.length} features [${totalPts} pts = 📦 build ${totalPts - bufferTickets.reduce((s, t) => s + (t.points || 0), 0)} pts + 🛡️ buffer ${bufferTickets.reduce((s, t) => s + (t.points || 0), 0)} pts]</span>
+      <span class="pj-summary-label">${totalTix} tickets · ${featCount} features [${totalPts} pts = 📦 build ${buildPts} pts + 🛡️ buffer ${bufPts} pts]</span>
       <button class="btn btn-sm btn-secondary" onclick="_piJiraCopyTSV()">📋 Copier (TSV)</button>
       <button class="btn btn-sm btn-secondary" onclick="_piJiraCopyMiro()">🟡 Copier Miro</button>
     </div>

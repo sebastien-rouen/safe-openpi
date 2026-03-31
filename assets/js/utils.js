@@ -239,6 +239,73 @@ function _piDetect() {
 }
 
 /**
+ * Liste tous les PI disponibles, triés décroissant.
+ * Source unique pour tous les sélecteurs PI du dashboard.
+ * @returns {Array<{num: string, label: string, isCurrent: boolean, isFuture: boolean}>}
+ */
+function _piListAll() {
+  const piSet = new Set();
+  const fallMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  const currentPINum = fallMatch ? parseInt(fallMatch[1]) : null;
+
+  // 1. PI courant depuis sprint label
+  if (currentPINum) piSet.add(currentPINum);
+
+  // 2. PI futurs depuis config sync
+  const piFuture = CONFIG.sync?.piFutureCount || 2;
+  if (currentPINum) {
+    for (let i = 1; i <= piFuture; i++) piSet.add(currentPINum + i);
+  }
+
+  // 3. PI depuis vélocité (sprints fermés)
+  Object.values(CONFIG.teams || {}).forEach(tc => {
+    (tc.velocityHistory || []).forEach(h => {
+      const m = (h.name || '').match(/(\d{2,3})\.\d+/);
+      if (m) piSet.add(parseInt(m[1]));
+    });
+  });
+
+  // 4. PI depuis backlog (sprints futurs, piSprint)
+  (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : []).forEach(t => {
+    if (t.piSprint) { const m = t.piSprint.match(/(\d+)/); if (m) piSet.add(parseInt(m[1])); }
+    const sm = (t.sprintName || '').match(/(\d{2,3})\.\d+/);
+    if (sm) piSet.add(parseInt(sm[1]));
+  });
+
+  // 5. PI depuis piprep (données persistées)
+  if (typeof _ppListPIs === 'function') {
+    _ppListPIs().forEach(pi => { const m = pi.match(/\d+/); if (m) piSet.add(parseInt(m[0])); });
+  }
+
+  return [...piSet]
+    .sort((a, b) => b - a)
+    .map(n => ({
+      num: String(n),
+      label: `PI ${n}`,
+      isCurrent: n === currentPINum,
+      isFuture:  currentPINum ? n > currentPINum : false,
+    }));
+}
+
+/**
+ * Génère les <option> HTML pour un sélecteur PI.
+ * @param {string} selected - PI sélectionné (ex: "29")
+ * @param {object} opts - { showSuffix: bool, allOption: string|false }
+ * @returns {string} HTML options
+ */
+function _piSelectOptions(selected, opts = {}) {
+  const pis = _piListAll();
+  const showSuffix = opts.showSuffix !== false;
+  let html = '';
+  if (opts.allOption) html += `<option value=""${!selected ? ' selected' : ''}>${opts.allOption}</option>`;
+  pis.forEach(p => {
+    const suffix = showSuffix ? (p.isCurrent ? ' (actuel)' : p.isFuture ? ' (futur)' : '') : '';
+    html += `<option value="${p.num}"${p.num === selected ? ' selected' : ''}>${p.label}${suffix}</option>`;
+  });
+  return html;
+}
+
+/**
  * Collecte tous les tickets d'un PI (sprint actif + backlog + buffer sprints fermés).
  * @param {string[]} teams - Équipes à inclure
  * @param {string} piNum - Numéro du PI (ex: "28")
@@ -268,7 +335,7 @@ function _piAllTickets(teams, piNum) {
   const _feats = typeof FEATURES !== 'undefined' ? FEATURES : [];
   const _epics = typeof EPICS !== 'undefined' ? EPICS : [];
   const piTitleRe = new RegExp(`PI\\s*#?\\s*${piNum}\\b`, 'i'); // match "PI29", "PI#29", "PI 29"
-  const _matchPiItem = item => piTitleRe.test(item.title || '') || piTitleRe.test(item.piSprint || '');
+  const _matchPiItem = item => piTitleRe.test(item.piSprint || '');
   const _piFeatIds = new Set(_feats.filter(f => _matchPiItem(f)).map(f => f.id));
   const _piEpicIds = new Set();
 
@@ -313,15 +380,13 @@ function _piAllTickets(teams, piNum) {
     const matchAllSprints = (bt.allSprints || []).some(s => piRe.test(s) || piSprintRe.test(s));
     // 2. Feature/epic parente nommée avec le PI
     const matchParent = (bt.epic && (_piFeatIds.has(bt.epic) || _piEpicIds.has(bt.epic)));
-    // 3. Titre du ticket mentionne le PI (ex: "Sujets OPS - PI29")
-    const matchTitle = piTitleRe.test(bt.title || '');
-    // 4. Label "Cadrage_PIXX" (cadrage pour ce PI)
+    // 3. Label "Cadrage_PIXX" (cadrage pour ce PI)
     const cadrageRe = new RegExp(`cadrage_pi\\s*#?\\s*${piNum}\\b`, 'i');
     const matchCadrage = (bt.labels || []).some(l => cadrageRe.test(l));
     if (matchCadrage) bt._cadrage = true;
-    if (!matchPiSprint && !matchSprintName && !matchAllSprints && !matchParent && !matchTitle && !matchCadrage) return false;
+    if (!matchPiSprint && !matchSprintName && !matchAllSprints && !matchParent && !matchCadrage) return false;
     // Exclure les tickets done/resolved d'un PI antérieur
-    if (isDone(bt.status) && !matchPiSprint && !matchSprintName && !matchParent && !matchTitle) return false;
+    if (isDone(bt.status) && !matchPiSprint && !matchSprintName && !matchParent) return false;
     return true;
   });
 

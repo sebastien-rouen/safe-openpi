@@ -4,7 +4,37 @@ Toutes les modifications notables de ce projet sont documentees dans ce fichier.
 Format base sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Non publie] - 2026-03-30
+## [Non publie] - 2026-03-31
+
+### Pagination JIRA Cloud v3
+
+- **Migration nextPageToken** : l'API v3 `search/jql` ignore `startAt` — migration de toutes les paginations (PI JQL, features, enfants) vers `nextPageToken` + `isLast` (`jira.js`)
+- **Fix enfants features** : les enfants au-dela de la page 1 (ex: GDEM-1332, GDEM-1355 enfants de GDEM-1711) sont maintenant correctement recuperes (`jira.js`)
+- **Features PI#30** : pagination des features PI (avant: plafond a 100 par `maxResults`) — PI#30 passe de 100 a 124 features (`jira.js`)
+- **Labels de progression** : ajout de messages utilisateur pendant la sync (Velocite, Backlog, Tickets PI, Features PI, Enfants) (`jira.js`)
+
+### Standardisation selecteurs PI
+
+- **`_piListAll()`** : fonction centralisee dans `utils.js` collectant tous les PI depuis 5 sources (sprint, velocite, backlog, piprep, config)
+- **`_piSelectOptions()`** : generateur HTML d'options `<select>` avec suffixe (actuel/futur) — utilise par PI Planning, Rapports, Innovation (`utils.js`)
+- **PI#30 visible** : les selecteurs PI affichent desormais tous les PI synchronises, y compris les futurs (`piprep.js`, `reports.js`, `inno.js`)
+
+### Fiabilisation detection PI
+
+- **Suppression matching par titre** : la detection d'appartenance a un PI ne se base plus sur le titre des tickets/features/epics — uniquement sur les champs structures `piSprint`, `sprintName`, `allSprints`, labels `Cadrage_PIXX` (`utils.js`, `pi.js`)
+- **Story points features** : affichage des points de la feature elle-meme quand sans enfants + inclusion dans le total (`pi.js`)
+- **Filtrage `_PI`** : exclusion des teams `_PI` de la liste des equipes PI Planning (`pi.js`)
+
+### Fichiers modifies
+
+- `assets/js/jira.js` (~80 lignes) — pagination nextPageToken, labels progression, nettoyage debug
+- `assets/js/utils.js` (~60 lignes) — `_piListAll`, `_piSelectOptions`, suppression title matching
+- `assets/js/pi.js` (~30 lignes) — story points features, suppression title matching, nettoyage debug
+- `assets/js/piprep.js` (~15 lignes) — selecteur PI centralise
+- `assets/js/reports.js` (~5 lignes) — selecteur PI centralise
+- `assets/js/inno.js` (~5 lignes) — selecteur PI centralise
+
+---
 
 ### Synchronisation Features PI
 

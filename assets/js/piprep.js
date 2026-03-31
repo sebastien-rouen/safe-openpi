@@ -180,17 +180,19 @@ function _ppExportJSON() {
 
 // PI selector - switch between PIs, create new PI
 function _ppPISelector() {
-  const current = _ppCurrentPI();
-  const pis = _ppListPIs();
-  // Ensure next PI exists in the list
-  const detected = _ppDetectPI(); // e.g. "PI28"
-  const numMatch = detected.match(/\d+/);
-  if (numMatch) {
-    const nextPI = 'PI' + (parseInt(numMatch[0]) + 1);
-    if (!pis.includes(nextPI)) pis.push(nextPI);
-  }
-  const options = pis.map(pi =>
-    `<option value="${pi}" ${pi === current ? 'selected' : ''}>${pi}</option>`
+  const current = _ppCurrentPI(); // ex: "PI28"
+  const currentNum = (current.match(/\d+/) || [''])[0];
+  // Utiliser _piListAll() comme source centralisée
+  const allPIs = typeof _piListAll === 'function' ? _piListAll() : [];
+  // Merge avec les PI du fichier piprep (peuvent avoir des données sans tickets JIRA)
+  const ppPIs = _ppListPIs(); // ex: ["PI28", "PI29"]
+  ppPIs.forEach(pi => {
+    const n = (pi.match(/\d+/) || [''])[0];
+    if (n && !allPIs.some(p => p.num === n)) allPIs.push({ num: n, label: `PI ${n}`, isCurrent: false, isFuture: false });
+  });
+  allPIs.sort((a, b) => parseInt(b.num) - parseInt(a.num));
+  const options = allPIs.map(p =>
+    `<option value="PI${p.num}" ${`PI${p.num}` === current ? 'selected' : ''}>PI${p.num}</option>`
   ).join('');
   return `<div class="rm-pi-selector">
     <select onchange="_ppSwitchAndKeepHash(this.value)" class="rm-pi-select">

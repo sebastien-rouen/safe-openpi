@@ -1085,7 +1085,8 @@ async function loadJiraData(opts = {}) {
   let   gColorIdx   = 0;
 
   // Total des étapes : 1 (boards) + N scrumBoards × 2 (sprint + issues) + 1 (transform/save)
-  const _totalSteps = 1 + scrumBoards.length * 2 + 1;
+  // Steps: 1 boards + N*2 (sprint+issues par board) + 1 vélocité + 1 backlog + 1 PI JQL + 1 features PI + 1 enfants + 1 transformation
+  const _totalSteps = 1 + scrumBoards.length * 2 + 6;
   let   _curStep    = 1;
 
   // Patterns de boards à ignorer (PI planning, boards agrégateurs, etc.)
@@ -1255,6 +1256,7 @@ async function loadJiraData(opts = {}) {
 
   // 3.6 Historique de vélocité - via board API (sprints fermés par board)
   // (Skipped in incremental mode - velocity doesn't change during sprint)
+  _syncProgress(++_curStep, _totalSteps, 'Vélocité (sprints fermés)…');
   if (opts.incremental) {
     console.log('[JIRA] Sync incrémentale - vélocité et backlog ignorés');
   } else {
@@ -1408,6 +1410,7 @@ async function loadJiraData(opts = {}) {
     }));
   }
 
+  _syncProgress(++_curStep, _totalSteps, 'Backlog (sprints futurs)…');
   // 3.7 Tickets en sprints futurs → backlog planifié (vue Roadmap)
   //     On utilise l'API board-specific pour récupérer les sprints futurs de chaque board,
   //     puis les issues de chaque sprint, afin d'assigner le bon _boardTeam.
@@ -1445,6 +1448,7 @@ async function loadJiraData(opts = {}) {
     }));
   }
 
+  _syncProgress(++_curStep, _totalSteps, 'Tickets PI (JQL)…');
   // 3.8 Sprints PI futurs - récupérer les tickets planifiés dans les sprints PI (PI#28, PI#29, PI#30…)
   //     Stratégie : requête JQL directe par nom de sprint "PI#XX" - indépendant des boards.
   //     Les sprints PI peuvent être sur n'importe quel board (y compris hors-projet ou kanban).
@@ -1470,21 +1474,23 @@ async function loadJiraData(opts = {}) {
       const _piActiveKeys = new Set(allIssues.map(i => i.key));
 
       try {
-        // Paginer les résultats (JIRA Cloud limite à 100 par page)
+        // Paginer via nextPageToken (v3 search/jql ignore startAt)
         const maxPi = CONFIG.sync.maxPIIssues || 500;
         const pageSize = 100;
         let allPiIssues = [];
-        let piTotal = Infinity;
-        for (let startAt = 0; startAt < maxPi; startAt += pageSize) {
-          const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(piJql)}&maxResults=${pageSize}&startAt=${startAt}&fields=${fields}`;
+        let piNextToken = null;
+        for (let p = 0; allPiIssues.length < maxPi; p++) {
+          let url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(piJql)}&maxResults=${pageSize}&fields=${fields}`;
+          if (piNextToken) url += `&nextPageToken=${encodeURIComponent(piNextToken)}`;
           const ir = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
           if (!ir.ok) break;
           const body = await ir.json();
           const page = body.issues || [];
-          if (body.total != null) piTotal = body.total;
           allPiIssues = allPiIssues.concat(page);
-          console.log(`[JIRA] PI page ${Math.floor(startAt/pageSize)+1}: ${page.length} issues (total: ${piTotal}, fetched: ${allPiIssues.length})`);
-          if (page.length < pageSize || allPiIssues.length >= piTotal) break;
+          console.log(`[JIRA] PI page ${p+1}: ${page.length} issues (fetched: ${allPiIssues.length})`);
+          if (body.isLast !== false || !page.length) break;
+          piNextToken = body.nextPageToken;
+          if (!piNextToken) break;
         }
         if (allPiIssues.length) {
           const issues = allPiIssues;
@@ -1583,6 +1589,7 @@ async function loadJiraData(opts = {}) {
         console.warn(`[JIRA] Recherche tickets PI : ${e.message}`);
       }
 
+      _syncProgress(++_curStep, _totalSteps, 'Features PI…');
       // Fetch dédié des Features par PI (le sprint field est null pour les Features JIRA)
       // Requête par PI individuel pour assigner le bon piSprint
       for (let pi = 0; pi <= _piFuture; pi++) {
@@ -1590,10 +1597,21 @@ async function loadJiraData(opts = {}) {
         const piSprintName = `PI#${piN}`;
         try {
           const featJql = `sprint IN ("PI#${piN}","PI #${piN}","PI${piN}")${projFilter} AND issuetype IN (Feature, Fonctionnalité) ORDER BY key ASC`;
-          const featUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(featJql)}&maxResults=200&fields=${fields}`;
-          const featRes = await _jiraFetch(featUrl, { headers: { Accept: 'application/json' } });
-          if (!featRes.ok) continue;
-          const featIssues = (await featRes.json()).issues || [];
+          // Paginer via nextPageToken (v3 limite à 100/page)
+          let featIssues = [];
+          let featToken = null;
+          for (let fp = 0; fp < 10; fp++) {
+            let featUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(featJql)}&maxResults=100&fields=${fields}`;
+            if (featToken) featUrl += `&nextPageToken=${encodeURIComponent(featToken)}`;
+            const featRes = await _jiraFetch(featUrl, { headers: { Accept: 'application/json' } });
+            if (!featRes.ok) break;
+            const featBody = await featRes.json();
+            featIssues = featIssues.concat(featBody.issues || []);
+            if (featBody.isLast !== false) break;
+            featToken = featBody.nextPageToken;
+            if (!featToken) break;
+          }
+          if (!featIssues.length) continue;
           let featAdded = 0;
           featIssues.forEach(issue => {
             // Déterminer l'équipe depuis le champ Team JIRA
@@ -1631,28 +1649,40 @@ async function loadJiraData(opts = {}) {
           // Fetch enfants de TOUTES les features PI (stories/tasks sans sprint)
           const allFeatKeys = featIssues.map(i => i.key);
           if (allFeatKeys.length) {
+            _syncProgress(_curStep, _totalSteps, `Enfants Features PI#${piN} (${allFeatKeys.length})…`);
             let totalChildAdded = 0;
             // Batch par 50 clés pour ne pas dépasser la limite JQL
+            const childPageSize = 100;
             for (let b = 0; b < allFeatKeys.length; b += 50) {
               const batch = allFeatKeys.slice(b, b + 50);
               try {
                 const childJql = `parent IN (${batch.join(',')})${projFilter} ORDER BY key ASC`;
-                const childUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(childJql)}&maxResults=200&fields=${fields}`;
-                const childRes = await _jiraFetch(childUrl, { headers: { Accept: 'application/json' } });
-                if (!childRes.ok) continue;
-                const childIssues = (await childRes.json()).issues || [];
-                childIssues.forEach(ci => {
-                  if (_futureSeenKeys.has(ci.key) || _piActiveKeys.has(ci.key)) return;
-                  _futureSeenKeys.add(ci.key);
-                  const parentKey = ci.fields?.parent?.key;
-                  const parentInFuture = parentKey ? allFutureIssues.find(fi => fi.key === parentKey) : null;
-                  ci._boardTeam = parentInFuture?._boardTeam || '_PI';
-                  ci._isFuture = true;
-                  ci._piSprintName = piSprintName;
-                  ci._fromPiJql = true;
-                  allFutureIssues.push(ci);
-                  totalChildAdded++;
-                });
+                // Pagination via nextPageToken (v3 search/jql ignore startAt)
+                let nextPageToken = null;
+                for (let page = 0; page < 10; page++) {
+                  let childUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(childJql)}&maxResults=${childPageSize}&fields=${fields}`;
+                  if (nextPageToken) childUrl += `&nextPageToken=${encodeURIComponent(nextPageToken)}`;
+                  const childRes = await _jiraFetch(childUrl, { headers: { Accept: 'application/json' } });
+                  if (!childRes.ok) break;
+                  const childBody = await childRes.json();
+                  const childIssues = childBody.issues || [];
+                  if (!childIssues.length) break;
+                  childIssues.forEach(ci => {
+                    if (_futureSeenKeys.has(ci.key) || _piActiveKeys.has(ci.key)) return;
+                    _futureSeenKeys.add(ci.key);
+                    const parentKey = ci.fields?.parent?.key;
+                    const parentInFuture = parentKey ? allFutureIssues.find(fi => fi.key === parentKey) : null;
+                    ci._boardTeam = parentInFuture?._boardTeam || '_PI';
+                    ci._isFuture = true;
+                    ci._piSprintName = piSprintName;
+                    ci._fromPiJql = true;
+                    allFutureIssues.push(ci);
+                    totalChildAdded++;
+                  });
+                  if (childBody.isLast !== false) break;
+                  nextPageToken = childBody.nextPageToken;
+                  if (!nextPageToken) break;
+                }
               } catch (e2) {
                 console.warn(`[JIRA] Enfants Features PI#${piN} batch : ${e2.message}`);
               }
@@ -1682,7 +1712,7 @@ async function loadJiraData(opts = {}) {
         .filter(k => k && !fetchedKeys.has(k))
     )];
     if (stubKeys.length) {
-      _syncProgress(_totalSteps, _totalSteps, `Titres epics (${stubKeys.length})…`);
+      _syncProgress(++_curStep, _totalSteps, `Titres epics (${stubKeys.length})…`);
       try {
         const jql = `issuekey in (${stubKeys.join(',')})`;
         const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxEpicsResolve}&fields=summary,status,issuetype,assignee`;
