@@ -4,13 +4,17 @@ Toutes les modifications notables de ce projet sont documentees dans ce fichier.
 Format base sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Non publie] - 2026-03-29
+## [Non publie] - 2026-03-30
 
 ### Synchronisation Features PI
 
 - **Fetch dédié Features par PI** : requête JQL spécifique `issuetype IN (Feature) AND sprint IN ("PI#XX")` par PI individuel, car le champ sprint est `null` pour les Features dans l'API JIRA Cloud (`jira.js`)
 - **Pagination JQL PI** : pagination automatique par pages de 100 pour récupérer tous les tickets PI (plus de limite à 100) — paramétrable via `maxPIIssues` dans les Paramètres (`jira.js`)
+- **Champ Team JIRA** : ajout de `customfield_10001` dans les champs JQL — résolution automatique de l'équipe depuis le champ Team managé JIRA Cloud (`jira.js`)
 - **Team effective** : résolution de la team depuis `FEATURES[]`/`EPICS[]` quand le ticket backlog a `team: "_PI"` — dans `_piAllTickets` (`utils.js`) et `_piRenderJiraSection` (`pi.js`)
+- **Story points features** : affichage des story points de la feature elle-même quand elle n'a pas de tickets enfants (`pi.js`)
+- **Filtrage `_PI`** : exclusion des teams `_PI` de la liste des équipes affichées dans PI Planning (`pi.js`)
+- **Nettoyage debug** : suppression des console.log de debug pour l'investigation JIRA (`jira.js`)
 - **Paramètres sync** : ajout de `maxPIIssues` et `piFutureCount` dans la page Paramètres, avec persistance localStorage et toast de confirmation (`settings.js`)
 - **Sauvegarde paramètres** : `_stgSave()` persiste les modifications dans `localStorage` avec feedback visuel toast (`settings.js`)
 

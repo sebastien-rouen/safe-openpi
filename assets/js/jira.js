@@ -1014,6 +1014,7 @@ async function loadJiraData(opts = {}) {
     'labels', 'components', 'parent', 'description', 'created', 'updated',
     'flagged', 'duedate', 'comment', 'environment', 'issuelinks',
     CONFIG.sync.sprintField,
+    'customfield_10001',
     'customfield_10014', 'customfield_10015',
     'customfield_10016', 'customfield_10028', 'customfield_10005',
     'customfield_10004', 'customfield_10115', 'customfield_10106',
@@ -1489,21 +1490,9 @@ async function loadJiraData(opts = {}) {
           const issues = allPiIssues;
           const _activeKeys = new Set(allIssues.map(i => i.key));
           let added = 0, enriched = 0;
-
-          let _piDebugLogged = false;
           issues.forEach(issue => {
             // Extraire le sprint PI depuis le champ sprint du ticket
             const sprintRaw  = issue.fields[CONFIG.sync.sprintField];
-            if (!_piDebugLogged || issue.key === 'GCOM-4031') {
-              const iType = (issue.fields?.issuetype?.name || '');
-              console.log(`[JIRA] PI debug - ${issue.key} type=${iType} sprintField(${CONFIG.sync.sprintField}) raw:`, sprintRaw);
-              // Log all custom fields that contain sprint-like data for debugging
-              if (!sprintRaw) {
-                const sprintLike = Object.entries(issue.fields || {}).filter(([k, v]) => v && typeof v !== 'boolean' && /sprint|PI#/i.test(JSON.stringify(v).slice(0, 200)));
-                if (sprintLike.length) console.log(`[JIRA] PI debug - ${issue.key} sprint-like fields:`, Object.fromEntries(sprintLike.map(([k, v]) => [k, JSON.stringify(v).slice(0, 100)])));
-              }
-              _piDebugLogged = true;
-            }
             const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
             const piSprint   = _extractPISprint(sprintList);
             let   piName     = piSprint?.name || '';
@@ -1620,11 +1609,6 @@ async function loadJiraData(opts = {}) {
               const teamStr = typeof teamField === 'string' ? teamField : (teamField.name || teamField.value || JSON.stringify(teamField));
               const tMatch = teamStr.match(/[-–]\s*(.+)/);
               team = tMatch ? tMatch[1].trim() : teamStr.trim();
-            }
-            if (team === '_PI' && issue.key === 'GCOM-3775') {
-              // Debug: log all fields that might contain team info
-              const teamLike = Object.entries(issue.fields || {}).filter(([k, v]) => v && typeof v === 'object' && v.name && /team|équipe|fuego|gcom/i.test(JSON.stringify(v).slice(0, 200)));
-              if (teamLike.length) console.log(`[JIRA] Feature ${issue.key} team-like fields:`, Object.fromEntries(teamLike.map(([k, v]) => [k, v.name || JSON.stringify(v).slice(0, 80)])));
             }
             if (!_futureSeenKeys.has(issue.key) && !_piActiveKeys.has(issue.key)) {
               _futureSeenKeys.add(issue.key);

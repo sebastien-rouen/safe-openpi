@@ -186,7 +186,8 @@ function renderPI() {
              (_piViewRe && _piViewRe.test(bt.sprintName || ''));
     })
     .map(bt => bt.team).filter(Boolean);
-  const allTeams = [...new Set([...tickets.map(t => t.team).filter(Boolean), ..._blTeams])].sort();
+  const allTeams = [...new Set([...tickets.map(t => t.team).filter(Boolean), ..._blTeams])]
+    .filter(t => t && t !== '_PI').sort();
   if (!allTeams.length) {
     const _piVelEl = document.getElementById('pi-velocity');
     if (_piVelEl) _piVelEl.innerHTML = `<div class="pi-empty">
@@ -1634,7 +1635,6 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
         const hasTeamTickets = tickets.some(tx => tx.epic === t.id && activeTeams.includes(tx.team));
         if (!hasTeamEpics && !hasTeamTickets && activeTeams.length) return;
       } else if (isKnownEpic || isEpicType) {
-        // Epic : passer si des tickets enfants sont dans l'équipe
         const hasTeamTickets = tickets.some(tx => tx.epic === t.id && activeTeams.includes(tx.team));
         if (!hasTeamTickets && activeTeams.length) return;
       } else {
@@ -1804,7 +1804,13 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     // Feature row (skip fake "_no_feature" group)
     if (feat.id !== '_no_feature') {
       rows += `<tr class="pj-feat-row${featIsBuffer ? ' pj-feat-buffer' : ''}">
-        <td colspan="5"><span class="pj-feat-icon">${featIsBuffer ? '🛡️' : '📦'}</span> <strong>${_jiraLink(feat.id)}</strong> — ${_escHtml(feat.title)} <span class="pj-feat-stats">${featCnt ? `${featCnt} tickets · ${featPts} pts` : 'Aucun ticket'}</span></td>
+        <td colspan="5"><span class="pj-feat-icon">${featIsBuffer ? '🛡️' : '📦'}</span> <strong>${_jiraLink(feat.id)}</strong> — ${_escHtml(feat.title)} <span class="pj-feat-stats">${(() => {
+          // Story points de la feature elle-même (depuis backlog)
+          const ownPts = tickets.find(tx => tx.id === feat.id)?.points || 0;
+          if (featCnt) return `${featCnt} tickets · ${featPts} pts`;
+          if (ownPts) return `${ownPts} pts`;
+          return 'Aucun ticket';
+        })()}</span></td>
       </tr>`;
     }
 
@@ -1875,7 +1881,8 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     });
   }
 
-  if (!totalTix) {
+  const treeHasContent = Object.keys(tree).some(k => k !== '_no_feature');
+  if (!totalTix && !treeHasContent) {
     return `<div class="pi-empty">
       <div class="pi-empty-icon">📋</div>
       <div class="pi-empty-title">Aucun ticket pour ${piLabel}</div>
