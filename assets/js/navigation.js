@@ -2,6 +2,10 @@
 // NAVIGATION - Vues, raccourcis clavier, URL hash, initialisation
 // ============================================================
 
+function _toggleSidebar() {
+  document.getElementById('sidebar')?.classList.toggle('sidebar-open');
+}
+
 function toggleGroupSelector() {
   const el = document.getElementById('group-selector');
   if (!el) return;
@@ -41,6 +45,10 @@ function showView(view) {
   if (view !== 'scrum') document.getElementById('topbar-title').textContent = titles[view] || '';
 
   _updateTopbarActions(view);
+
+  // Sélecteur PI/Sprint — visible uniquement sur rapports
+  const piSprintBar = document.getElementById('report-pi-sprint');
+  if (piSprintBar) piSprintBar.classList.toggle('visible', view === 'reports');
 
   if (view === 'scrum')    renderScrum();
   if (view === 'kanban')   renderKanban();
@@ -168,6 +176,8 @@ function _pushHash() {
     if (reportSection && reportSection !== 'sprint') {
       parts.push('rs:' + reportSection);
     }
+    if (reportPI) parts.push('pi:' + reportPI);
+    if (reportSprint) parts.push('sp:' + reportSprint);
   }
 
   if (currentView === 'support' && supportFilter !== 'all') {
@@ -225,12 +235,16 @@ function _applyHash() {
   // Extras selon la vue
   if (view === 'reports') {
     const fmt = parts[2];
-    if (fmt === 'slack' || fmt === 'confluence') reportFormat = fmt;
+    if (fmt === 'slack' || fmt === 'confluence' || fmt === 'miro') reportFormat = fmt;
     const rtPart = parts.find(p => p.startsWith('rt:'));
     if (rtPart) reportTeam = decodeURIComponent(rtPart.slice(3));
     else if (currentGroup) reportTeam = 'group';
     const rsPart = parts.find(p => p.startsWith('rs:'));
     if (rsPart) reportSection = rsPart.slice(3);
+    const piPart = parts.find(p => p.startsWith('pi:'));
+    if (piPart) reportPI = piPart.slice(3);
+    const spPart = parts.find(p => p.startsWith('sp:'));
+    if (spPart) reportSprint = spPart.slice(3);
   }
 
   if (view === 'support' && parts[2]) {
@@ -246,7 +260,7 @@ function _applyHash() {
   const roadmapSec = view === 'roadmap' ? parts.find(p => _rmIds.includes(p)) : null;
 
   // PI Planning section
-  const _piIds = ['objectifs','buffer','capacite','velocite','roam','fist','mood','metriques'];
+  const _piIds = ['objectifs','buffer','capacite','velocite','roam','fist','animation','mood','metriques','jira'];
   const piSec = view === 'pi' ? parts.find(p => _piIds.includes(p)) : null;
 
   // PI selection from hash (e.g. pi:PI29)
@@ -312,7 +326,7 @@ document.addEventListener('keydown', e => {
     return;
   }
   // Arrow navigation inside open modal
-  const modalOpen = document.getElementById('modal-overlay')?.classList.contains('open');
+  const modalOpen = document.getElementById('modal-overlay')?.open;
   if (modalOpen) {
     if (e.key === 'ArrowLeft')  { e.preventDefault(); modalNavigate(-1); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); modalNavigate(1);  return; }
@@ -742,6 +756,12 @@ renderTeamBtns();
   _renderSidebarObjectives();
   _renderSidebarRisks();
   _updateSidebarStats();
+
+  // Dismiss skeleton loader
+  document.getElementById('sidebar').style.visibility = '';
+  document.getElementById('main').style.visibility = '';
+  const loader = document.getElementById('app-loader');
+  if (loader) { loader.classList.add('hide'); setTimeout(() => loader.remove(), 500); }
 })();
 
 // Formate l'âge d'un timestamp ISO en texte lisible ("il y a 2h", "12/03 à 14h30"…)

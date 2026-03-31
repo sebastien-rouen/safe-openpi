@@ -108,7 +108,6 @@ function selectGroup(gid) {
   if (currentView === 'kanban') renderKanban();
   if (currentView === 'pi')     renderPI();
   if (currentView === 'reports') {
-    renderReportTabs();
     reportTeam = 'group';
     renderReport();
   }
@@ -140,6 +139,7 @@ function renderGroupBtns() {
         <span class="group-btn-name">${g.name}</span>
         <span class="group-btn-teams">${teamLabels}</span>
       </span>
+      <span class="group-btn-count">${activeTeams.length}</span>
     </button>`;
   }).join('');
 }

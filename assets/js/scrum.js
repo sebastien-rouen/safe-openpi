@@ -741,16 +741,27 @@ function _renderBoardColumns(filtered) {
   const board = document.getElementById('scrum-board');
   board.className = 'board board-with-lanes';
 
-  // Count tickets per column (for headers + swimlane empty state)
+  // Match ticket to column: use JIRA statuses when available (avoids duplicating
+  // a ticket across multiple columns that share the same internal status key)
+  const _ticketInCol = (t, col) => {
+    if (col.jiraStatuses && col.jiraStatuses.length) {
+      const js = (t._jiraStatus || '').toLowerCase().trim();
+      return col.jiraStatuses.includes(js) || (col.key === 'inprog' && t.status === 'blocked');
+    }
+    return t.status === col.key || (col.key === 'inprog' && t.status === 'blocked');
+  };
+
+  // Count tickets per column across ALL swimlanes (for headers + grid sizing)
+  const allBoardTickets = [...otherTickets, ...taskTickets, ...supportTickets];
   const colCounts = {};
+  const colHasTickets = {};
   cols.forEach(col => {
-    colCounts[col.key] = otherTickets.filter(t =>
-      t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
-    ).length;
+    colCounts[col.key] = otherTickets.filter(t => _ticketInCol(t, col)).length;
+    colHasTickets[col.key] = allBoardTickets.some(t => _ticketInCol(t, col));
   });
 
-  // Build grid template: empty columns shrink, others fill equally
-  const gridCols = cols.map(col => colCounts[col.key] ? 'minmax(240px,1fr)' : 'minmax(110px,auto)').join(' ');
+  // Build grid template: columns with tickets in ANY swimlane get full width
+  const gridCols = cols.map(col => colHasTickets[col.key] ? 'minmax(240px,1fr)' : 'minmax(110px,auto)').join(' ');
 
   // Sticky header bar
   const stickyHtml = `<div class="board-sticky-bar" style="grid-template-columns:${gridCols}">${cols.map(col => {
@@ -764,9 +775,7 @@ function _renderBoardColumns(filtered) {
 
   // Main board
   const mainHtml = cols.map(col => {
-    const colTickets = otherTickets.filter(t =>
-      t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
-    );
+    const colTickets = otherTickets.filter(t => _ticketInCol(t, col));
     const empty = !colTickets.length;
     const cat = statusCat(col.key);
     return `<div class="board-col${empty ? ' col-empty-state' : ''}">
@@ -792,7 +801,7 @@ function _renderBoardColumns(filtered) {
       + (!_taskLaneCollapsed ? (() => { const _seen = new Set(); return cols.map(col => {
         const colT = taskTickets.filter(t => {
           if (_seen.has(t.id)) return false;
-          if (t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')) { _seen.add(t.id); return true; }
+          if (_ticketInCol(t, col)) { _seen.add(t.id); return true; }
           return false;
         });
         return `<div class="board-col board-col-lane board-col-lane-task${!colT.length ? ' col-empty-state' : ''}">
@@ -816,7 +825,7 @@ function _renderBoardColumns(filtered) {
       + (!_supportLaneCollapsed ? (() => { const _seen = new Set(); return cols.map(col => {
         const colT = supportTickets.filter(t => {
           if (_seen.has(t.id)) return false;
-          if (t.status === col.key) { _seen.add(t.id); return true; }
+          if (_ticketInCol(t, col)) { _seen.add(t.id); return true; }
           return false;
         });
         return `<div class="board-col board-col-lane board-col-lane-support${!colT.length ? ' col-empty-state' : ''}">
@@ -1060,7 +1069,7 @@ function _showScrumStatDetail(filter) {
   window._modalTicketList = [];
   window._modalCurrentIdx = 0;
   if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
-  document.getElementById('modal-overlay').classList.add('open');
+  { const _dlg = document.getElementById('modal-overlay'); if (!_dlg.open) _dlg.showModal(); }
 }
 
 // ----------- Velocity trend detail popin -----------
@@ -1166,7 +1175,7 @@ function _showVelocityTrendDetail() {
   window._modalTicketList = [];
   window._modalCurrentIdx = 0;
   if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
-  document.getElementById('modal-overlay').classList.add('open');
+  { const _dlg = document.getElementById('modal-overlay'); if (!_dlg.open) _dlg.showModal(); }
 }
 
 // ----------- Scope creep detail popin -----------
@@ -1203,7 +1212,7 @@ function _showScopeCreepDetail() {
   window._modalTicketList = [];
   window._modalCurrentIdx = 0;
   if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
-  document.getElementById('modal-overlay').classList.add('open');
+  { const _dlg = document.getElementById('modal-overlay'); if (!_dlg.open) _dlg.showModal(); }
 }
 
 function ticketCard(t) {

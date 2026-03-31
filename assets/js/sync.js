@@ -147,13 +147,25 @@ function doSync() {
       if (typeof _updateBlockedBadge === 'function') _updateBlockedBadge();
       const banner = document.getElementById('stale-banner');
       if (banner) banner.remove();
-      if (currentView === 'scrum')  renderScrum();
-      if (currentView === 'kanban') renderKanban();
+      if (currentView === 'scrum')         renderScrum();
+      if (currentView === 'kanban')        renderKanban();
+      if (currentView === 'pi')            renderPI();
+      if (currentView === 'reports')       renderReport();
+      if (currentView === 'support')       renderSupport();
+      if (currentView === 'roadmap')       renderRoadmap();
+      if (currentView === 'inno'    && typeof renderInno === 'function')         renderInno();
+      if (currentView === 'amelioration' && typeof renderAmelioration === 'function') renderAmelioration();
+      _renderSidebarProgress();
+      _renderSidebarBuffer();
+      _renderSidebarObjectives();
+      _renderSidebarRisks();
 
       const _apiSuffix = _apiCalls ? ` (${_apiCalls} appels API)` : '';
       // Compute and show diff
       if (_syncSnapshot) {
         const changes = _computeDiff(_syncSnapshot);
+        // Persister pour réaffichage au clic sur le timestamp
+        try { localStorage.setItem('lastSyncDiff', JSON.stringify(changes)); } catch(e) {}
         if (changes.length) {
           _showSyncDiff(changes, _apiCalls);
         } else {
@@ -206,7 +218,30 @@ function _updateLastSync(isoDate, apiCalls) {
   if (!el) return;
   const calls = apiCalls || parseInt(localStorage.getItem('lastSyncApiCalls')) || 0;
   const callsHtml = calls ? ` · ${calls} calls` : '';
-  el.innerHTML = `Dernière sync: ${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}${callsHtml ? `<span style="opacity:.6">${callsHtml}</span>` : ''}`;
+  el.innerHTML = `Sync: ${d.toLocaleDateString('fr-FR')} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h')}${callsHtml ? `<span style="opacity:.6">${callsHtml}</span>` : ''}`;
+  el.style.cursor = 'pointer';
+  el.title = 'Cliquer pour voir les derniers changements';
   const stale = (Date.now() - d.getTime()) > 24 * 60 * 60 * 1000;
   el.classList.toggle('stale', stale);
 }
+
+// Click on sync timestamp → show last diff
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#lastSync')) return;
+  const raw = localStorage.getItem('lastSyncDiff');
+  const calls = parseInt(localStorage.getItem('lastSyncApiCalls')) || 0;
+  if (!raw) {
+    showToast('Aucun historique de sync disponible', 'info');
+    return;
+  }
+  try {
+    const changes = JSON.parse(raw);
+    if (changes.length) {
+      _showSyncDiff(changes, calls);
+    } else {
+      showToast('✅ Dernière sync : aucun changement détecté', 'success');
+    }
+  } catch(e) {
+    showToast('Aucun historique de sync disponible', 'info');
+  }
+});

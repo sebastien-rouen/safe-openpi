@@ -29,54 +29,29 @@ function renderReportSections() {
 function selectReportSection(s) {
   reportSection = s;
   renderReportSections();
-  renderReportTabs();
   renderReport();
   _pushHash();
 }
 
-function renderReportTabs() {
-  const tabsEl = document.getElementById('report-tabs');
-  if (!tabsEl) return;
-
-  // Sections sans onglets équipes
-  if (['support', 'piprep', 'mood'].includes(reportSection)) {
-    tabsEl.innerHTML = '';
-    return;
-  }
-
-  const teams = _allTeams();
-  if (!reportTeam || (reportTeam !== 'group' && !teams.includes(reportTeam))) {
-    reportTeam = teams[0] || null;
-  }
-
-  const teamTabs = teams.map(t => {
-    const color = _teamColor(t);
-    const activeStyle = reportTeam === t ? `background:${color};color:#fff;` : '';
-    return `<button class="report-tab${reportTeam === t ? ' active' : ''}" onclick="selectReportTeam('${t}')" style="${activeStyle}">${t}</button>`;
-  }).join('');
-
-  let groupTab = '';
+function _rptSyncTeam() {
+  // Synchroniser reportTeam avec la sélection sidebar
   if (currentGroup) {
-    const g = GROUPS.find(x => x.id === currentGroup);
-    if (g) {
-      const activeStyle = reportTeam === 'group' ? `background:${g.color};color:#fff;` : '';
-      groupTab = `<button class="report-tab${reportTeam === 'group' ? ' active' : ''}" onclick="selectReportTeam('group')" style="${activeStyle}">📊 ${g.name}</button>`;
+    reportTeam = 'group';
+  } else if (currentTeam && currentTeam !== 'all') {
+    reportTeam = currentTeam;
+  } else {
+    const teams = _allTeams();
+    if (!reportTeam || (reportTeam !== 'group' && !teams.includes(reportTeam))) {
+      reportTeam = teams[0] || null;
     }
   }
-  tabsEl.innerHTML = teamTabs + groupTab;
-}
-
-function selectReportTeam(t) {
-  reportTeam = t;
-  renderReportTabs();
-  renderReport();
-  _pushHash();
 }
 
 function setFormat(f) {
   reportFormat = f;
   document.getElementById('fmt-slack').classList.toggle('active', f === 'slack');
   document.getElementById('fmt-conf').classList.toggle('active',  f === 'confluence');
+  document.getElementById('fmt-miro').classList.toggle('active',  f === 'miro');
   renderReport();
   _pushHash();
 }
@@ -110,6 +85,24 @@ function _rptCollectPISprints() {
   // Global sprint label
   _addSprint(CONFIG.sprint.label || '');
 
+  // Backlog tickets (sprints futurs)
+  (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : []).forEach(t => {
+    if (t.piSprint) _addSprint(t.piSprint);
+    if (t.sprintName) _addSprint(t.sprintName);
+    (t.allSprints || []).forEach(s => _addSprint(s));
+  });
+
+  // Générer les itérations du PI suivant si aucun ticket futur ne les référence
+  const currentMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  if (currentMatch) {
+    const curPI = parseInt(currentMatch[1]);
+    const sprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
+    const nextPI = curPI + 1;
+    if (!piMap.has(String(nextPI))) {
+      for (let i = 1; i <= sprintsPerPI; i++) _addSprint(`${nextPI}.${i}`);
+    }
+  }
+
   // Sort PIs descending, iterations ascending within each PI
   const pis = [...piMap.entries()]
     .sort((a, b) => parseInt(b[0]) - parseInt(a[0]))
@@ -130,45 +123,67 @@ function _rptRenderPISprintSelector() {
   const pis = _rptCollectPISprints();
   if (pis.length < 2 && (!pis.length || pis[0].sprints.length < 2)) {
     el.innerHTML = '';
+    el.classList.remove('visible');
     return;
   }
 
-  // Detect current PI
-  const currentMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
+  // Detect current PI and active sprint iteration
+  const currentMatch = (CONFIG.sprint.label || '').match(/(\d+)\.(\d+)/);
   const currentPI = currentMatch ? currentMatch[1] : (pis.length ? pis[0].num : '');
+  const activeIter = currentMatch ? currentMatch[1] + '.' + currentMatch[2] : '';
 
   // Default to current PI if not set
   if (!reportPI) reportPI = currentPI;
 
   const selectedPIData = pis.find(p => p.num === reportPI) || pis[0];
   const sprints = selectedPIData ? selectedPIData.sprints : [];
+  const currentPINum = parseInt(currentPI) || 0;
+  const selectedPINum = parseInt(reportPI) || 0;
+  const isFuturePI = selectedPINum > currentPINum;
+  const isMiro = reportFormat === 'miro';
 
-  // PI dropdown
-  const piOpts = pis.map(p =>
-    `<option value="${p.num}"${p.num === reportPI ? ' selected' : ''}>${p.label}${p.num === currentPI ? ' (actuel)' : ''}</option>`
-  ).join('');
+  // Masquer sprint pour PI futur ou format MIRO (export PI complet)
+  const disableSprint = isFuturePI || isMiro;
 
-  // Sprint dropdown — null = all sprints (current), value = iteration number (e.g. "28.4")
-  const sprintOpts = `<option value=""${!reportSprint ? ' selected' : ''}>Sprint actif</option>` +
-    sprints.map(sp =>
-      `<option value="${sp.iter}"${reportSprint === sp.iter ? ' selected' : ''}>Ité ${sp.iter}</option>`
-    ).join('');
+  // Auto-select active sprint if in current PI, otherwise first sprint
+  if (disableSprint) {
+    reportSprint = null;
+  } else if (!reportSprint) {
+    const inPI = sprints.find(sp => sp.iter === activeIter);
+    reportSprint = inPI ? activeIter : (sprints.length ? sprints[0].iter : null);
+  }
+
+  // PI dropdown — marquer actuel et futurs
+  const piOpts = pis.map(p => {
+    const n = parseInt(p.num) || 0;
+    const suffix = p.num === currentPI ? ' (actuel)' : n > currentPINum ? ' (futur)' : '';
+    return `<option value="${p.num}"${p.num === reportPI ? ' selected' : ''}>${p.label}${suffix}</option>`;
+  }).join('');
+
+  // Sprint dropdown — visible mais disabled pour PI futur / MIRO
+  const sprintOpts = sprints.map(sp => {
+    const isCurrent = sp.iter === activeIter;
+    const label = `Ité ${sp.iter}${isCurrent ? ' (actif)' : ''}`;
+    return `<option value="${sp.iter}"${reportSprint === sp.iter ? ' selected' : ''}>${label}</option>`;
+  }).join('');
 
   el.innerHTML = `
-    <select class="rpt-select" onchange="_rptSelectPI(this.value)" title="Sélectionner un PI">${piOpts}</select>
-    <select class="rpt-select" onchange="_rptSelectSprint(this.value)" title="Sélectionner un sprint">${sprintOpts}</select>`;
+    <select class="rpt-select rpt-select-pi" onchange="_rptSelectPI(this.value)" title="Sélectionner un PI">${piOpts}</select>
+    <select class="rpt-select rpt-select-sprint${disableSprint ? ' rpt-select-disabled' : ''}" onchange="_rptSelectSprint(this.value)" title="Sélectionner un sprint"${disableSprint ? ' disabled' : ''}>${sprintOpts}</select>`;
 }
 
 window._rptSelectPI = function(pi) {
   reportPI = pi;
-  reportSprint = null; // reset sprint when PI changes
+  reportSprint = null; // reset — will be auto-selected by _rptRenderPISprintSelector
   _rptRenderPISprintSelector();
   renderReport();
+  _pushHash();
 };
 
 window._rptSelectSprint = function(sp) {
   reportSprint = sp || null;
   renderReport();
+  _pushHash();
 };
 
 // Cached PI/sprint data (invalidated each renderReport cycle)
@@ -187,9 +202,9 @@ function _rptSprintCtx(team) {
     if (piData) {
       const spData = piData.sprints.find(s => s.iter === reportSprint);
       if (spData) {
-        // Prefer team-specific name, fallback to first available
+        // Prefer team-specific name, fallback to generic iteration label
         const teamName = spData.names.find(n => n.toLowerCase().includes(team.toLowerCase()));
-        label = teamName || spData.names[0] || 'Ité ' + reportSprint;
+        label = teamName || 'Ité ' + reportSprint;
       }
     }
   }
@@ -207,11 +222,24 @@ function _rptSprintCtx(team) {
 function renderReport() {
   _rptPISCache = null;
   _rptDestroyCharts();
+  _rptSyncTeam();
   renderReportSections();
-  renderReportTabs();
   _rptRenderPISprintSelector();
+  // Synchroniser les boutons format avec l'état courant
+  const _fs = document.getElementById('fmt-slack');
+  const _fc = document.getElementById('fmt-conf');
+  const _fm = document.getElementById('fmt-miro');
+  if (_fs) _fs.classList.toggle('active', reportFormat === 'slack');
+  if (_fc) _fc.classList.toggle('active', reportFormat === 'confluence');
+  if (_fm) _fm.classList.toggle('active', reportFormat === 'miro');
   const el = document.getElementById('report-preview');
   if (!el) return;
+
+  // Format MIRO : export post-its pour prépa PI (indépendant de la section)
+  if (reportFormat === 'miro') {
+    _rptMiro(el);
+    return;
+  }
 
   const isSlack = reportFormat === 'slack';
   const gen = {
@@ -235,6 +263,18 @@ function renderReport() {
 function _rptDate()    { return new Date().toLocaleDateString('fr-FR'); }
 function _rptName(tid) { return CONFIG.teams[tid]?.name || tid; }
 
+// Statut avec emoji rond coloré — fonctionne avec le statut mappé ou le statut JIRA brut
+function _rptStatus(mappedStatus, jiraStatus) {
+  const label = jiraStatus || statusLabel(mappedStatus) || '?';
+  const s = (mappedStatus || '').toLowerCase();
+  let dot;
+  if (s === 'done')                              dot = '🟢';
+  else if (s === 'inprog' || s === 'review' || s === 'test') dot = '🔵';
+  else if (s === 'blocked')                      dot = '🔴';
+  else                                           dot = '⚪';
+  return `${dot} ${label}`;
+}
+
 function _rptTeamTickets(team) {
   const all = typeof TICKETS !== 'undefined' ? TICKETS : [];
   return team === 'group' && currentGroup
@@ -249,9 +289,11 @@ function _rptSprintData(team) {
   const sprintCtx = _rptSprintCtx(team);
   const label = sprintCtx.label;
 
-  // Check if selected sprint matches the active sprint
+  // Check if selected sprint matches the active sprint (compare iteration numbers, not full labels)
   const activeLabel = tc.sprintName || CONFIG.sprint.label || '';
-  const isActive = !reportSprint || label === activeLabel;
+  const activeIterMatch = activeLabel.match(/(\d+\.\d+)/);
+  const activeIter = activeIterMatch ? activeIterMatch[1] : '';
+  const isActive = !reportSprint || reportSprint === activeIter;
 
   // Use _rotTeamMembers (from settings/rotation support) if available, else MEMBERS
   const teamMembers = typeof _rotTeamMembers === 'function'
@@ -411,15 +453,15 @@ function _rptSprint(el, isSlack) {
     t += `\n`;
     if (tickets.length) {
       t += `✅ *Stories Terminées (${done.length} - ${ptsDone} pts)*\n`;
-      t += done.length ? done.map(x => { const u = _jiraBrowseUrl(x.id); return `> • *${x.id}* - ${x.title} _(${x.points||0} pts)_ @${x.assignee || '?'} ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '> _Aucune_';
+      t += done.length ? done.map(x => { const u = _jiraBrowseUrl(x.id); return `• *${x.id}* - ${x.title} _(${x.points||0} pts)_ @${x.assignee || '?'} ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '_Aucune_';
       t += `\n\n⏳ *Non Terminées (${notDone.length})*\n`;
-      t += notDone.length ? notDone.map(x => { const u = _jiraBrowseUrl(x.id); return `> • *${x.id}* - ${x.title} _(${x.points||0} pts)_ ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '> _Aucune - Félicitations ! 🎉_';
+      t += notDone.length ? notDone.map(x => { const u = _jiraBrowseUrl(x.id); return `• *${x.id}* - ${x.title} _(${x.points||0} pts)_ ${statusLabel(x.status)}${u ? ` <${u}>` : ''}`; }).join('\n') : '_Aucune - Félicitations ! 🎉_';
       t += `\n\n🐛 *Bugs (${bugs.length})*\n`;
-      t += bugs.length ? bugs.map(x => `> • *${x.id}* - ${x.title} - ${isDone(x.status) ? '✅' : '⚠️'}`).join('\n') : '> _Aucun_';
+      t += bugs.length ? bugs.map(x => `• *${x.id}* - ${x.title} - ${isDone(x.status) ? '✅' : '⚠️'}`).join('\n') : '_Aucun_';
       t += `\n\n⚡ *Incidents (${incidents.length})*\n`;
-      t += incidents.length ? incidents.map(x => `> • *${x.id}* - ${x.title} - ${isDone(x.status) ? '✅' : '🔴'}`).join('\n') : '> _Aucun_';
+      t += incidents.length ? incidents.map(x => `• *${x.id}* - ${x.title} - ${isDone(x.status) ? '✅' : '🔴'}`).join('\n') : '_Aucun_';
       t += `\n\n🚫 *Bloquants (${blocked.length})*\n`;
-      t += blocked.length ? blocked.map(x => `> • *${x.id}* - ${x.title} - ⚠️ BLOQUÉ`).join('\n') : '> _Aucun_';
+      t += blocked.length ? blocked.map(x => `• *${x.id}* - ${x.title} - ⚠️ BLOQUÉ`).join('\n') : '_Aucun_';
     } else if (sd.isHistorical) {
       t += `> _Détail des tickets non disponible pour ce sprint historique_\n`;
     }
@@ -452,8 +494,8 @@ function _rptSprint(el, isSlack) {
       h += `</table>`;
       if (bugs.length || incidents.length) {
         h += `<h2>🐛 Bugs & Incidents</h2><ul>`;
-        bugs.forEach(x => { h += `<li><strong>${x.id}</strong> - ${x.title} ${x.status==='done'?'✅':'⚠️'}</li>`; });
-        incidents.forEach(x => { h += `<li><strong>${x.id}</strong> - ${x.title} (Incident) ${x.status==='done'?'✅':'🔴'}</li>`; });
+        bugs.forEach(x => { h += `<li>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})} - ${x.title} ${x.status==='done'?'✅':'⚠️'}</li>`; });
+        incidents.forEach(x => { h += `<li>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})} - ${x.title} (Incident) ${x.status==='done'?'✅':'🔴'}</li>`; });
         h += `</ul>`;
       }
     } else if (sd.isHistorical) {
@@ -493,7 +535,7 @@ function _rptSprintGroup(el, isSlack) {
       t += `*${_rptName(team)}:* ${tpd}/${tpt} pts (${tpt?Math.round(tpd/tpt*100):0}%) - ${td.length}/${tt.length}${vel}\n`;
     });
     t += `\n🚫 *Bloquants*\n`;
-    t += blocked.length ? blocked.map(x => `> • *${x.id}* [${_rptName(x.team)}] - ${x.title}`).join('\n') : '> _Aucun_';
+    t += blocked.length ? blocked.map(x => `• *${x.id}* [${_rptName(x.team)}] - ${x.title}`).join('\n') : '_Aucun_';
     t += `\n\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
@@ -543,7 +585,7 @@ function _rptKanban(el, isSlack) {
       const wip = CONFIG.wip?.[c.id];
       const warn = wip && items.length > wip ? ' ⚠️ *WIP dépassé*' : '';
       t += `${c.l} - ${items.length} tickets, ${pts} pts${wip ? ` (WIP ${items.length}/${wip})` : ''}${warn}\n`;
-      items.forEach(x => { t += `> • *${x.id}* - ${x.title} _(${x.points||0} pts)_ @${x.assignee||'?'} ${statusLabel(x.status)}\n`; });
+      items.forEach(x => { t += `• *${x.id}* - ${x.title} _(${x.points||0} pts)_ @${x.assignee||'?'} ${statusLabel(x.status)}\n`; });
       t += `\n`;
     });
     t += `_${_rptDate()} - JIRA Dashboard_`;
@@ -577,34 +619,61 @@ function _rptPI(el, isSlack) {
 
   // Aggregate tickets across all sprints of the selected PI
   const velHist = CONFIG.teams[team]?.velocityHistory || [];
+  const _piNum = reportPI || piNum;
   let tickets;
-  if (reportPI) {
-    // Collect tickets from all sprints in the selected PI
-    const piSprints = velHist.filter(h => {
-      const m = (h.name || '').match(/(\d+)\.\d+/);
-      return m && m[1] === reportPI;
-    });
-    let piTickets = [];
-    piSprints.forEach(h => { piTickets = piTickets.concat(h.tickets || []).concat(h.bufferTickets || []); });
-    // If selected PI is the active PI, also include current sprint tickets
-    const activeMatch = (CONFIG.sprint.label || '').match(/(\d+)\.\d+/);
-    if (activeMatch && activeMatch[1] === reportPI) {
-      piTickets = piTickets.concat(_rptTeamTickets(team));
-    }
-    tickets = piTickets;
+  if (_piNum) {
+    // Utiliser _piAllTickets qui détecte aussi les tickets via features parentes / titre
+    tickets = _piAllTickets([team], _piNum);
   } else {
     tickets = _rptTeamTickets(team);
   }
 
   const epics   = typeof EPICS !== 'undefined' ? EPICS : [];
+  const feats   = typeof FEATURES !== 'undefined' ? FEATURES : [];
   const done    = tickets.filter(t => isDone(t.status));
   const pts     = tickets.reduce((s,t) => s+(t.points||0), 0);
   const ptsDone = done.reduce((s,t) => s+(t.points||0), 0);
   const pct     = pts > 0 ? Math.round(ptsDone / pts * 100) : 0;
-  const vel     = CONFIG.teams[team]?.velocity || 0;
-  const cap80   = Math.round(vel * 0.8);
-  const cap20   = vel - cap80;
+
+  // Vélocité : stats PI agrégées (capacité PI = avg × sprintsPerPI) ou fallback sprint
+  const velStats = _piNum ? _piVelocityStats([team], _piNum) : null;
+  const sprintsPerPI = (CONFIG.sprint?.sprintsPerPI) || 5;
+  const velSprint = velStats ? velStats.avg : (CONFIG.teams[team]?.velocity || 0);
+  const velPI     = velStats ? velStats.capacity : velSprint * sprintsPerPI;
+  const cap80PI   = Math.round(velPI * 0.8);
+  const cap20PI   = velPI - cap80PI;
+  const velDelivered = velStats ? velStats.delivered : ptsDone;
+  const velSprintsDone = velStats ? velStats.sprintsDone : 0;
+
+  // Vélocité sans buffer (feature only)
+  const piReSprint = _piNum ? new RegExp(`\\b${_piNum}\\.\\d+`) : null;
+  const teamVH = CONFIG.teams[team]?.velocityHistory || [];
+  const piSprints = piReSprint ? teamVH.filter(s => piReSprint.test(s.name)) : [];
+  let velBufferTotal = 0;
+  piSprints.forEach(s => {
+    velBufferTotal += (s.bufferTickets || []).reduce((a, t) => a + (t.points || 0), 0);
+  });
+  const velFeatureOnly = velDelivered - velBufferTotal;
+  const velSprintFeature = velSprintsDone > 0 ? Math.round(velFeatureOnly / velSprintsDone) : velSprint;
+  const velSprintBuffer = velSprintsDone > 0 ? Math.round(velBufferTotal / velSprintsDone) : 0;
   const teamEpics = epics.filter(e => e.team === team);
+
+  // Features avec tickets dans ce PI (regrouper par feature parente)
+  const _epicMap = {};
+  epics.forEach(e => { _epicMap[e.id] = e; });
+  const _featMap = {};
+  feats.forEach(f => { _featMap[f.id] = f; });
+  const _byFeat = {};
+  tickets.forEach(t => {
+    const epic = _epicMap[t.epic];
+    let feat = epic && epic.feature ? _featMap[epic.feature] : null;
+    if (!feat && t.epic && _featMap[t.epic]) feat = _featMap[t.epic];
+    if (feat) {
+      if (!_byFeat[feat.id]) _byFeat[feat.id] = { feature: feat, tickets: [] };
+      _byFeat[feat.id].tickets.push(t);
+    }
+  });
+  const piFeatures = Object.values(_byFeat).filter(g => g.tickets.length);
   const bufferTickets = tickets.filter(t => t.buffer);
   const bufferPts     = bufferTickets.reduce((a,t) => a+(t.points||0), 0);
   const bufferDone    = bufferTickets.filter(t => isDone(t.status)).reduce((a,t) => a+(t.points||0), 0);
@@ -614,8 +683,12 @@ function _rptPI(el, isSlack) {
   if (isSlack) {
     let t = `🗓️ *Rapport PI Planning - ${_rptName(team)}${piLabel ? ` · ${piLabel}` : ''}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     t += `📊 *Résumé*\n`;
-    t += `> Vélocité cible : ${vel} pts (80% : ${cap80} feature · 20% : ${cap20} buffer)\n`;
-    t += `> Charge engagée : ${pts} pts | Done : *${ptsDone} pts* (${pct}%)\n`;
+    t += `> Vélocité moyenne : *${velSprint} pts/sprint* (${velSprintsDone} sprints réalisés)\n`;
+    t += `> ↳ Feature : ${velSprintFeature} pts/sprint · Buffer : ${velSprintBuffer} pts/sprint\n`;
+    t += `> Capacité PI : ${velPI} pts (80% : ${cap80PI} feature · 20% : ${cap20PI} buffer)\n`;
+    const ptsFeature = pts - bufferPts;
+    t += `> Charge engagée : ${pts} pts | Done : *${velDelivered} pts* (${pct}%)\n`;
+    t += `> ↳ Feature : ${ptsFeature} pts · Buffer : ${bufferPts} pts\n`;
     t += `> En cours : ${inProg.length} tickets | Bloqués : ${blocked.length}\n`;
     if (bufferTickets.length) t += `> 🟣 Buffer : ${bufferDone}/${bufferPts} pts (${bufferTickets.length} tickets)\n`;
     t += `\n`;
@@ -626,33 +699,75 @@ function _rptPI(el, isSlack) {
       : velHist.slice(-5);
     if (piVelHist.length) {
       t += `📈 *Vélocité${piLabel ? ` ${piLabel}` : ''} par sprint*\n`;
-      piVelHist.forEach(h => { t += `> • ${h.name} : ${h.velocity} pts\n`; });
+      piVelHist.forEach(h => { t += `• ${h.name} : ${h.velocity} pts\n`; });
       const avgVel = Math.round(piVelHist.reduce((s,h) => s+h.velocity, 0) / piVelHist.length);
-      t += `> _Moyenne : ${avgVel} pts_\n\n`;
+      t += `_Moyenne : ${avgVel} pts_\n\n`;
     }
 
+    if (piFeatures.length) {
+      t += `🏷️ *Features (${piFeatures.length})*\n`;
+      piFeatures.forEach(g => {
+        const fp = g.tickets.reduce((s,x) => s+(x.points||0), 0);
+        const fd = g.tickets.filter(x => isDone(x.status)).length;
+        const u = _jiraBrowseUrl(g.feature.id);
+        t += `• ${_rptStatus(g.feature.status, g.feature._jiraStatus)} *${g.feature.id}* ${g.feature.title} - ${fd}/${g.tickets.length} done (${fp} pts)${u ? ` <${u}>` : ''}\n`;
+      });
+      t += `\n`;
+    }
     if (teamEpics.length) {
       t += `📦 *Epics (${teamEpics.length})*\n`;
       teamEpics.forEach(e => {
         const et = tickets.filter(x => x.epic === e.id);
         const ed = et.filter(x => isDone(x.status)).length;
         const ep = et.reduce((s,x) => s+(x.points||0), 0);
-        t += `> • *${e.id}* ${e.title} - ${ed}/${et.length} tickets (${ep} pts)\n`;
+        const u = _jiraBrowseUrl(e.id);
+        t += `• ${_rptStatus(e.status, e._jiraStatus)} *${e.id}* ${e.title} - ${ed}/${et.length} tickets (${ep} pts)${u ? ` <${u}>` : ''}\n`;
       });
       t += `\n`;
     }
     if (blocked.length) {
       t += `🚫 *Bloquants (${blocked.length})*\n`;
-      blocked.forEach(x => { t += `> • *${x.id}* - ${x.title}\n`; });
+      blocked.forEach(x => { const u = _jiraBrowseUrl(x.id); t += `• ${_rptStatus(x.status, x._jiraStatus)} *${x.id}* - ${x.title}${u ? ` <${u}>` : ''}\n`; });
+      t += `\n`;
+    }
+    // Tickets regroupés par feature
+    if (tickets.length) {
+      t += `📋 *Tickets (${tickets.length} · ${pts} pts)*\n`;
+      const _noFeat = [];
+      piFeatures.forEach(g => {
+        t += `\n🏷️ _${g.feature.title}_\n`;
+        g.tickets.forEach(x => {
+          const u = _jiraBrowseUrl(x.id);
+          t += `• ${_rptStatus(x.status, x._jiraStatus)} *${x.id}* - ${x.title} _(${x.points||0} pts)_${u ? ` <${u}>` : ''}\n`;
+        });
+      });
+      // Tickets sans feature
+      tickets.forEach(x => {
+        const inFeat = piFeatures.some(g => g.tickets.includes(x));
+        if (!inFeat) _noFeat.push(x);
+      });
+      if (_noFeat.length) {
+        t += `\n📋 _Autres tickets_\n`;
+        _noFeat.forEach(x => {
+          const u = _jiraBrowseUrl(x.id);
+          t += `• ${_rptStatus(x.status, x._jiraStatus)} *${x.id}* - ${x.title} _(${x.points||0} pts)_${u ? ` <${u}>` : ''}\n`;
+        });
+      }
     }
     t += `\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
     let h = `<h1>🗓️ PI Planning - ${_rptName(team)}${piLabel ? ` · ${piLabel}` : ''}</h1><p><em>${_rptDate()}</em></p>`;
     h += `<h2>📊 Résumé</h2><table><tr><th>Métrique</th><th>Valeur</th><th>Détail</th></tr>`;
-    h += `<tr><td>Vélocité cible</td><td>${vel} pts</td><td>80% : ${cap80} · 20% : ${cap20}</td></tr>`;
+    h += `<tr><td>Vélocité moyenne</td><td><strong>${velSprint} pts/sprint</strong></td><td>${velSprintsDone} sprints réalisés</td></tr>`;
+    h += `<tr><td>↳ Feature</td><td>${velSprintFeature} pts/sprint</td><td>Hors buffer</td></tr>`;
+    h += `<tr><td>↳ Buffer</td><td style="color:#7C3AED">${velSprintBuffer} pts/sprint</td><td>Buffer uniquement</td></tr>`;
+    h += `<tr><td>Capacité PI</td><td><strong>${velPI} pts</strong></td><td>80% : ${cap80PI} feature · <span style="color:#7C3AED;font-weight:600">20% : ${cap20PI} buffer</span></td></tr>`;
+    const ptsFeatureConf = pts - bufferPts;
     h += `<tr><td>Charge engagée</td><td>${pts} pts</td><td>${pct}% réalisé</td></tr>`;
-    h += `<tr><td>Réalisés</td><td><strong>${ptsDone} pts</strong></td><td>${done.length} tickets</td></tr>`;
+    h += `<tr><td>↳ Feature</td><td>${ptsFeatureConf} pts</td><td>Hors buffer</td></tr>`;
+    h += `<tr><td>↳ Buffer</td><td style="color:#7C3AED">${bufferPts} pts</td><td>${bufferTickets.length} tickets</td></tr>`;
+    h += `<tr><td>Réalisés</td><td><strong>${velDelivered} pts</strong></td><td>${done.length} tickets</td></tr>`;
     h += `<tr><td>En cours</td><td>${inProg.length}</td><td>-</td></tr>`;
     if (bufferTickets.length) h += `<tr><td style="color:#7C3AED;font-weight:700;">🟣 Buffer</td><td style="color:#7C3AED;">${bufferDone}/${bufferPts} pts</td><td>${bufferTickets.length} tickets</td></tr>`;
     h += `</table>`;
@@ -664,24 +779,65 @@ function _rptPI(el, isSlack) {
     if (piVelHistConf.length) {
       const avgVel = Math.round(piVelHistConf.reduce((s,v) => s+v.velocity, 0) / piVelHistConf.length);
       h += `<h2>📈 Vélocité${piLabel ? ` ${piLabel}` : ''} par sprint</h2><table><tr><th>Sprint</th><th>Vélocité</th></tr>`;
+      const totalVel = piVelHistConf.reduce((s,v) => s+v.velocity, 0);
       piVelHistConf.forEach(v => { h += `<tr><td>${v.name}</td><td>${v.velocity} pts</td></tr>`; });
+      h += `<tr style="border-top:2px solid #DFE1E6"><td><strong>Total</strong></td><td><strong>${totalVel} pts</strong></td></tr>`;
       h += `<tr><td><strong>Moyenne</strong></td><td><strong>${avgVel} pts</strong></td></tr></table>`;
     }
 
+    if (piFeatures.length) {
+      const fTotalPts = piFeatures.reduce((s,g) => s + g.tickets.reduce((a,t) => a+(t.points||0), 0), 0);
+      h += `<h2>🏷️ Features (${piFeatures.length} · ${fTotalPts} pts)</h2><table><tr><th>Statut JIRA</th><th>Feature</th><th>Titre</th><th>Tickets</th><th>Points</th></tr>`;
+      piFeatures.forEach(g => {
+        const fp = g.tickets.reduce((s,x) => s+(x.points||0), 0);
+        const fd = g.tickets.filter(x => isDone(x.status)).length;
+        h += `<tr><td>${_rptStatus(g.feature.status, g.feature._jiraStatus)}</td><td>${_jiraBrowse(g.feature.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${g.feature.title}</td><td>${fd}/${g.tickets.length} done</td><td>${fp} pts</td></tr>`;
+      });
+      h += `</table>`;
+    }
     if (teamEpics.length) {
-      h += `<h2>📦 Epics</h2><table><tr><th>Epic</th><th>Titre</th><th>Avancement</th><th>Points</th></tr>`;
+      const eTotalPts = teamEpics.reduce((s,e) => s + tickets.filter(x => x.epic === e.id).reduce((a,t) => a+(t.points||0), 0), 0);
+      h += `<h2>📦 Epics (${teamEpics.length} · ${eTotalPts} pts)</h2><table><tr><th>Statut JIRA</th><th>Epic</th><th>Titre</th><th>Tickets</th><th>Points</th></tr>`;
       teamEpics.forEach(e => {
         const et = tickets.filter(x => x.epic === e.id);
         const ed = et.filter(x => isDone(x.status)).length;
         const ep = et.reduce((s,x) => s+(x.points||0), 0);
-        h += `<tr><td><strong>${e.id}</strong></td><td>${e.title}</td><td>${ed}/${et.length}</td><td>${ep}</td></tr>`;
+        h += `<tr><td>${_rptStatus(e.status, e._jiraStatus)}</td><td>${_jiraBrowse(e.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${e.title}</td><td>${ed}/${et.length} done</td><td>${ep} pts</td></tr>`;
       });
       h += `</table>`;
     }
     if (blocked.length) {
-      h += `<h2>🚫 Bloquants</h2><ul>`;
-      blocked.forEach(x => { h += `<li><strong>${x.id}</strong> - ${x.title}</li>`; });
-      h += `</ul>`;
+      h += `<h2>🚫 Bloquants</h2><table><tr><th>Statut</th><th>Clé</th><th>Titre</th></tr>`;
+      blocked.forEach(x => { h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${x.title}</td></tr>`; });
+      h += `</table>`;
+    }
+    // Tickets regroupés par feature
+    if (tickets.length) {
+      h += `<h2>📋 Tickets (${tickets.length} · ${pts} pts)</h2>`;
+      const _noFeatConf = [];
+      piFeatures.forEach(g => {
+        const gPts = g.tickets.reduce((s,x) => s+(x.points||0), 0);
+        h += `<h3>🏷️ ${g.feature.title} (${g.tickets.length} · ${gPts} pts)</h3>`;
+        h += `<table><tr><th>Statut</th><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th></tr>`;
+        g.tickets.forEach(x => {
+          h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td></tr>`;
+        });
+        h += `</table>`;
+      });
+      // Tickets sans feature
+      tickets.forEach(x => {
+        const inFeat = piFeatures.some(g => g.tickets.includes(x));
+        if (!inFeat) _noFeatConf.push(x);
+      });
+      if (_noFeatConf.length) {
+        const nfPts = _noFeatConf.reduce((s,x) => s+(x.points||0), 0);
+        h += `<h3>📋 Autres tickets (${_noFeatConf.length} · ${nfPts} pts)</h3>`;
+        h += `<table><tr><th>Statut</th><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th></tr>`;
+        _noFeatConf.forEach(x => {
+          h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td></tr>`;
+        });
+        h += `</table>`;
+      }
     }
     _rptSetConf(el, h);
   }
@@ -857,8 +1013,10 @@ function _rptRoadmap(el, isSlack) {
       if (!items.length) return;
       const ipts = items.reduce((s,x) => s+(x.points||0), 0);
       t += `${pIcons[p]} *${p.charAt(0).toUpperCase()+p.slice(1)} (${items.length} - ${ipts} pts)*\n`;
-      items.slice(0, 10).forEach(x => { t += `> • *${x.id}* - ${x.title} _(${x.points||0} pts)_\n`; });
-      if (items.length > 10) t += `> _… et ${items.length - 10} autres_\n`;
+      items.slice(0, 10).forEach(x => {
+        t += `• ${_rptStatus(x.status, x._jiraStatus)} *${x.id}* - ${x.title} _(${x.points||0} pts)_\n`;
+      });
+      if (items.length > 10) t += `_… et ${items.length - 10} autres_\n`;
       t += `\n`;
     });
     t += `_${_rptDate()} - JIRA Dashboard_`;
@@ -880,11 +1038,11 @@ function _rptRoadmap(el, isSlack) {
       <span style="padding:4px 10px;border-radius:6px;background:#EFF6FF;color:#2563EB;font-weight:600;font-size:12px;">Sans priorité : ${noPrio}</span>
     </div>`;
 
-    h += `<h2>📋 Backlog priorisé</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Priorité</th><th>Epic</th></tr>`;
+    h += `<h2>📋 Backlog priorisé</h2><table><tr><th>Statut</th><th>Clé</th><th>Titre</th><th>Pts</th><th>Priorité</th><th>Epic</th></tr>`;
     sorted.slice(0, 30).forEach(x => {
-      h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.priority}</td><td>${x.epic||'-'}</td></tr>`;
+      h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.priority}</td><td>${x.epic ? _jiraBrowse(x.epic,{style:'color:#0284C7;font-size:11px'}) : '-'}</td></tr>`;
     });
-    if (sorted.length > 30) h += `<tr><td colspan="5"><em>… et ${sorted.length-30} autres tickets</em></td></tr>`;
+    if (sorted.length > 30) h += `<tr><td colspan="6"><em>… et ${sorted.length-30} autres tickets</em></td></tr>`;
     h += `</table>`;
     _rptSetConf(el, h);
   }
@@ -895,32 +1053,34 @@ function _rptRoadmap(el, isSlack) {
 // ============================================================
 
 function _rptPIPrep(el, isSlack) {
-  // Use selected PI or default to NEXT PI for preparation
-  const currentPI = typeof _ppDetectPI === 'function' ? _ppDetectPI() : null;
-  const currentNum = currentPI ? parseInt((currentPI.match(/\d+/) || [])[0] || '0', 10) : 0;
-  const prepNum = reportPI ? parseInt(reportPI) + 1 : (currentNum ? currentNum + 1 : 0);
-  const nextPINum = prepNum;
-  const nextPILabel = nextPINum ? `PI ${nextPINum}` : 'PI suivant';
+  // Utiliser le PI sélectionné dans le topbar
+  const piNum = reportPI || (typeof _ppDetectPI === 'function' ? (_ppDetectPI() || '').replace(/^PI/i, '') : '');
+  const piLabel = piNum ? `PI ${piNum}` : 'PI courant';
+  const piKey = `PI${piNum}`;
 
-  const objs = typeof _ppObjList === 'function' ? _ppObjList() : [];
-  const roam = typeof _ppRoamList === 'function' ? _ppRoamList() : [];
-  const deps = typeof _ppDepList === 'function' ? _ppDepList() : [];
-  const fist = typeof _ppFistGet === 'function' ? _ppFistGet() : {};
-  const cap  = typeof _ppCapGet === 'function' ? _ppCapGet() : {};
+  // Lire les données piprep du PI sélectionné (pas forcément le PI courant)
+  const _ppFileRef = typeof _ppFile !== 'undefined' ? _ppFile : {};
+  const piData = _ppFileRef[piKey] || {};
+  const objs = piData.objectives || [];
+  const roam = piData.roam || [];
+  const deps = piData.deps || [];
+  const cap  = piData.capacity || {};
+  const _moodD = typeof _moodData === 'function' ? _moodData() : {};
+  const fist = _moodD.fist || {};
   const teams = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
   const roamCats = { R:'✅ Resolved', O:'👤 Owned', A:'🤝 Accepted', M:'🛡️ Mitigated' };
 
   if (isSlack) {
-    let t = `📋 *Rapport Préparation PI Planning · ${nextPILabel}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
+    let t = `📋 *Rapport Préparation PI Planning · ${piLabel}*\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
 
     // Objectifs
     t += `🎯 *Objectifs PI (${objs.length})*\n`;
     if (objs.length) {
       objs.forEach(o => {
         const type = o.type === 'committed' ? '📌 Committed' : '🎯 Stretch';
-        t += `> • [BV ${o.bv||'?'}] *${o.title}* - ${_rptName(o.team)} - ${type}\n`;
+        t += `• [BV ${o.bv||'?'}] *${o.title}* - ${_rptName(o.team)} - ${type}\n`;
       });
-    } else { t += `> _Aucun objectif défini_\n`; }
+    } else { t += `_Aucun objectif défini_\n`; }
     t += `\n`;
 
     // ROAM
@@ -929,15 +1089,15 @@ function _rptPIPrep(el, isSlack) {
       const items = roam.filter(x => x.cat === cat);
       if (!items.length) return;
       t += `*${label} (${items.length})*\n`;
-      items.forEach(x => { t += `> • ${x.title}${x.note ? ` - _${x.note}_` : ''}\n`; });
+      items.forEach(x => { t += `• ${x.title}${x.note ? ` - _${x.note}_` : ''}\n`; });
     });
-    if (!roam.length) t += `> _Aucun risque identifié_\n`;
+    if (!roam.length) t += `_Aucun risque identifié_\n`;
     t += `\n`;
 
     // Dépendances
     t += `🔗 *Dépendances (${deps.length})*\n`;
-    if (deps.length) deps.forEach(d => { t += `> • ${_rptName(d.fromTeam)} → ${_rptName(d.toTeam)} : ${d.fromTitle||'?'} ↔ ${d.toTitle||'?'}\n`; });
-    else t += `> _Aucune_\n`;
+    if (deps.length) deps.forEach(d => { t += `• ${_rptName(d.fromTeam)} → ${_rptName(d.toTeam)} : ${d.fromTitle||'?'} ↔ ${d.toTitle||'?'}\n`; });
+    else t += `_Aucune_\n`;
     t += `\n`;
 
     // Capacité
@@ -990,7 +1150,7 @@ function _rptPIPrep(el, isSlack) {
     t += `\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>📋 Préparation PI Planning · ${nextPILabel}</h1><p><em>${_rptDate()}</em></p>`;
+    let h = `<h1>📋 Préparation PI Planning · ${piLabel}</h1><p><em>${_rptDate()}</em></p>`;
 
     // Objectifs
     h += `<h2>🎯 Objectifs PI (${objs.length})</h2>`;
@@ -1625,10 +1785,10 @@ function _rptMoodVelocity(el, isSlack) {
       t += `\n*Détail par sprint :*\n`;
       withMood.slice(-10).forEach(r => {
         const moodBar = '█'.repeat(Math.round(r.mood)) + '░'.repeat(5 - Math.round(r.mood));
-        t += `> • *${r.team}* ${r.sprint} - Mood: ${moodBar} ${r.mood}/5 | Vélo: ${r.velocity} pts\n`;
+        t += `• *${r.team}* ${r.sprint} - Mood: ${moodBar} ${r.mood}/5 | Vélo: ${r.velocity} pts\n`;
       });
     } else {
-      t += `\n> _Aucune donnée mood disponible. Utilisez le mood meter (ROTI) en fin de sprint._\n`;
+      t += `\n_Aucune donnée mood disponible. Utilisez le mood meter (ROTI) en fin de sprint._\n`;
     }
 
     t += `\n_Rapport généré le ${_rptDate()} - JIRA Dashboard_`;
@@ -1736,6 +1896,198 @@ function _rptMoodVelocityChart(container, data, correlation) {
       },
     },
   });
+}
+
+// ============================================================
+// MIRO — Export post-its pour prépa PI
+// ============================================================
+
+function _rptMiro(el) {
+  // Utiliser reportPI et reportTeam des sélecteurs (pas reportSprint — MIRO = PI complet)
+  const piNum = reportPI || _piDetect().piNum;
+  const piLabel = piNum ? `PI ${piNum}` : 'PI courant';
+  const piRe = piNum ? new RegExp(`(^|\\D)${piNum}\\.\\d+`) : null;
+
+  // Équipes selon le sélecteur
+  let teams;
+  if (reportTeam === 'group' && currentGroup) {
+    const g = GROUPS.find(x => x.id === currentGroup);
+    teams = g ? g.teams : _allTeams();
+  } else if (reportTeam) {
+    teams = [reportTeam];
+  } else {
+    teams = _allTeams();
+  }
+
+  // Collecter TOUS les tickets du PI (pas de filtre sprint — export PI complet)
+  let allTickets = _piAllTickets(teams, piNum);
+
+  // Fallback : si aucun ticket et que le PI correspond au sprint actif (ex: données demo)
+  // Ne PAS fallback pour les PI futurs — ils peuvent légitimement être vides
+  if (!allTickets.length && piRe && piRe.test(CONFIG.sprint?.label || '')) {
+    const active = typeof getTickets === 'function' ? getTickets() : (typeof TICKETS !== 'undefined' ? TICKETS : []);
+    const teamSet = new Set(teams);
+    allTickets = active.filter(t => !teamSet.size || teamSet.has(t.team));
+  }
+
+  // Grouper par sprint (itération)
+  const bySprint = {};
+  allTickets.forEach(t => {
+    let spKey = '';
+    // 1. Chercher dans allSprints
+    const sprints = t.allSprints || [];
+    if (piRe) {
+      for (const s of sprints) {
+        const m = (s || '').match(/(\d+\.\d+)/);
+        if (m && piRe.test(s)) { spKey = m[1]; break; }
+      }
+    }
+    // 2. sprintName
+    if (!spKey && t.sprintName) {
+      const m = t.sprintName.match(/(\d+\.\d+)/);
+      if (m) spKey = m[1];
+    }
+    // 3. piSprint (ex: "PI#29" ou "29.1")
+    if (!spKey && t.piSprint) {
+      const m = t.piSprint.match(/(\d+\.\d+)/);
+      if (m) spKey = m[1];
+    }
+    // 4. Sprint numérique dans le ticket (sprint actif)
+    if (!spKey && t.sprint && typeof t.sprint !== 'object') {
+      const label = CONFIG.sprint?.label || '';
+      const m = label.match(/(\d+\.\d+)/);
+      if (m && piRe && piRe.test(label)) spKey = m[1];
+    }
+    if (!spKey) spKey = 'Non planifié';
+    if (!bySprint[spKey]) bySprint[spKey] = [];
+    bySprint[spKey].push(t);
+  });
+
+  // Trier les sprints par numéro
+  const sprintKeys = Object.keys(bySprint).sort((a, b) => {
+    if (a === 'Non planifié') return 1;
+    if (b === 'Non planifié') return -1;
+    return parseFloat(a) - parseFloat(b);
+  });
+
+  // Maps pour regrouper par feature
+  const featureMap = {};
+  (typeof FEATURES !== 'undefined' ? FEATURES : []).forEach(f => { featureMap[f.id] = f; });
+  const epicMap = {};
+  (typeof EPICS !== 'undefined' ? EPICS : []).forEach(e => { epicMap[e.id] = e; });
+
+  // Sous-titre contexte
+  const teamLabel = reportTeam === 'group' && currentGroup
+    ? (GROUPS.find(x => x.id === currentGroup)?.name || '')
+    : (reportTeam ? _rptName(reportTeam) : 'Toutes équipes');
+
+  // Résumé global
+  const grandTotal = allTickets.length;
+  const grandPts = allTickets.reduce((s, t) => s + (t.points || 0), 0);
+  const grandDone = allTickets.filter(t => isDone(t.status)).length;
+  const grandDonePts = allTickets.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
+
+  // Construire le texte post-it
+  let text = `🟡 MIRO — Post-its ${piLabel} — ${teamLabel}\n`;
+  text += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  text += `📊 ${grandTotal} tickets · ${grandPts} pts`;
+  if (grandDone) text += ` · ${grandDone} done (${grandDonePts} pts)`;
+  text += ` · ${sprintKeys.length} sprint${sprintKeys.length > 1 ? 's' : ''}\n\n`;
+
+  sprintKeys.forEach(spKey => {
+    const tickets = bySprint[spKey];
+
+    // Regrouper les tickets par feature parente (epic → feature)
+    const byFeature = {};
+    const noFeature = [];
+    tickets.forEach(t => {
+      const epic = epicMap[t.epic];
+      // 1. epic.feature pointe vers une feature connue
+      let feat = epic && epic.feature ? featureMap[epic.feature] : null;
+      // 2. Fallback : l'epic lui-même est peut-être une feature dans featureMap
+      if (!feat && t.epic && featureMap[t.epic]) feat = featureMap[t.epic];
+      if (feat) {
+        if (!byFeature[feat.id]) byFeature[feat.id] = { feature: feat, tickets: [] };
+        byFeature[feat.id].tickets.push(t);
+      } else {
+        noFeature.push(t);
+      }
+    });
+
+    const featIds = Object.keys(byFeature).sort();
+    const totalPts = tickets.reduce((s, t) => s + (t.points || 0), 0);
+
+    text += `📅 Ité ${spKey} (${tickets.length} tickets · ${totalPts} pts)\n`;
+    text += `${'─'.repeat(40)}\n\n`;
+
+    // 1. Features — une ligne par feature avec stats agrégées
+    if (featIds.length) {
+      text += `🏷️ FEATURES\n`;
+      featIds.forEach(fid => {
+        const grp = byFeature[fid];
+        const fPts = grp.tickets.reduce((s, t) => s + (t.points || 0), 0);
+        const fDone = grp.tickets.filter(t => isDone(t.status)).length;
+        const fDot = isDone(grp.feature.status) ? '🟢' : (grp.feature.status === 'inprog' || grp.feature.status === 'review' || grp.feature.status === 'test') ? '🔵' : grp.feature.status === 'blocked' ? '🔴' : '⚪';
+        const fUrl = _jiraBrowseUrl(grp.feature.id);
+        text += `  ${fDot} ${grp.feature.id}${fUrl ? ` ${fUrl}` : ''} — ${grp.feature.title} (${fDone}/${grp.tickets.length} done · ${fPts} pts)\n`;
+      });
+      text += `\n`;
+    }
+
+    // 2. US — tickets regroupés sous chaque feature
+    if (featIds.length) {
+      text += `📋 USER STORIES\n`;
+      featIds.forEach(fid => {
+        const grp = byFeature[fid];
+        const fDot2 = isDone(grp.feature.status) ? '🟢' : (grp.feature.status === 'inprog' || grp.feature.status === 'review' || grp.feature.status === 'test') ? '🔵' : grp.feature.status === 'blocked' ? '🔴' : '⚪';
+        text += `\n  📦 ${fDot2} ${grp.feature.title}\n`;
+        grp.tickets.forEach(t => { text += _miroPostIt(t); });
+      });
+      text += `\n`;
+    }
+
+    // 3. Tickets sans feature
+    if (noFeature.length) {
+      text += `📋 Autres tickets\n`;
+      noFeature.forEach(t => { text += _miroPostIt(t); });
+      text += `\n`;
+    }
+
+    text += `\n`;
+  });
+
+  if (!sprintKeys.length) {
+    const currentMatch = (CONFIG.sprint?.label || '').match(/(\d+)\.\d+/);
+    const currentPINum = currentMatch ? parseInt(currentMatch[1]) : 0;
+    const selectedPINum = parseInt(piNum) || 0;
+    const isFuture = selectedPINum > currentPINum;
+    if (isFuture) {
+      text += `Aucun ticket planifié pour ${piLabel}\n`;
+      text += `Les tickets seront visibles après le PI Planning, une fois affectés aux sprints ${piNum}.x dans JIRA.\n`;
+    } else {
+      text += `Aucun ticket trouvé pour ${piLabel}\n`;
+    }
+  }
+
+  text += `\nExport MIRO généré le ${_rptDate()} - JIRA Dashboard`;
+
+  // Rendu avec zone de copie
+  el.className = 'sondage-wrap';
+  el.innerHTML = `
+    <div style="max-width:900px;margin:0 auto;">
+      <div class="sondage-col-label">Post-its MIRO — ${piLabel} — ${teamLabel}</div>
+      <p style="margin:0 0 12px;color:var(--muted);font-size:13px;">Copiez le texte ci-dessous et collez-le dans MIRO pour créer les post-its. Changez le PI ou l'équipe via les sélecteurs ci-dessus.</p>
+      <pre class="report-preview" style="margin:0;white-space:pre-wrap;font-size:13px;line-height:1.6;">${text.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</pre>
+    </div>`;
+}
+
+function _miroPostIt(t) {
+  const url = _jiraBrowseUrl(t.id);
+  const link = url ? ` ${url}` : '';
+  const pts = t.points ? ` (${t.points} pts)` : '';
+  const buf = t.buffer ? ' [Buffer]' : '';
+  const dot = isDone(t.status) ? '🟢' : (t.status === 'inprog' || t.status === 'review' || t.status === 'test') ? '🔵' : t.status === 'blocked' ? '🔴' : '⚪';
+  return `  ${dot} ${t.id}${link}\n  ${t.title}${pts}${buf}\n\n`;
 }
 
 // ============================================================

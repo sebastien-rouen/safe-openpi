@@ -72,22 +72,90 @@ Toutes les fonctions et variables sont **globales** (pas d'import/export).
 | `pp-xxx` | Section piprep | `pp-roam`, `pp-deps`, `pp-objectives`, `pp-fist` |
 | `sb-xxx-wrap` | Conteneur sidebar | `sb-risks-wrap`, `sb-buffer-wrap` |
 
+## Hiérarchie JIRA et règles métier
+
+### Structure hiérarchique
+
+```
+JIRA (réel)                    Code (modèle interne)
+─────────────                  ──────────────────────
+Epic (facultatif, top)    →    FEATURES[]    { id, title, color, status, piSprint, team }
+  └─ Feature              →    EPICS[]       { id, title, feature, team, color, _isFeature }
+       └─ Ticket           →    TICKETS[]     { id, title, type, epic, team, ... }
+```
+
+**ATTENTION** : la hiérarchie JIRA est **Epic > Feature > Ticket**, mais le code nomme les niveaux **FEATURES (top) > EPICS (mid) > TICKETS**. Ne JAMAIS confondre :
+- Code `FEATURES[]` = Epics JIRA (niveau top, facultatif)
+- Code `EPICS[]` = Features JIRA (niveau mid, obligatoire) — champ `_isFeature: true`
+- Code `TICKETS[]` = Stories, Bugs, Tasks, OPS, etc.
+
+Une Feature JIRA peut exister **sans Epic parent** (feature standalone). Dans ce cas, `epic.feature = null`.
+
+### Conventions de nommage des sprints PI
+
+| Format | Usage | Exemple |
+|--------|-------|---------|
+| `PI#XX` (avec #) | Sprint PI pour les **Features** | Sprint = "PI#29" |
+| `PIXX` (sans #) | Sprint PI pour les **tickets hors hiérarchie** | Sprint = "PI29" |
+| `XX.Y` | Sprint d'itération (équipe) | "Fuego - Ité 29.3" |
+| Label `Cadrage_PIXX` | Ticket/Feature **en cadrage** pour le PI XX | Feature Sprint "PI#30" + label "Cadrage_PI29" |
+
+### Détection d'appartenance à un PI
+
+Un ticket/feature appartient au PI sélectionné si **au moins une** condition est vraie :
+1. `piSprint` matche `PI#XX` ou `PIXX`
+2. `sprintName` matche `XX.Y`
+3. `allSprints` contient un sprint matchant
+4. Epic/Feature parent a un titre contenant `PIXX`
+5. Label `Cadrage_PIXX` (apparaît avec badge "🔍 Cadrage")
+
+### Détection de l'équipe
+
+L'équipe d'un ticket vient du **board JIRA** où il se trouve (`_boardTeam`). Pour les Features/Epics sans board :
+- La team est **déduite des tickets enfants** (premier enfant avec team ≠ `_PI`)
+- `team: "_PI"` = ticket trouvé via JQL PI mais sans board d'équipe identifié
+- `team: ""` = team non résolue — sera déduite lors de la sync
+
+**Règle stricte** : quand une équipe est filtrée, les Features/Epics ne passent le filtre que si elles ont des **tickets enfants dans cette équipe**. Pas de bypass `_PI`.
+
+### Détection buffer
+
+Un ticket est `buffer: true` si :
+- Label contenant "Buffer" (insensible à la casse)
+- Epic parent dont le titre contient "Buffer"
+
+### Types de tickets
+
+| Type JIRA | Type interne | Emoji |
+|-----------|-------------|-------|
+| Story | `story` | 📗 |
+| Technical Story | `storytech` | 📘 |
+| Bug | `bug` | 🐛 |
+| Incident | `incident` | 🔥 |
+| Support / Support Request | `support` | 🎫 |
+| OPS / Operation | `ops` | ⚙️ |
+| Task / Tâche / Sous-tâche | `tache` | 📝 |
+| Dette / Tech Debt | `dette` | 🧹 |
+| Feature / Fonctionnalité | `feature` | 📦 |
+| Epic | `epic` | 🏷️ |
+
+**Statuts :** `todo | inprog | review | done | blocked | test | backlog`
+**Priorités :** `critical | high | medium | low`
+
 ## Modèle de données
 
 ```
-Feature (FEATURES)
-  └─ Epic (EPICS)       - feature, team, color
-       └─ Ticket (TICKETS) - type, epic, team, assignee, points, status, priority, sprint
-
-Groupe (GROUPS)         - id, name, color, teams[]
-Support (SUPPORT_TICKETS) - id, title, priority, status, assignee, date, description
-Innovation (INNO_FEATURES) - id, title, status, labels, assignee, points, piSprint
-Backlog (BACKLOG_TICKETS) - tickets non planifiés ou PI futurs
+FEATURES[]           - id, title, color, status, _jiraStatus, piSprint, team
+  └─ EPICS[]         - id, title, feature, team, color, _isFeature, piSprint
+       └─ TICKETS[]  - id, title, type, epic, team, assignee, points, status, priority, sprint, buffer, labels
 ```
 
-**Types :** `story | storytech | bug | incident | support | ops | tache | dette`
-**Statuts :** `todo | inprog | review | done | blocked | test | backlog`
-**Priorités :** `critical | high | medium | low`
+Autres collections :
+- `GROUPS[]` - id, name, color, teams[]
+- `SUPPORT_TICKETS[]` - id, title, priority, status, assignee, date, description
+- `INNO_FEATURES[]` - id, title, status, labels, assignee, points, piSprint
+- `BACKLOG_TICKETS[]` - mêmes champs que TICKETS + piSprint, sprintName, allSprints
+- `AMELIORATION_TICKETS[]` - retro, post-mortem, CoP
 
 ### Propriétés enrichies des tickets
 
@@ -97,6 +165,8 @@ Backlog (BACKLOG_TICKETS) - tickets non planifiés ou PI futurs
 | `buffer` | bool | Label "buffer" OU epic parent titre "buffer" |
 | `labels` | string[] | Étiquettes JIRA normalisées en minuscules |
 | `_jiraStatus` | string | Statut JIRA brut, re-mappé via `_mapStatus()` |
+| `_isFeature` | bool | (EPICS) `true` si l'epic est une Feature JIRA |
+| `_cadrage` | bool | Ticket avec label `Cadrage_PIXX` matchant le PI sélectionné |
 | `updatedAt` | string | ISO timestamp `fields.updated` |
 | `todayChanges` | array | Changelog JIRA du jour : `{ time, author, field, from, to }` |
 | `description` | string | ADF → texte brut via `_extractDescription()` |
@@ -221,12 +291,44 @@ Sections : progress, buffer, objectifs PI, risques & qualité, stats sprint.
 
 Format : section `[Non publié]` en haut, puis blocs `###` par feature/fix avec description et fichiers modifiés. Voir le skill `/git changelog` pour le format complet.
 
+## Pattern UI : carte avec illustration SVG latérale
+
+Pattern validé pour les sections avec checklist ou items par équipe. Layout horizontal : contenu à gauche, illustration SVG à droite.
+
+```
+.card-body { display: flex; }
+.card-main { flex: 1; min-width: 0; }
+.card-side { width: 120px; flex-shrink: 0; background: var(--bg); border-left: 1px solid var(--border); }
+@media (max-width: 600px) { .card-side { display: none; } }
+```
+
+**SVG dynamique** : couleur de l'équipe en paramètre (`fill="${color}11"`, `stroke="${color}44"`), scène contextuelle (board, personnes, bulles), arc de progression avec `stroke-dasharray="${pct * 0.377} 100"`.
+
+**Référence** : `piprep.js` → `_ppPipSection()`, CSS → `.pip-card-*` dans `views.css`.
+
+**Dériver pour d'autres contextes** : adapter les éléments SVG à la thématique (Support → tickets/headset, Roadmap → route/jalons, Kanban → colonnes/cartes, etc.), garder le même layout et le même système de couleur dynamique.
+
 ## Pièges courants
 
-1. **PI sélectionné vs PI actif** : `_piDetect().piNum` = sélectionné, `_ppDetectPI()` = actif réel
-2. **`_piAllTickets` et sprint actif** : n'inclut les tickets du sprint actif que si le sprint appartient au PI demandé (regex `piNum.\d+` sur le label sprint)
-3. **`reportSprint`** : stocke l'itération (`"28.4"`), pas le nom complet. Utiliser `_rptSprintCtx(team).label` pour afficher
-4. **Refresh sidebar** : `showView()` re-rend la sidebar entière. Toujours préserver l'état `open` des `<details>` avant `innerHTML`
-5. **`_rotTeamMembers(team)`** vs `MEMBERS[team]` : le premier combine JIRA + manuels + absences - hidden. Toujours préférer `_rotTeamMembers`
-6. **Fist of five / sparklines** : filtrer par PI avec le paramètre `piNum`. Sans filtre, les données de tous les PIs se mélangent
-7. **Sections piprep** : refresh partiel via `outerHTML` (pas `innerHTML`). L'ID (`pp-roam`, etc.) doit être sur le div racine de la section
+### Hiérarchie JIRA ↔ modèle code
+
+1. **FEATURES ≠ Features JIRA** : dans le code, `FEATURES[]` = Epics JIRA (top), `EPICS[]` = Features JIRA (mid). Toujours vérifier `_isFeature` sur un EPIC pour savoir si c'est une Feature JIRA.
+2. **Feature sans Epic parent** : une Feature JIRA peut ne pas avoir d'Epic au-dessus. `epic.feature = null` est valide. Ne jamais exiger `feature` non-null.
+3. **Team `_PI` ou vide** : les Features/Epics découvertes via JQL PI (pas via un board d'équipe) ont `team: "_PI"` ou `""`. La team est déduite des tickets enfants lors de la sync. Lors du filtrage par équipe, vérifier les **enfants**, pas la team de la feature elle-même.
+4. **Tickets dupliqués sur le board** : si plusieurs colonnes JIRA mappent vers le même statut interne (ex: "Spéc Fonc" et "Spéc Tech" → `inprog`), utiliser `_ticketInCol()` avec `col.jiraStatuses` pour matcher par `_jiraStatus`, pas par `status`.
+5. **`piSprint` vs sprint d'itération** : `piSprint: "PI#29"` = sprint PI (Features). `sprintName: "Fuego - Ité 29.3"` = sprint d'itération (tickets). Les deux coexistent, ne pas confondre.
+6. **Label `Cadrage_PIXX`** : un ticket avec ce label apparaît dans le PI XX même si son sprint est un autre PI. Marquer `_cadrage: true` pour l'affichage.
+7. **Résolution des titres** : les epics/features stubs (découvertes comme parents inline) ont souvent `title = id`. Utiliser `_resolveTitle()` qui cherche dans EPICS, FEATURES, BACKLOG_TICKETS, TICKETS.
+8. **Sprint field `null` pour Features JIRA** : l'API JIRA Cloud ne retourne pas le champ sprint (`customfield_10020`) pour les issues de type Feature/Fonctionnalité. La sync fait un fetch dédié par PI (`issuetype IN (Feature, Fonctionnalité) AND sprint IN ("PI#XX")`) avec pagination. Le `piSprint` est assigné depuis le PI du JQL, pas depuis le champ sprint.
+
+### Logique applicative
+
+9. **PI sélectionné vs PI actif** : `_piDetect().piNum` = sélectionné, `_ppDetectPI()` = actif réel
+10. **`_piAllTickets` et sprint actif** : n'inclut les tickets du sprint actif que si le sprint appartient au PI demandé (regex `piNum.\d+` sur le label sprint)
+11. **`reportSprint`** : stocke l'itération (`"28.4"`), pas le nom complet. Utiliser `_rptSprintCtx(team).label` pour afficher
+12. **Refresh sidebar** : `showView()` re-rend la sidebar entière. Toujours préserver l'état `open` des `<details>` avant `innerHTML`
+13. **`_rotTeamMembers(team)`** vs `MEMBERS[team]` : le premier combine JIRA + manuels + absences - hidden. Toujours préférer `_rotTeamMembers`
+14. **Fist of five / sparklines** : filtrer par PI avec le paramètre `piNum`. Sans filtre, les données de tous les PIs se mélangent
+15. **Sections piprep** : refresh partiel via `outerHTML` (pas `innerHTML`). L'ID (`pp-roam`, etc.) doit être sur le div racine de la section
+16. **Team effective** : les features backlog ont `team: "_PI"` car JIRA ne les associe à aucun board. La team réelle est dans `FEATURES[].team` (déduite des tickets enfants). Utiliser `effectiveTeam` : chercher d'abord dans FEATURES/EPICS avant de filtrer par team.
+17. **Pagination JQL PI** : l'API JIRA Cloud limite à 100 résultats par page. Le fetch PI pagine automatiquement. Le paramètre `maxPIIssues` (défaut 500, configurable dans Paramètres) contrôle le maximum.

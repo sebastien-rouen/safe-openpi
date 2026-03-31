@@ -17,8 +17,54 @@
 </head>
 <body>
 
+<!-- ===== SKELETON LOADER ===== -->
+<div id="app-loader">
+  <div class="loader-content">
+    <div class="loader-logo">
+      <svg width="48" height="48" viewBox="0 0 32 32" fill="none">
+        <rect width="32" height="32" rx="8" fill="#0284C7"/>
+        <path d="M8 8h7l9 9-9 9H8l9-9z" fill="white" opacity=".9"/>
+        <circle cx="11" cy="16" r="2.5" fill="white"/>
+      </svg>
+    </div>
+    <div class="loader-skeleton">
+      <div class="skeleton-line skeleton-w80"></div>
+      <div class="skeleton-line skeleton-w60"></div>
+      <div class="skeleton-line skeleton-w90"></div>
+      <div class="skeleton-line skeleton-w40"></div>
+    </div>
+    <div class="loader-dots">
+      <span></span><span></span><span></span>
+    </div>
+  </div>
+</div>
+<style>
+  #app-loader {
+    position: fixed; inset: 0; z-index: 99999;
+    background: #0F172A;
+    display: flex; align-items: center; justify-content: center;
+    transition: opacity .4s, visibility .4s;
+  }
+  #app-loader.hide { opacity: 0; visibility: hidden; pointer-events: none; }
+  .loader-content { display: flex; flex-direction: column; align-items: center; gap: 28px; }
+  .loader-logo svg { animation: loader-pulse 2s ease-in-out infinite; }
+  @keyframes loader-pulse { 0%,100% { opacity: .6; transform: scale(.95); } 50% { opacity: 1; transform: scale(1.05); } }
+  .loader-skeleton { display: flex; flex-direction: column; gap: 10px; width: 220px; }
+  .skeleton-line { height: 8px; border-radius: 4px; background: linear-gradient(90deg, #1E293B 25%, #334155 50%, #1E293B 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.5s ease-in-out infinite; }
+  .skeleton-w80 { width: 80%; }
+  .skeleton-w60 { width: 60%; }
+  .skeleton-w90 { width: 90%; }
+  .skeleton-w40 { width: 40%; }
+  @keyframes skeleton-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+  .loader-dots { display: flex; gap: 6px; }
+  .loader-dots span { width: 6px; height: 6px; border-radius: 50%; background: #0284C7; animation: loader-bounce .6s ease-in-out infinite alternate; }
+  .loader-dots span:nth-child(2) { animation-delay: .2s; }
+  .loader-dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes loader-bounce { 0% { opacity: .3; transform: translateY(0); } 100% { opacity: 1; transform: translateY(-6px); } }
+</style>
+
 <!-- ===== SIDEBAR ===== -->
-<aside id="sidebar">
+<aside id="sidebar" style="visibility:hidden">
   <div class="sidebar-logo">
     <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
       <rect width="32" height="32" rx="8" fill="#0284C7"/>
@@ -33,13 +79,13 @@
 
   <div class="sync-area">
     <button id="syncBtn" onclick="doSync()">
-      <span class="sync-icon">🔄</span> Synchroniser
+      <span class="sync-icon" aria-hidden="true">🔄</span> Synchroniser
     </button>
     <div class="sync-meta">
-      <span class="last-sync" id="lastSync">Dernière sync: -</span>
+      <span class="last-sync" id="lastSync">Sync: -</span>
       <label class="sync-partial-toggle" title="Sync rapide : ne recharge que les tickets du sprint actif (vélocité et backlog conservés)">
-        <input type="checkbox" id="sync-incremental">
-        <span class="sync-partial-icon">⚡</span>
+        <input type="checkbox" id="sync-incremental" aria-label="Sync rapide (incrémentale)">
+        <span class="sync-partial-icon" aria-hidden="true">⚡</span>
       </label>
     </div>
     <div class="sync-progress" id="syncProgress" style="display:none">
@@ -59,17 +105,17 @@
     <div id="group-btns"></div>
   </div>
 
-  <nav>
-    <div class="nav-item active" onclick="showView('scrum')"    data-view="scrum">    <span class="nav-icon">📋</span> Vue Scrum<span id="sb-blocked-badge" class="sb-blocked-badge" style="display:none"></span></div>
-    <div class="nav-item"        onclick="showView('kanban')"   data-view="kanban">   <span class="nav-icon">🗂️</span> Vue Kanban</div>
-    <div class="nav-item"        onclick="showView('roadmap')"  data-view="roadmap">  <span class="nav-icon">🗺️</span> Roadmap</div>
-    <div class="nav-item"        onclick="showView('pi')"       data-view="pi">       <span class="nav-icon">🗓️</span> PI Planning</div>
-    <div class="nav-item"        onclick="showView('reports')"  data-view="reports">  <span class="nav-icon">📊</span> Rapports</div>
-    <div class="nav-item"        onclick="showView('support')"  data-view="support">  <span class="nav-icon">🎫</span> Support</div>
-    <div class="nav-item"        onclick="showView('inno')"         data-view="inno">         <span class="nav-icon">💡</span> Innovations</div>
-    <div class="nav-item"        onclick="showView('amelioration')" data-view="amelioration"> <span class="nav-icon">🔄</span> Amélioration</div>
-    <div class="nav-item"        onclick="showView('settings')"     data-view="settings">     <span class="nav-icon">⚙️</span> Paramètres</div>
-    <div class="shortcut-hint">⌨️ Raccourcis: 1-9</div>
+  <nav aria-label="Navigation principale">
+    <button class="nav-item active" onclick="showView('scrum')"    data-view="scrum"    title="Vue Scrum (1)">    <span class="nav-icon" aria-hidden="true">📋</span> Vue Scrum<span id="sb-blocked-badge" class="sb-blocked-badge" style="display:none"></span></button>
+    <button class="nav-item"        onclick="showView('kanban')"   data-view="kanban"   title="Vue Kanban (2)">  <span class="nav-icon" aria-hidden="true">🗂️</span> Vue Kanban</button>
+    <button class="nav-item"        onclick="showView('roadmap')"  data-view="roadmap"  title="Roadmap (3)">     <span class="nav-icon" aria-hidden="true">🗺️</span> Roadmap</button>
+    <button class="nav-item"        onclick="showView('pi')"       data-view="pi"       title="PI Planning (4)"> <span class="nav-icon" aria-hidden="true">🗓️</span> PI Planning</button>
+    <button class="nav-item"        onclick="showView('reports')"  data-view="reports"  title="Rapports (5)">    <span class="nav-icon" aria-hidden="true">📊</span> Rapports</button>
+    <button class="nav-item"        onclick="showView('support')"  data-view="support"  title="Support (6)">     <span class="nav-icon" aria-hidden="true">🎫</span> Support</button>
+    <button class="nav-item"        onclick="showView('inno')"         data-view="inno"         title="Innovations (7)">  <span class="nav-icon" aria-hidden="true">💡</span> Innovations</button>
+    <button class="nav-item"        onclick="showView('amelioration')" data-view="amelioration" title="Amélioration (8)"> <span class="nav-icon" aria-hidden="true">🔄</span> Amélioration</button>
+    <button class="nav-item"        onclick="showView('settings')"     data-view="settings"     title="Paramètres (9)">  <span class="nav-icon" aria-hidden="true">⚙️</span> Paramètres</button>
+    <div class="shortcut-hint" aria-hidden="true">⌨️ Raccourcis: 1-9</div>
   </nav>
 
   <div class="sidebar-stats">
@@ -96,12 +142,17 @@
   </div>
 </aside>
 <div id="sidebar-resizer" title="Redimensionner la sidebar"></div>
+<div class="sidebar-backdrop" onclick="_toggleSidebar()"></div>
 
 <!-- ===== MAIN ===== -->
-<div id="main">
+<div id="main" style="visibility:hidden">
   <div class="topbar">
+    <button class="sidebar-menu-btn" onclick="_toggleSidebar()" aria-label="Menu">☰</button>
     <div class="topbar-title" id="topbar-title">📋 Vue Scrum</div>
-    <div class="topbar-right" id="topbar-actions"></div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <div id="report-pi-sprint" class="rpt-pi-sprint-bar"></div>
+      <div class="topbar-right" id="topbar-actions"></div>
+    </div>
   </div>
 
   <div id="content">
@@ -200,6 +251,10 @@
         <div class="pi-section-header" onclick="_piToggleSection('fist')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">✋</span><span class="pi-section-title">Fist of Five</span></div>
         <div class="pi-section-body"><div id="pi-fist"></div><div class="chart-card" style="margin-top:12px;"><div class="chart-title">📈 Évolution Confiance PI</div><div class="chart-wrap" style="height:200px"><canvas id="fistChartPI"></canvas></div></div></div>
       </div>
+      <div class="pi-section" id="pi-sec-animation">
+        <div class="pi-section-header" onclick="_piToggleSection('animation')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🎬</span><span class="pi-section-title">Animation PIP</span></div>
+        <div class="pi-section-body"><div id="pi-pip"></div></div>
+      </div>
       <div class="pi-section" id="pi-sec-mood">
         <div class="pi-section-header" onclick="_piToggleSection('mood')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">😊</span><span class="pi-section-title">Mood Meter (ROTI)</span></div>
         <div class="pi-section-body"><div id="pi-mood"></div></div>
@@ -208,23 +263,26 @@
         <div class="pi-section-header" onclick="_piToggleSection('metriques')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Métriques</span></div>
         <div class="pi-section-body"><div id="pi-metriques"></div></div>
       </div>
+      <div class="pi-section" id="pi-sec-jira">
+        <div class="pi-section-header" onclick="_piToggleSection('jira')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📋</span><span class="pi-section-title">JIRA → Miro</span></div>
+        <div class="pi-section-body"><div id="pi-jira"></div></div>
+      </div>
     </div>
 
     <!-- VUE RAPPORTS -->
     <div class="view" id="view-reports">
       <!-- Sélecteur de section + format + onglets équipes (sticky) -->
       <div class="report-sticky-bar">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-          <div class="report-sections" id="report-sections" style="margin-bottom:0;padding-bottom:0;border-bottom:none;"></div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <div id="report-pi-sprint" class="rpt-pi-sprint-bar"></div>
+        <div class="rpt-bar-row">
+          <div class="report-sections" id="report-sections"></div>
+          <div class="rpt-bar-right">
             <div class="format-toggle">
               <button class="fmt-btn active" id="fmt-slack" onclick="setFormat('slack')">💬 Slack</button>
               <button class="fmt-btn"        id="fmt-conf"  onclick="setFormat('confluence')">📝 Confluence</button>
+              <button class="fmt-btn"        id="fmt-miro"  onclick="setFormat('miro')">🟡 MIRO</button>
             </div>
           </div>
         </div>
-        <div class="report-tabs" id="report-tabs"></div>
       </div>
       <div class="report-preview" id="report-preview"></div>
     </div>
@@ -270,26 +328,26 @@
 </div><!-- #main -->
 
 <!-- MODAL -->
-<div id="modal-overlay" onclick="closeModal(event)">
+<dialog id="modal-overlay" aria-labelledby="modal-title" onclick="closeModal(event)">
   <div id="modal">
     <div class="modal-header">
       <h3 id="modal-title">Détail du ticket</h3>
       <div style="display:flex;align-items:center;gap:6px;">
-        <button class="modal-nav-btn" id="modal-prev-btn" onclick="modalNavigate(-1)" title="Ticket précédent (←)">←</button>
+        <button class="modal-nav-btn" id="modal-prev-btn" onclick="modalNavigate(-1)" title="Ticket précédent (←)" aria-label="Ticket précédent">←</button>
         <span class="modal-nav-counter" id="modal-nav-counter" style="display:none"></span>
-        <button class="modal-nav-btn" id="modal-next-btn" onclick="modalNavigate(1)" title="Ticket suivant (→)">→</button>
-        <button class="modal-close" onclick="closeModalDirect()">✕</button>
+        <button class="modal-nav-btn" id="modal-next-btn" onclick="modalNavigate(1)" title="Ticket suivant (→)" aria-label="Ticket suivant">→</button>
+        <button class="modal-close" onclick="closeModalDirect()" aria-label="Fermer">✕</button>
       </div>
     </div>
     <div class="modal-body" id="modal-body"></div>
   </div>
-</div>
+</dialog>
 
 <!-- TOAST -->
 <div id="toast-container"></div>
 
 <!-- SEARCH OVERLAY (Ctrl+K) -->
-<div id="search-overlay" class="search-overlay" onclick="if(event.target===this)closeSearch()" style="display:none">
+<div id="search-overlay" class="search-overlay" role="search" onclick="if(event.target===this)closeSearch()" style="display:none">
   <div class="search-box">
     <input id="search-input" class="search-input" type="text" placeholder="Rechercher un ticket, epic, section… (Ctrl+K)" oninput="_onSearchInput(this.value)" autocomplete="off">
     <div id="search-results" class="search-results"></div>

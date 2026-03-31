@@ -164,10 +164,16 @@ function getBoardColumns(tickets) {
   if (!teamConfigs.length) return _defaultCols;
 
   // Single team → use its exact columns (preserving JIRA order)
+  // Each column keeps its JIRA statuses for precise ticket matching
   if (teams.length === 1 && BOARD_COLUMNS[teams[0]]) {
     const cols = BOARD_COLUMNS[teams[0]]
       .filter(c => c.internal) // skip unmapped columns
-      .map(c => ({ key: c.internal, label: c.name, color: _STATUS_COLORS[c.internal] || CLR.muted }));
+      .map(c => ({
+        key: c.internal,
+        label: c.name,
+        color: _STATUS_COLORS[c.internal] || CLR.muted,
+        jiraStatuses: (c.statuses || []).map(s => (s.name || '').toLowerCase().trim()).filter(Boolean),
+      }));
     return cols.length ? cols : _defaultCols;
   }
 
@@ -253,13 +259,83 @@ function _piAllTickets(teams, piNum) {
     : [];
   const activeIds = new Set(filtered.map(t => t.id));
 
-  // Backlog PI
+  // Backlog PI — filtre strict : piSprint doit correspondre exactement au PI demandé
   const blAll = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
-  const blPI = blAll.filter(bt =>
-    !activeIds.has(bt.id) &&
-    (!teamSet.size || teamSet.has(bt.team)) &&
-    ((bt.piSprint || '').includes(piNum) || piRe.test(bt.sprintName || ''))
-  );
+  const piSprintRe = new RegExp(`(^|\\D)${piNum}(\\D|$)`); // match "PI#29", "PI 29", pas "PI#28"
+
+  // Construire le set des features/epics appartenant à ce PI
+  // Sources : titre contenant "PIxx", ou remontée hiérarchique depuis les tickets avec sprint xx.y
+  const _feats = typeof FEATURES !== 'undefined' ? FEATURES : [];
+  const _epics = typeof EPICS !== 'undefined' ? EPICS : [];
+  const piTitleRe = new RegExp(`PI\\s*#?\\s*${piNum}\\b`, 'i'); // match "PI29", "PI#29", "PI 29"
+  const _matchPiItem = item => piTitleRe.test(item.title || '') || piTitleRe.test(item.piSprint || '');
+  const _piFeatIds = new Set(_feats.filter(f => _matchPiItem(f)).map(f => f.id));
+  const _piEpicIds = new Set();
+
+  // 1. Epics directement nommés PIxx ou avec piSprint PIxx
+  _epics.filter(e => _matchPiItem(e)).forEach(e => _piEpicIds.add(e.id));
+  // 2. Epics rattachés à une feature PIxx
+  _epics.filter(e => e.feature && _piFeatIds.has(e.feature)).forEach(e => _piEpicIds.add(e.id));
+
+  // 3. Remontée hiérarchique : tickets avec sprint PI → epic parent → feature grand-parent
+  //    Permet de découvrir des features/epics PI même si leur titre ne mentionne pas le PI
+  const _epicMap = {};
+  _epics.forEach(e => { _epicMap[e.id] = e; });
+  const allPool = [].concat(active, blAll);
+  allPool.forEach(t => {
+    // Le ticket a-t-il un sprint qui matche ce PI ?
+    const hasPiSprint = piRe.test(t.sprintName || '') ||
+      piSprintRe.test(t.piSprint || '') ||
+      (t.allSprints || []).some(s => piRe.test(s) || piSprintRe.test(s));
+    if (!hasPiSprint || !t.epic) return;
+    // Niveau 1 : epic parent
+    _piEpicIds.add(t.epic);
+    // Niveau 2 : feature grand-parent (via epic.feature)
+    const epic = _epicMap[t.epic];
+    if (epic && epic.feature) _piFeatIds.add(epic.feature);
+    // Niveau 2 bis : l'epic est peut-être directement dans FEATURES
+    if (_feats.some(f => f.id === t.epic)) _piFeatIds.add(t.epic);
+  });
+
+  // Pour le filtrage team des features backlog, vérifier aussi FEATURES/EPICS (qui ont la bonne team)
+  const _featTeamMap = {};
+  _feats.forEach(f => { if (f.team && f.team !== '_PI' && f.team !== '') _featTeamMap[f.id] = f.team; });
+  _epics.forEach(e => { if (e.team && e.team !== '_PI' && e.team !== '') _featTeamMap[e.id] = e.team; });
+
+  const blPI = blAll.filter(bt => {
+    if (activeIds.has(bt.id)) return false;
+    // Vérifier la team : backlog team OU team depuis FEATURES/EPICS
+    const effectiveTeam = bt.team && bt.team !== '_PI' ? bt.team : (_featTeamMap[bt.id] || bt.team);
+    if (teamSet.size && !teamSet.has(effectiveTeam)) return false;
+    // 1. Champs sprint explicites
+    const matchPiSprint = piSprintRe.test(bt.piSprint || '');
+    const matchSprintName = piRe.test(bt.sprintName || '');
+    const matchAllSprints = (bt.allSprints || []).some(s => piRe.test(s) || piSprintRe.test(s));
+    // 2. Feature/epic parente nommée avec le PI
+    const matchParent = (bt.epic && (_piFeatIds.has(bt.epic) || _piEpicIds.has(bt.epic)));
+    // 3. Titre du ticket mentionne le PI (ex: "Sujets OPS - PI29")
+    const matchTitle = piTitleRe.test(bt.title || '');
+    // 4. Label "Cadrage_PIXX" (cadrage pour ce PI)
+    const cadrageRe = new RegExp(`cadrage_pi\\s*#?\\s*${piNum}\\b`, 'i');
+    const matchCadrage = (bt.labels || []).some(l => cadrageRe.test(l));
+    if (matchCadrage) bt._cadrage = true;
+    if (!matchPiSprint && !matchSprintName && !matchAllSprints && !matchParent && !matchTitle && !matchCadrage) return false;
+    // Exclure les tickets done/resolved d'un PI antérieur
+    if (isDone(bt.status) && !matchPiSprint && !matchSprintName && !matchParent && !matchTitle) return false;
+    return true;
+  });
+
+  // Aussi inclure les tickets actifs rattachés à une feature/epic PI (même sans sprint PI)
+  if (!activeInPI && (_piFeatIds.size || _piEpicIds.size)) {
+    active.forEach(t => {
+      if (activeIds.has(t.id)) return; // déjà inclus
+      if (teamSet.size && !teamSet.has(t.team)) return;
+      if (t.epic && (_piFeatIds.has(t.epic) || _piEpicIds.has(t.epic))) {
+        filtered.push(t);
+        activeIds.add(t.id);
+      }
+    });
+  }
 
   // Tickets des sprints fermés du PI (done + buffer)
   // IMPORTANT : traiter bufferTickets EN PREMIER pour que le flag buffer:true soit préservé

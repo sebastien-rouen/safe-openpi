@@ -30,6 +30,39 @@ function _ppCurrentPI() {
   return _ppFile._currentPI;
 }
 
+function _ppSwitchAndKeepHash(piId) {
+  // Préserver la section active avant le re-render
+  const activeTab = document.querySelector('#pi-tabs-bar .rm-tab.active');
+  const activeSec = activeTab?.dataset.sec || null;
+  const activeRmTab = document.querySelector('.rm-tabs .rm-tab.active');
+  const activeRmSec = activeRmTab?.dataset.sec || null;
+  _ppSwitchPI(piId);
+  _ppRefresh();
+  // Restaurer le tab actif et scroller vers la section après le re-render complet
+  // Double rAF pour attendre que le DOM soit peint et le scroll spy initialisé
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    const sec = activeSec || activeRmSec;
+    if (sec) {
+      // Forcer le tab actif (le scroll spy a pu le changer)
+      const bar = document.getElementById('pi-tabs-bar') || document.querySelector('.rm-tabs');
+      if (bar) bar.querySelectorAll('.rm-tab').forEach(t => t.classList.toggle('active', t.dataset.sec === sec));
+      // Scroller vers la section
+      const prefix = currentView === 'pi' ? 'pi-sec-' : 'rm-sec-';
+      const secEl = document.getElementById(prefix + sec);
+      if (secEl) {
+        const container = document.getElementById('content') || document.documentElement;
+        const rect = secEl.getBoundingClientRect();
+        const contRect = container.getBoundingClientRect();
+        const tabsH = document.getElementById('pi-tabs')?.offsetHeight || document.querySelector('.rm-tabs')?.offsetHeight || 0;
+        const topbarH = document.querySelector('.topbar')?.offsetHeight || 0;
+        const offset = tabsH + topbarH + 16;
+        container.scrollTo({ top: container.scrollTop + rect.top - contRect.top - offset });
+      }
+    }
+    if (typeof _pushHash === 'function') _pushHash();
+  }));
+}
+
 function _ppSwitchPI(piId) {
   if (!_ppFile) _ppFile = {};
   _ppFile._currentPI = piId;
@@ -160,7 +193,7 @@ function _ppPISelector() {
     `<option value="${pi}" ${pi === current ? 'selected' : ''}>${pi}</option>`
   ).join('');
   return `<div class="rm-pi-selector">
-    <select onchange="_ppSwitchPI(this.value);_ppRefresh();if(typeof _pushHash==='function')_pushHash();" class="rm-pi-select">
+    <select onchange="_ppSwitchAndKeepHash(this.value)" class="rm-pi-select">
       ${options}
     </select>
     <button onclick="_ppCreatePI()" class="rm-pi-add" title="Ajouter un PI">+</button>
@@ -1577,7 +1610,317 @@ function _ppDepDetailPopin(depId) {
   window._modalTicketList = [];
   window._modalCurrentIdx = 0;
   if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
-  document.getElementById('modal-overlay').classList.add('open');
+  { const _dlg = document.getElementById('modal-overlay'); if (!_dlg.open) _dlg.showModal(); }
+}
+
+// ============================================================
+// Animation PIP - Trame de l'animation PI Planning
+// Persisté dans pi-data.json : pip = { _global: [...], teamX: [...] }
+// ============================================================
+
+const _PIP_GLOBAL_TEMPLATE = [
+  { text: 'Présentation des objectifs PI et des priorités business', done: false },
+  { text: 'Revue de la capacité de l\'équipe (absences, montées en compétence)', done: false },
+  { text: 'Tour des équipes : identifier les sujets transverses et dépendances', done: false },
+  { text: 'Organiser concrètement les actions suite à la planification du PI', done: false },
+  { text: 'Validation du plan et vote de confiance (Fist of Five)', done: false },
+];
+
+const _PIP_TEAM_TEMPLATES = {
+  // Clé = team ID (ex: "Fuego", "A"...). Fusionne avec le template global.
+  'Fuego': [
+    { text: 'Validation des personnes dans le rôle des "émissaires"', done: false, info: 'L\'émissaire OPS facilite la communication entre les équipes. Il est le point d\'entrée privilégié pour les échanges sur #erpc-ops. Les émissaires sont organisés en binômes par ligne de produit et par incrément.' },
+    { text: 'Validation de la rotation de l\'équipe pour le support', done: false },
+    { text: 'Tour des équipes : s\'assurer qu\'il n\'y a pas d\'autres sujets à traiter', done: false },
+    { text: 'Organiser concrètement les choses suite à la planification du PI', done: false },
+    { text: 'Bonus : à définir si besoin', done: false },
+  ],
+};
+
+function _ppPipGet() {
+  return _ppGet('pip') || {};
+}
+
+function _ppPipItems(teamId) {
+  const pip = _ppPipGet();
+  // Priorité : données persistées pour cette équipe > template équipe > template global
+  if (pip[teamId]) return pip[teamId];
+  if (_PIP_TEAM_TEMPLATES[teamId]) return JSON.parse(JSON.stringify(_PIP_TEAM_TEMPLATES[teamId]));
+  if (pip._global) return JSON.parse(JSON.stringify(pip._global));
+  return JSON.parse(JSON.stringify(_PIP_GLOBAL_TEMPLATE));
+}
+
+function _ppPipSave(teamId, items) {
+  const pip = _ppPipGet();
+  pip[teamId] = items;
+  _ppSet('pip', pip);
+}
+
+// Illustration SVG dynamique selon progression + thème équipe
+function _ppPipIllustration(color, pct, teamId) {
+  // Arc de progression (commun à toutes les variantes)
+  const arc = `
+    <circle cx="60" cy="156" r="20" stroke="${color}18" stroke-width="4" fill="none"/>
+    <circle cx="60" cy="156" r="20" stroke="${color}" stroke-width="4" fill="none" stroke-dasharray="${pct * 1.257} 126" stroke-dashoffset="0" stroke-linecap="round" opacity=".6" transform="rotate(-90 60 156)"/>
+    <text x="60" y="160" text-anchor="middle" font-size="12" font-weight="800" fill="${color}" opacity=".75">${pct}%</text>`;
+
+  // Thème OPS/Support : headset, binômes émissaires, canal
+  const isOps = _PIP_TEAM_TEMPLATES[teamId] && /émissaire|support|ops/i.test(JSON.stringify(_PIP_TEAM_TEMPLATES[teamId]));
+  if (isOps) {
+    return `<svg viewBox="0 0 120 180" fill="none" xmlns="http://www.w3.org/2000/svg" class="pip-illust">
+      <!-- Headset -->
+      <path d="M42 38c0-10 8-18 18-18s18 8 18 18" stroke="${color}" stroke-width="2.5" stroke-linecap="round" opacity=".4"/>
+      <rect x="36" y="34" width="8" height="14" rx="4" fill="${color}40"/>
+      <rect x="76" y="34" width="8" height="14" rx="4" fill="${color}40"/>
+      <path d="M44 48c0 6-4 8-4 8" stroke="${color}40" stroke-width="1.5" stroke-linecap="round"/>
+      <!-- Émissaire binôme gauche -->
+      <circle cx="35" cy="78" r="9" fill="${color}25"/>
+      <circle cx="35" cy="71" r="5.5" fill="${color}35"/>
+      <!-- Émissaire binôme droit -->
+      <circle cx="55" cy="78" r="9" fill="${color}20"/>
+      <circle cx="55" cy="71" r="5.5" fill="${color}30"/>
+      <!-- Lien binôme -->
+      <path d="M42 72h6" stroke="${color}" stroke-width="1.5" stroke-dasharray="2 2" opacity=".3"/>
+      <!-- Flèche vers équipe -->
+      <path d="M62 75l8-2m0 0l-2 3m2-3l-3-1" stroke="${color}" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" opacity=".35"/>
+      <!-- Équipe distante -->
+      <circle cx="82" cy="73" r="7" fill="${color}12"/>
+      <circle cx="82" cy="67.5" r="4" fill="${color}18"/>
+      <circle cx="95" cy="78" r="6" fill="${color}10"/>
+      <circle cx="95" cy="73" r="3.5" fill="${color}15"/>
+      <!-- Canal Slack -->
+      <rect x="22" y="95" width="76" height="16" rx="5" fill="${color}10" stroke="${color}30" stroke-width="1"/>
+      <text x="60" y="106" text-anchor="middle" font-size="7" font-weight="600" fill="${color}" opacity=".5">#erpc-ops</text>
+      <!-- Tickets -->
+      <rect x="26" y="116" width="18" height="10" rx="2" fill="${color}18"/>
+      <rect x="48" y="116" width="18" height="10" rx="2" fill="${color}14"/>
+      <rect x="70" y="116" width="18" height="10" rx="2" fill="${color}10"/>
+      <path d="M30 120l2 2 4-4" stroke="${color}" stroke-width="1" stroke-linecap="round" opacity=".4"/>
+      ${arc}
+    </svg>`;
+  }
+
+  // Par défaut : variantes selon la progression
+  if (pct === 0) {
+    // Kickoff : board vide, personnes debout, points d'interrogation
+    return `<svg viewBox="0 0 120 180" fill="none" xmlns="http://www.w3.org/2000/svg" class="pip-illust">
+      <!-- Board vide -->
+      <rect x="15" y="12" width="90" height="55" rx="6" fill="${color}08" stroke="${color}30" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <rect x="24" y="22" width="22" height="6" rx="2" fill="${color}12"/>
+      <rect x="50" y="22" width="22" height="6" rx="2" fill="${color}08"/>
+      <rect x="76" y="22" width="22" height="6" rx="2" fill="${color}08"/>
+      <!-- Question marks -->
+      <text x="36" y="50" text-anchor="middle" font-size="14" fill="${color}" opacity=".2">?</text>
+      <text x="60" y="48" text-anchor="middle" font-size="10" fill="${color}" opacity=".15">?</text>
+      <text x="84" y="52" text-anchor="middle" font-size="12" fill="${color}" opacity=".18">?</text>
+      <!-- People standing -->
+      <circle cx="30" cy="90" r="9" fill="${color}18"/>
+      <circle cx="30" cy="82.5" r="5.5" fill="${color}25"/>
+      <circle cx="55" cy="90" r="9" fill="${color}14"/>
+      <circle cx="55" cy="82.5" r="5.5" fill="${color}20"/>
+      <circle cx="80" cy="90" r="9" fill="${color}10"/>
+      <circle cx="80" cy="82.5" r="5.5" fill="${color}15"/>
+      <!-- Clipboard -->
+      <rect x="42" y="104" width="36" height="22" rx="3" fill="${color}12" stroke="${color}25" stroke-width="1"/>
+      <rect x="46" y="108" width="12" height="2" rx="1" fill="${color}20"/>
+      <rect x="46" y="113" width="20" height="2" rx="1" fill="${color}15"/>
+      <rect x="46" y="118" width="16" height="2" rx="1" fill="${color}10"/>
+      ${arc}
+    </svg>`;
+  }
+
+  if (pct < 50) {
+    // En cours : board avec quelques post-its, discussion active
+    return `<svg viewBox="0 0 120 180" fill="none" xmlns="http://www.w3.org/2000/svg" class="pip-illust">
+      <!-- Board partiellement rempli -->
+      <rect x="15" y="12" width="90" height="55" rx="6" fill="${color}0A" stroke="${color}40" stroke-width="1.5"/>
+      <rect x="22" y="20" width="22" height="7" rx="2" fill="${color}30"/>
+      <rect x="48" y="20" width="22" height="7" rx="2" fill="${color}20"/>
+      <rect x="74" y="20" width="22" height="7" rx="2" fill="${color}15"/>
+      <rect x="22" y="31" width="22" height="12" rx="2" fill="${color}20"/>
+      <rect x="48" y="31" width="22" height="9" rx="2" fill="${color}12"/>
+      <rect x="22" y="47" width="22" height="10" rx="2" fill="${color}10"/>
+      <!-- People discussing -->
+      <circle cx="32" cy="88" r="9" fill="${color}25"/>
+      <circle cx="32" cy="80.5" r="5.5" fill="${color}35"/>
+      <circle cx="58" cy="88" r="9" fill="${color}18"/>
+      <circle cx="58" cy="80.5" r="5.5" fill="${color}25"/>
+      <circle cx="84" cy="92" r="8" fill="${color}12"/>
+      <circle cx="84" cy="85.5" r="5" fill="${color}18"/>
+      <!-- Speech bubbles -->
+      <rect x="16" y="100" width="28" height="10" rx="5" fill="${color}18"/>
+      <rect x="48" y="104" width="22" height="8" rx="4" fill="${color}12"/>
+      <!-- Arrows connecting -->
+      <path d="M45 86h8" stroke="${color}" stroke-width="1" stroke-dasharray="2 2" opacity=".25"/>
+      <path d="M70 88h8" stroke="${color}" stroke-width="1" stroke-dasharray="2 2" opacity=".2"/>
+      <!-- Pen writing -->
+      <path d="M80 108l6-8 3 2-6 8z" fill="${color}25"/>
+      <path d="M80 108l-1 3 3-1z" fill="${color}35"/>
+      ${arc}
+    </svg>`;
+  }
+
+  if (pct < 100) {
+    // Bonne dynamique : board bien rempli, checkmarks, énergie
+    return `<svg viewBox="0 0 120 180" fill="none" xmlns="http://www.w3.org/2000/svg" class="pip-illust">
+      <!-- Board bien rempli -->
+      <rect x="15" y="12" width="90" height="55" rx="6" fill="${color}0D" stroke="${color}50" stroke-width="1.5"/>
+      <rect x="22" y="20" width="22" height="7" rx="2" fill="${color}35"/>
+      <rect x="48" y="20" width="22" height="7" rx="2" fill="${color}30"/>
+      <rect x="74" y="20" width="22" height="7" rx="2" fill="${color}25"/>
+      <rect x="22" y="31" width="22" height="12" rx="2" fill="${color}25"/>
+      <rect x="48" y="31" width="22" height="10" rx="2" fill="${color}20"/>
+      <rect x="74" y="31" width="22" height="14" rx="2" fill="${color}18"/>
+      <rect x="22" y="47" width="22" height="10" rx="2" fill="${color}15"/>
+      <rect x="48" y="45" width="22" height="12" rx="2" fill="${color}15"/>
+      <rect x="74" y="49" width="22" height="8" rx="2" fill="${color}12"/>
+      <!-- Checkmarks on board -->
+      <path d="M28 35l2 2 5-5" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".5"/>
+      <path d="M54 34l2 2 5-5" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".4"/>
+      <path d="M80 38l2 2 5-5" stroke="${color}" stroke-width="1.2" stroke-linecap="round" opacity=".35"/>
+      <!-- People focused -->
+      <circle cx="35" cy="88" r="9" fill="${color}30"/>
+      <circle cx="35" cy="80.5" r="5.5" fill="${color}40"/>
+      <circle cx="60" cy="86" r="10" fill="${color}22"/>
+      <circle cx="60" cy="78" r="6" fill="${color}30"/>
+      <circle cx="85" cy="88" r="9" fill="${color}18"/>
+      <circle cx="85" cy="80.5" r="5.5" fill="${color}25"/>
+      <!-- Thumbs up -->
+      <path d="M22 100c2-4 5-4 6-1l1 6h-6c-2 0-3-2-1-5z" fill="${color}25"/>
+      <!-- Lightning bolts (energy) -->
+      <path d="M76 98l3-5h3l-3 5h3l-5 7z" fill="${color}" opacity=".2"/>
+      <path d="M90 95l2-4h2l-2 4h2l-4 5z" fill="${color}" opacity=".15"/>
+      ${arc}
+    </svg>`;
+  }
+
+  // 100% : célébration, confettis, trophée
+  return `<svg viewBox="0 0 120 180" fill="none" xmlns="http://www.w3.org/2000/svg" class="pip-illust">
+    <!-- Trophée -->
+    <rect x="48" y="38" width="24" height="6" rx="2" fill="${color}30"/>
+    <path d="M50 18h20v20c0 6-4 10-10 10s-10-4-10-10z" fill="${color}25" stroke="${color}50" stroke-width="1.5"/>
+    <path d="M50 24c-6 0-10 2-10 6s4 6 10 6" stroke="${color}35" stroke-width="1.5" fill="none"/>
+    <path d="M70 24c6 0 10 2 10 6s-4 6-10 6" stroke="${color}35" stroke-width="1.5" fill="none"/>
+    <text x="60" y="33" text-anchor="middle" font-size="10" fill="${color}" opacity=".5">★</text>
+    <!-- Confettis -->
+    <rect x="20" y="10" width="4" height="4" rx="1" fill="${color}40" transform="rotate(25 22 12)"/>
+    <rect x="92" y="14" width="5" height="3" rx="1" fill="${color}30" transform="rotate(-15 95 16)"/>
+    <rect x="30" y="48" width="3" height="5" rx="1" fill="${color}25" transform="rotate(40 32 50)"/>
+    <rect x="86" y="42" width="4" height="3" rx="1" fill="${color}35" transform="rotate(-30 88 44)"/>
+    <circle cx="25" cy="30" r="2" fill="${color}20"/>
+    <circle cx="96" cy="32" r="2.5" fill="${color}18"/>
+    <circle cx="40" cy="14" r="1.5" fill="${color}30"/>
+    <circle cx="80" cy="8" r="2" fill="${color}25"/>
+    <!-- Star bursts -->
+    <path d="M15 20l2-1 1 2 1-2 2 1-1-2 2-1-2-1 1-2-2 1-1-2-1 2z" fill="${color}22"/>
+    <path d="M100 48l2-1 1 2 1-2 2 1-1-2 2-1-2-1 1-2-2 1-1-2-1 2z" fill="${color}18"/>
+    <!-- People celebrating -->
+    <circle cx="30" cy="82" r="10" fill="${color}30"/>
+    <circle cx="30" cy="74" r="6" fill="${color}40"/>
+    <path d="M22 72l-5-8" stroke="${color}" stroke-width="2" stroke-linecap="round" opacity=".35"/>
+    <path d="M38 72l5-8" stroke="${color}" stroke-width="2" stroke-linecap="round" opacity=".35"/>
+    <circle cx="60" cy="80" r="11" fill="${color}25"/>
+    <circle cx="60" cy="71.5" r="6.5" fill="${color}35"/>
+    <path d="M51 69l-6-7" stroke="${color}" stroke-width="2" stroke-linecap="round" opacity=".3"/>
+    <path d="M69 69l6-7" stroke="${color}" stroke-width="2" stroke-linecap="round" opacity=".3"/>
+    <circle cx="90" cy="82" r="10" fill="${color}20"/>
+    <circle cx="90" cy="74" r="6" fill="${color}30"/>
+    <path d="M82 72l-5-8" stroke="${color}" stroke-width="2" stroke-linecap="round" opacity=".25"/>
+    <path d="M98 72l5-8" stroke="${color}" stroke-width="2" stroke-linecap="round" opacity=".25"/>
+    <!-- Banner -->
+    <rect x="25" y="100" width="70" height="18" rx="4" fill="${color}18" stroke="${color}35" stroke-width="1"/>
+    <text x="60" y="112" text-anchor="middle" font-size="8" font-weight="700" fill="${color}" opacity=".6">PI READY!</text>
+    ${arc}
+  </svg>`;
+}
+
+function _ppPipSection(activeTeams, piNum) {
+  const teams = activeTeams.length ? activeTeams : Object.keys(CONFIG.teams || {});
+  if (!teams.length) return '<div style="padding:16px;color:var(--text-muted);font-size:12px;">Aucune équipe sélectionnée</div>';
+
+  const cards = teams.map(tid => {
+    const tc = CONFIG.teams[tid] || {};
+    const color = tc.color || 'var(--primary)';
+    const teamName = tc.name || tid;
+    const items = _ppPipItems(tid);
+
+    const doneCount = items.filter(i => i.done).length;
+    const pct = items.length ? Math.round(doneCount / items.length * 100) : 0;
+    const pctColor = pct === 100 ? '#22C55E' : pct >= 50 ? '#F59E0B' : 'var(--text-muted)';
+
+    const rows = items.map((item, idx) => {
+      const infoBtn = item.info ? ` <span class="pip-info-btn" title="${item.info.replace(/"/g, '&quot;')}" onclick="event.stopPropagation();_ppPipShowInfo(this)">ℹ️</span>` : '';
+      return `<div class="pip-item${item.done ? ' pip-done' : ''}" data-team="${tid}" data-idx="${idx}">
+        <label class="pip-check" onclick="event.stopPropagation()">
+          <input type="checkbox" ${item.done ? 'checked' : ''} onchange="_ppPipToggle('${tid}',${idx},this.checked)">
+          <span class="pip-checkmark"></span>
+        </label>
+        <span class="pip-text" contenteditable="true" spellcheck="false" onblur="_ppPipEdit('${tid}',${idx},this.textContent)">${item.text}</span>${infoBtn}
+        <button class="pip-del" onclick="_ppPipDel('${tid}',${idx})" title="Supprimer">×</button>
+      </div>`;
+    }).join('');
+
+    const svgIllustration = _ppPipIllustration(color, pct, tid);
+
+    return `<div class="pip-card">
+      <div class="pip-card-body">
+        <div class="pip-card-main">
+          <div class="pip-card-header">
+            <span class="pip-team-dot" style="background:${color}"></span>
+            <span class="pip-team-name">${teamName}</span>
+            <span class="pip-progress" style="color:${pctColor}">${doneCount}/${items.length}</span>
+            <button class="pip-add-btn" onclick="_ppPipAdd('${tid}')" title="Ajouter un item">+</button>
+            <button class="pip-reset-btn" onclick="_ppPipReset('${tid}')" title="Réinitialiser depuis le template">↻</button>
+          </div>
+          <div class="pip-items">${rows}</div>
+          ${pct === 100 ? '<div class="pip-complete">✓ Tous les points ont été couverts</div>' : ''}
+        </div>
+        <div class="pip-card-side">${svgIllustration}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="pip-grid">${cards}</div>`;
+}
+
+// ---- Actions PIP ----
+function _ppPipToggle(teamId, idx, checked) {
+  const items = _ppPipItems(teamId);
+  if (items[idx]) { items[idx].done = checked; _ppPipSave(teamId, items); }
+  _ppPipRefresh();
+}
+function _ppPipEdit(teamId, idx, text) {
+  const items = _ppPipItems(teamId);
+  if (items[idx] && text.trim()) { items[idx].text = text.trim(); _ppPipSave(teamId, items); }
+}
+function _ppPipDel(teamId, idx) {
+  const items = _ppPipItems(teamId);
+  items.splice(idx, 1);
+  _ppPipSave(teamId, items);
+  _ppPipRefresh();
+}
+function _ppPipAdd(teamId) {
+  const items = _ppPipItems(teamId);
+  items.push({ text: 'Nouveau point', done: false });
+  _ppPipSave(teamId, items);
+  _ppPipRefresh();
+}
+function _ppPipReset(teamId) {
+  const pip = _ppPipGet();
+  delete pip[teamId];
+  _ppSet('pip', pip);
+  _ppPipRefresh();
+}
+function _ppPipShowInfo(el) {
+  const tip = el.getAttribute('title');
+  if (!tip) return;
+  if (typeof showToast === 'function') showToast(tip, 'success', 5000);
+}
+function _ppPipRefresh() {
+  const el = document.getElementById('pi-pip');
+  if (!el) return;
+  const activeTeams = typeof getActiveTeams === 'function' ? getActiveTeams() : Object.keys(CONFIG.teams || {});
+  el.innerHTML = _ppPipSection(activeTeams);
 }
 
 // ============================================================

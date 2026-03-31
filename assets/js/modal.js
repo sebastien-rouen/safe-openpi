@@ -6,6 +6,12 @@
 window._modalTicketList  = [];
 window._modalCurrentIdx  = 0;
 
+// Prevent native dialog Escape (handled by navigation.js)
+document.addEventListener('DOMContentLoaded', () => {
+  const dlg = document.getElementById('modal-overlay');
+  if (dlg) dlg.addEventListener('cancel', e => e.preventDefault());
+});
+
 function openModal(id) {
   const _bl = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
   const _am = typeof AMELIORATION_TICKETS !== 'undefined' ? AMELIORATION_TICKETS : [];
@@ -36,7 +42,8 @@ function openModal(id) {
 
   _renderModalContent(t);
   _updateModalNavButtons();
-  document.getElementById('modal-overlay').classList.add('open');
+  const dlg = document.getElementById('modal-overlay');
+  if (!dlg.open) dlg.showModal();
 }
 
 // Palette for feature project-code badges (cycles if more tokens than colors)
@@ -509,7 +516,8 @@ function closeModal(e) {
 }
 
 function closeModalDirect() {
-  document.getElementById('modal-overlay').classList.remove('open');
+  const dlg = document.getElementById('modal-overlay');
+  if (dlg.open) dlg.close();
   // Reset context so next open rebuilds it
   window._modalTicketList = [];
   window._modalCurrentIdx = 0;

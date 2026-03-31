@@ -5,7 +5,7 @@
 let currentView       = 'scrum';
 let currentTeam       = 'all';
 let currentGroup      = null;
-let reportTeam        = null; // initialisé sur la première équipe réelle dans renderReportTabs()
+let reportTeam        = null; // synchronisé avec la sidebar via _rptSyncTeam()
 let reportFormat      = 'slack';
 let reportSection     = 'sprint'; // sprint | kanban | pi | support | roadmap | piprep
 let reportPI          = null;     // PI sélectionné (ex: '28'), null = PI courant

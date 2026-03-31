@@ -2,6 +2,40 @@
 // SETTINGS VIEW - Configuration équipes, JIRA, groupes, notifications
 // ============================================================
 
+// --- Persistance des paramètres dans localStorage ---
+function _stgSave(path, value) {
+  // Appliquer en mémoire
+  const parts = path.split('.');
+  let obj = CONFIG;
+  for (let i = 0; i < parts.length - 1; i++) {
+    if (!obj[parts[i]]) obj[parts[i]] = {};
+    obj = obj[parts[i]];
+  }
+  obj[parts[parts.length - 1]] = value;
+  // Persister dans localStorage
+  const overrides = JSON.parse(localStorage.getItem('config_overrides') || '{}');
+  overrides[path] = value;
+  localStorage.setItem('config_overrides', JSON.stringify(overrides));
+  // Feedback visuel
+  if (typeof showToast === 'function') showToast('Paramètre sauvegardé', 'success');
+}
+
+// Restaurer les overrides au chargement
+(function _stgRestore() {
+  try {
+    const overrides = JSON.parse(localStorage.getItem('config_overrides') || '{}');
+    Object.entries(overrides).forEach(([path, value]) => {
+      const parts = path.split('.');
+      let obj = CONFIG;
+      for (let i = 0; i < parts.length - 1; i++) {
+        if (!obj[parts[i]]) obj[parts[i]] = {};
+        obj = obj[parts[i]];
+      }
+      obj[parts[parts.length - 1]] = value;
+    });
+  } catch {}
+})();
+
 // --- Info tooltips (fixed position, escapes overflow) ---
 (function() {
   let _tip = null;
@@ -860,42 +894,50 @@ function renderSettings() {
       <div class="stg-kv-grid">
         <div class="stg-kv">
           <label>Boards par page <span class="stg-info" data-tip="Nombre max de boards JIRA récupérés par requête. Augmentez si certaines équipes ne sont pas détectées.">i</span></label>
-          <input type="number" value="${sc.maxBoardsPerPage}" onchange="CONFIG.sync.maxBoardsPerPage=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.maxBoardsPerPage}" onchange="_stgSave('sync.maxBoardsPerPage',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>Issues max / sprint <span class="stg-info" data-tip="Nombre max de tickets récupérés par sprint. Augmentez si des tickets manquent dans le board.">i</span></label>
-          <input type="number" value="${sc.maxIssuesPerSprint}" onchange="CONFIG.sync.maxIssuesPerSprint=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.maxIssuesPerSprint}" onchange="_stgSave('sync.maxIssuesPerSprint',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>Sprints historiques <span class="stg-info" data-tip="Nombre de sprints fermés analysés par équipe pour calculer la vélocité et l'historique. Ex : 5 → les 5 derniers sprints terminés seront récupérés pour chaque board.">i</span></label>
-          <input type="number" value="${sc.velocityHistoryCount}" onchange="CONFIG.sync.velocityHistoryCount=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.velocityHistoryCount}" onchange="_stgSave('sync.velocityHistoryCount',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>PIs historiques <span class="stg-info" data-tip="Nombre de PIs futurs à scanner en plus du PI courant (ex: 3 → PI actuel + PI+1 + PI+2 + PI+3).">i</span></label>
-          <input type="number" value="${sc.piHistoryCount}" onchange="CONFIG.sync.piHistoryCount=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.piHistoryCount}" onchange="_stgSave('sync.piHistoryCount',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>Issues max vélocité <span class="stg-info" data-tip="Limite de tickets dans la requête JQL pour le calcul de vélocité. Augmentez pour les gros projets.">i</span></label>
-          <input type="number" value="${sc.velocityMaxIssues}" onchange="CONFIG.sync.velocityMaxIssues=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.velocityMaxIssues}" onchange="_stgSave('sync.velocityMaxIssues',+this.value)" class="stg-kv-num">
+        </div>
+        <div class="stg-kv">
+          <label>Issues max PI (JQL) <span class="stg-info" data-tip="Nombre max de tickets récupérés par la requête JQL PI (sprint IN 'PI#XX'). Paginé par pages de 100. Augmentez si des features PI manquent.">i</span></label>
+          <input type="number" value="${sc.maxPIIssues}" onchange="_stgSave('sync.maxPIIssues',+this.value)" class="stg-kv-num">
+        </div>
+        <div class="stg-kv">
+          <label>PIs futurs <span class="stg-info" data-tip="Nombre de PIs futurs à synchroniser. Ex: 2 → PI courant + PI+1 + PI+2. Utile pour la préparation PI Planning.">i</span></label>
+          <input type="number" value="${sc.piFutureCount}" onchange="_stgSave('sync.piFutureCount',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>Epics orphelines max <span class="stg-info" data-tip="Nombre max d'epics sans tickets à résoudre. Utilisé pour compléter les epics référencées mais absentes du sprint.">i</span></label>
-          <input type="number" value="${sc.maxEpicsResolve}" onchange="CONFIG.sync.maxEpicsResolve=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.maxEpicsResolve}" onchange="_stgSave('sync.maxEpicsResolve',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>Sprints fermés <span class="stg-info" data-tip="Nombre max de sprints fermés récupérés par board (fallback). Couvre le cas où l'API retourne plus de sprints que nécessaire.">i</span></label>
-          <input type="number" value="${sc.closedSprintsFetch}" onchange="CONFIG.sync.closedSprintsFetch=+this.value" class="stg-kv-num">
+          <input type="number" value="${sc.closedSprintsFetch}" onchange="_stgSave('sync.closedSprintsFetch',+this.value)" class="stg-kv-num">
         </div>
         <div class="stg-kv">
           <label>Champ Sprint <span class="stg-info" data-tip="ID du custom field JIRA contenant les sprints (ex: customfield_10020). Détecté automatiquement à la première sync.">i</span></label>
-          <input type="text" value="${sc.sprintField}" onchange="CONFIG.sync.sprintField=this.value" class="stg-kv-text">
+          <input type="text" value="${sc.sprintField}" onchange="_stgSave('sync.sprintField',this.value)" class="stg-kv-text">
         </div>
       </div>
       <div style="margin-top:12px;padding:10px 12px;border-radius:8px;background:var(--bg);border:1px solid var(--border);">
         <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:12px;font-weight:600;">
           <div class="stg-toggle-track" style="background:${sc.enrichClosedSprints ? 'var(--primary)' : '#CBD5E1'}">
             <div class="stg-toggle-thumb" style="${sc.enrichClosedSprints ? 'left:20px' : 'left:2px'}"></div>
-            <input type="checkbox" ${sc.enrichClosedSprints ? 'checked' : ''} onchange="CONFIG.sync.enrichClosedSprints=this.checked;localStorage.setItem('enrichClosedSprints',this.checked?'1':'0');renderSettings();">
+            <input type="checkbox" ${sc.enrichClosedSprints ? 'checked' : ''} onchange="_stgSave('sync.enrichClosedSprints',this.checked);renderSettings();">
           </div>
           <span>Enrichir les tickets des sprints fermés</span>
         </label>

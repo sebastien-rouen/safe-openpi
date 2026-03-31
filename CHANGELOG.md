@@ -4,7 +4,123 @@ Toutes les modifications notables de ce projet sont documentees dans ce fichier.
 Format base sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
-## [Non publie] - 2026-03-26
+## [Non publie] - 2026-03-29
+
+### Synchronisation Features PI
+
+- **Fetch dédié Features par PI** : requête JQL spécifique `issuetype IN (Feature) AND sprint IN ("PI#XX")` par PI individuel, car le champ sprint est `null` pour les Features dans l'API JIRA Cloud (`jira.js`)
+- **Pagination JQL PI** : pagination automatique par pages de 100 pour récupérer tous les tickets PI (plus de limite à 100) — paramétrable via `maxPIIssues` dans les Paramètres (`jira.js`)
+- **Team effective** : résolution de la team depuis `FEATURES[]`/`EPICS[]` quand le ticket backlog a `team: "_PI"` — dans `_piAllTickets` (`utils.js`) et `_piRenderJiraSection` (`pi.js`)
+- **Paramètres sync** : ajout de `maxPIIssues` et `piFutureCount` dans la page Paramètres, avec persistance localStorage et toast de confirmation (`settings.js`)
+- **Sauvegarde paramètres** : `_stgSave()` persiste les modifications dans `localStorage` avec feedback visuel toast (`settings.js`)
+
+### Onglet JIRA → Miro (PI Planning)
+
+- **Nouvel onglet "JIRA"** dans PI Planning : tableau hierarchique Feature > Epic > US avec les tickets du PI selectionne (`pi.js`, `views.css`, `index.html`, `navigation.js`)
+- **Regroupement** : tickets tries par feature, puis epic, puis type/points — lignes feature (fond gris) et epic (fond bleu) avec compteurs
+- **Copier TSV** : bouton pour copier en tab-separated (collable dans Excel, Google Sheets, Miro table)
+- **Copier Miro** : bouton pour copier au format texte structure `[TYPE] CLE — Resume (pts)` indente par feature/epic
+- **Clic ticket** : ouvre la modale de detail
+- **Colonnes** : Type (badge couleur), Cle, Resume, Etat (badge statut), Story Points
+- **PI futur** : affiche un empty state si aucun ticket
+
+### Correction tickets dupliques sur le board Scrum
+
+- **Bug critique** : un ticket apparaissait dans plusieurs colonnes quand le board JIRA avait plusieurs colonnes mappees vers le meme statut interne (ex: "Specification Fonc", "Specification Tech", "En cours de dev" → tous mappes `inprog`). Le filtre `t.status === col.key` matchait toutes les colonnes (`scrum.js`)
+- **Fix** : `getBoardColumns()` retourne maintenant les statuts JIRA bruts par colonne (`jiraStatuses[]`), et `_ticketInCol()` utilise `t._jiraStatus` pour matcher precisement un ticket a sa colonne JIRA d'origine (`utils.js`, `scrum.js`)
+- **Largeur colonnes** : le calcul `gridCols` prend en compte toutes les swimlanes (main + taches + support) pour eviter les decalages de largeur entre headers et swimlanes
+- **Colonnes vides swimlane** : motif hachures diagonales discret, opacity reduite a .35 (`board.css`)
+
+### Coherence inter-vues
+
+- **Sections collapsibles unifiees** : PI et Roadmap partagent desormais le meme pattern — fleche par rotation CSS (`transform: rotate(-90deg)`) au lieu de swap texte ▼/▶, meme transition `.15s`, animation `sectionOpen` (fade-in + slide) a l'ouverture, meme hover `var(--bg)` (`views.css`, `pi.js`, `roadmap.js`)
+- **Highlight scroll-to Roadmap** : ajout de la classe `.rm-highlight` reutilisant l'animation `pi-highlight-fade` deja presente sur PI (`views.css`)
+- **Active state unifie** : tous les boutons actionnables (filter-btn, sprint-sel-btn, fmt-btn, sqf-btn, report-section-btn) partagent le meme hover teinte primaire `rgba(2,132,199,.06)` + `border-color/color: var(--primary)` et transition `.15s` (`views.css`, `base.css`)
+
+### Ameliorations navigation, sidebar, tabs et coherence UX
+
+- **Team buttons hover** : feedback visuel au survol (opacity + fond) avant le clic (`base.css`)
+- **Group buttons actif** : fond visible sur le groupe selectionne + badge compteur d'equipes (`board.css`, `filter.js`)
+- **Nav item actif renforce** : fond plus marque (opacity .2), font-weight 600, icones en surbrillance via filter brightness/saturate (`base.css`)
+- **Sprint link** : indicateur visuel permanent fleche ↗ via `::after`, plus visible au hover (`base.css`)
+- **Blocked badge pulse** : animation de pulsation rouge (3 cycles) a l'apparition pour attirer l'attention (`base.css`)
+- **Tabs pills → vrais tabs** : migration du style pills (border-radius 20px) vers des tabs classiques avec underline active, border-bottom 2px, coins arrondis en haut — support dark mode (`views.css`)
+- **PI tabs sticky** : suppression du double border-bottom entre header PI et tabs (`views.css`)
+- **Tabs overflow scroll** : scrollbar masquee, scroll horizontal natif sur les tabs qui debordent (`views.css`)
+- **Buffer popin fleche** : fleche CSS triangulaire pointant vers la carte source (`base.css`)
+- **Details toggle smooth** : animation d'ouverture fade-in + slide-down sur les panneaux `<details>` sidebar (`base.css`)
+- **Report section hover** : fond teinte primaire au survol des boutons de section rapport (`views.css`)
+
+### Section Animation PIP (PI Planning)
+
+- **Nouvelle section "Animation PIP"** dans la vue PI Planning : checklist interactive pour structurer l'animation du PI Planning par equipe (`index.html`, `pi.js`, `piprep.js`, `views.css`)
+- **Template global** : 5 items par defaut (objectifs, capacite, tour des equipes, organisation post-planif, vote de confiance)
+- **Templates par equipe** : template specifique pour l'equipe OPS (Fuego) avec role emissaire, rotation support, tour des equipes, organisation, bonus
+- **Persistance** : items sauvegardes par PI et par equipe dans `pi-data.json` via `_ppSet('pip', ...)`
+- **Interactions** : cocher/decocher, editer le texte inline (contenteditable), ajouter/supprimer des items, reinitialiser depuis le template
+- **Info-bulle** : bouton info sur les items avec detail (ex: role emissaire) affiche un toast
+- **Indicateur progression** : compteur done/total par equipe avec couleur adaptive, message "tous couverts" quand 100%
+
+## [Non publie] - 2026-03-28
+
+### Ameliorations UI/UX et accessibilite
+
+- **Tokens CSS** : ajout `--radius-sm` (6px), `--radius-lg` (12px), `--shadow-lg` — harmonisation des border-radius et ombres dans tout le projet (`base.css`, `board.css`)
+- **Focus ring visible** : `:focus-visible` global avec outline primaire — suppression des `outline: none` sur search-input, sqf-select, sqf-text
+- **prefers-reduced-motion** : desactivation des animations et transitions pour les utilisateurs qui le preferent (`base.css`)
+- **Classes boutons** : ajout `.btn-sm` / `.btn-md` pour standardiser les paddings de boutons
+- **Navigation semantique** : `div.nav-item` migre vers `button.nav-item` avec `aria-label`, `title` (raccourcis 1-9), `aria-hidden` sur les emojis (`index.html`)
+- **Modal dialog natif** : migration de `<div>` vers `<dialog>` avec `showModal()`/`close()`, `aria-labelledby`, `aria-label` sur les boutons (`index.html`, `modal.js`, `navigation.js`, `pi.js`, `piprep.js`, `roadmap.js`, `scrum.js`)
+- **Search box responsive** : largeur en `min(560px, 90vw)` au lieu de fixe 560px
+- **Grilles responsive** : breakpoint 600px pour forcer 1 colonne sur charts/stats (`base.css`)
+- **Sidebar collapsible mobile** : sidebar en overlay sous 768px avec bouton hamburger, backdrop et transition (`base.css`, `index.html`, `navigation.js`)
+- **Accessibilite emojis** : `aria-hidden="true"` sur les icones emoji decoratives, `role="search"` sur le search overlay, `aria-label` sur le checkbox sync
+
+### Roadmap reactive au selecteur PI
+
+- **Roadmap Visuelle** : utilise le PI selectionne (`_piDetect().piNum`) au lieu de detecter depuis les sprint labels — affiche les epics et colonnes du PI choisi (`roadmap.js`)
+- **Chronologie des sprints** : filtre l'historique velocity par PI selectionne, affiche tous les sprints passes pour un PI non-courant, masque sprint actuel et futurs simules pour un PI passe — titre enrichi avec le label PI
+- **Simulation PI** : titre dynamique "PI XX" au lieu de "PI Suivant" quand un PI futur est selectionne (`roadmap.js`)
+- **Metriques** : titre de section enrichi avec le label PI selectionne (ex: "Metriques · PI 29")
+- **Colonnes PI visuelles** : labels "Passe" / "En cours" / "Futur" relatifs au PI actif reel (`_ppDetectPI`), pas au PI selectionne
+- **Barre 80/20** : clic sur la partie "Features" ou "Buffer" de la barre reelle ouvre la liste des tickets correspondants (`roadmap.js`)
+
+## [Non publie] - 2026-03-27
+
+### Extraction Features JIRA reelles
+
+- **Features depuis la hierarchie JIRA** : extraction des Features (parent des epics) depuis les issues du sprint actif, sprints fermes et backlog
+- **Mapping epic→feature** : chaque epic pointe vers sa feature parente (plus de feature factice "F-1")
+- **MIRO enrichi** : affichage des vraies features (ex: GCOM-3664) avec stats, puis US regroupees par feature
+- **Fallback demo** : si aucune feature detectee, conserve le comportement par defaut
+
+### Detection tickets PI futurs
+
+- **Feature parente PI** : les tickets backlog dont la feature parente mentionne le PI dans son titre (ex: "[Buffer] FUEGO - PI29") sont inclus dans le PI correspondant
+- **Titre ticket PI** : les tickets dont le titre mentionne le PI (ex: "Sujets OPS - PI29") sont aussi detectes
+- **Filtre backlog strict** : regex stricte `PI#29` au lieu de `includes("29")` pour eviter les faux positifs
+- **Pas de fallback PI futur** : un PI futur sans tickets affiche un message explicatif au lieu de charger les tickets du sprint actif
+
+### Selecteur PI/Sprint ameliore
+
+- **Auto-selection sprint actif** : plus d'option "Sprint actif" generique, le sprint courant est pre-selectionne avec badge "(actif)"
+- **Selection intelligente** : au changement de PI, auto-selection du sprint actif si present, sinon premier sprint
+- **PI futurs** : liste deroulante inclut les PI futurs (depuis backlog + PI N+1 auto-genere) avec badge "(futur)"
+- **Masquage sprint pour PI futur/MIRO** : selecteur sprint masque quand PI futur ou format MIRO (export PI complet)
+- **Nouveau style** : selecteurs PI/Sprint dans un conteneur distinct avec fond, chevron custom, couleur primaire pour le PI
+
+### Export MIRO post-its
+
+- **Nouveau format MIRO** : onglet "MIRO" dans le sélecteur de format des rapports
+- **Reactive aux selecteurs** : PI, equipe et groupe sont pris en compte pour le contenu MIRO
+- **Post-its par sprint** : tickets regroupés par itération, séparés Features / Stories par feature parente
+- **Fallback sprint actif** : si aucun ticket PI trouve (demo), inclusion des tickets du sprint actif
+- **Format copier-coller** : clé JIRA + lien, titre, story points, tag [Buffer] — prêt pour import MIRO
+
+### Rapports Slack sans blockquote
+
+- **Suppression `> `** : les listes à puces ne sont plus préfixées par `> ` (citation Slack) pour un affichage plus clair
+- **Tous les rapports** : sprint, kanban, PI, support, roadmap, prépa PI, mood — nettoyage global
 
 ### Rapports dynamiques PI/Sprint
 
