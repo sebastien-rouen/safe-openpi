@@ -317,6 +317,17 @@ function _rotWeekInfos(piOffset, weekMode) {
         _end = new Date(_start);
         _end.setDate(_end.getDate() + 4); // Friday
         _end.setHours(23, 59, 59, 999);
+      } else if (weekMode === 'wednesday') {
+        // Wednesday→Tuesday: find the Wednesday on or after sprint week boundary
+        const base = new Date(sprintStarts[s]);
+        base.setDate(base.getDate() + w * 7);
+        const dow = base.getDay();
+        _start = new Date(base);
+        if (dow !== 3) _start.setDate(_start.getDate() + ((10 - dow) % 7)); // advance to Wednesday
+        _start.setHours(0, 0, 0, 0);
+        _end = new Date(_start);
+        _end.setDate(_end.getDate() + 6); // Tuesday
+        _end.setHours(23, 59, 59, 999);
       } else {
         // Default (friday / sprint-aligned): 7-day block from sprint start
         _start = new Date(sprintStarts[s]);
@@ -379,7 +390,7 @@ function _rotSetMembersPerWeek(team, n) {
 function _rotSetWeekMode(team, mode) {
   const k = _rotTeamKey(team);
   if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
-  _supportRotation[k].weekMode = mode; // 'monday' | 'friday'
+  _supportRotation[k].weekMode = mode; // 'monday' | 'friday' | 'wednesday'
   _supportRotation[k].weeks = {};      // reset assignments — week boundaries changed
   _saveRotation();
   _rotRefreshTeam(team);
@@ -622,7 +633,9 @@ function _rotTeamPanel(team) {
       <span class="rot-wmode" onclick="event.stopPropagation()" title="Mode semaine support">
         <button class="rot-wmode-btn${wMode === 'friday' ? ' rot-wmode-on' : ''}" onclick="_rotSetWeekMode('${team}','friday')">Ven→Jeu</button>
         <button class="rot-wmode-btn${wMode === 'monday' ? ' rot-wmode-on' : ''}" onclick="_rotSetWeekMode('${team}','monday')">Lun→Ven</button>
+        <button class="rot-wmode-btn${wMode === 'wednesday' ? ' rot-wmode-on' : ''}" onclick="_rotSetWeekMode('${team}','wednesday')">Mer→Mar</button>
       </span>
+      <button class="rot-lock-btn${rot.locked ? ' rot-locked' : ''}" onclick="event.stopPropagation();_rotToggleLock('${team}')" title="${rot.locked ? 'Déverrouiller' : 'Verrouiller'} la rotation">${rot.locked ? '🔒' : '🔓'}</button>
       <button class="rot-copy-btn" onclick="event.stopPropagation();_rotCopyTeam('${team}')" title="Copier la rotation">📋</button>
       <button class="rot-gen-btn" onclick="event.stopPropagation();_rotShuffleTeam('${team}')" title="Générer une nouvelle rotation pour cette équipe">🎲</button>
       <button class="rot-add-btn" onclick="event.stopPropagation();_rotAddMember('${team}')" title="Ajouter un membre">+ Membre</button>` : ''}
@@ -645,12 +658,27 @@ function _rotTeamPanel(team) {
   </div>`;
 }
 
+function _rotToggleLock(team) {
+  const k = _rotTeamKey(team);
+  if (!_supportRotation[k]) _supportRotation[k] = { weeks: {} };
+  _supportRotation[k].locked = !_supportRotation[k].locked;
+  _saveRotation();
+  _rotRefreshTeam(team);
+}
+
 function _rotShuffleTeam(team) {
+  const k = _rotTeamKey(team);
+  if (_supportRotation[k]?.locked) {
+    // Highlight orange vif pendant 5s
+    const panel = document.getElementById('rot-team-' + team);
+    if (panel) { panel.classList.add('rot-locked-flash'); setTimeout(() => panel.classList.remove('rot-locked-flash'), 5000); }
+    if (typeof showToast === 'function') showToast(`🔒 ${CONFIG.teams[team]?.name || team} est verrouillée`, 'warning');
+    return;
+  }
   _rotParseAbsencesLive();
   const totalWeeks = _piWeeks();
   const members = _rotTeamMembers(team);
   if (!members.length) return;
-  const k = _rotTeamKey(team);
   if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
   const mpw = _supportRotation[k].membersPerWeek || 3;
   const weeks = {};

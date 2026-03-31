@@ -693,7 +693,7 @@ function _transform(issues, project, sprintId, teamConfigs) {
 
   const tickets = otherIssues.map(i => {
     const f       = i.fields;
-    const epicKey = _getEpicKey(f) || fallbackEpic;
+    const epicKey = _getEpicKey(f) || null;
     const team    = i._boardTeam || epicMap[epicKey]?.team || '';
     // Detect JIRA flagged field (impediment indicator)
     const flagged = _isFlagged(f);
@@ -1672,7 +1672,16 @@ async function loadJiraData(opts = {}) {
                     _futureSeenKeys.add(ci.key);
                     const parentKey = ci.fields?.parent?.key;
                     const parentInFuture = parentKey ? allFutureIssues.find(fi => fi.key === parentKey) : null;
-                    ci._boardTeam = parentInFuture?._boardTeam || '_PI';
+                    // Team : depuis customfield_10001 de l'enfant, sinon depuis le parent
+                    let childTeam = '_PI';
+                    const childTeamField = ci.fields?.customfield_10001;
+                    if (childTeamField) {
+                      const ctStr = typeof childTeamField === 'string' ? childTeamField : (childTeamField.name || childTeamField.value || '');
+                      const ctMatch = ctStr.match(/[-–]\s*(.+)/);
+                      childTeam = ctMatch ? ctMatch[1].trim() : ctStr.trim();
+                    }
+                    if (childTeam === '_PI') childTeam = parentInFuture?._boardTeam || '_PI';
+                    ci._boardTeam = childTeam;
                     ci._isFuture = true;
                     ci._piSprintName = piSprintName;
                     ci._fromPiJql = true;
@@ -1998,6 +2007,26 @@ async function loadJiraData(opts = {}) {
     console.log(`[JIRA] EpicMap backlog: ${Object.keys(_blEpicMap).length} entrées (${bufferEpics.length} buffer: ${bufferEpics.map(([k, v]) => `${k}="${v.title}"`).join(', ')})`);
     cache.backlog_tickets = _transformBacklog(_uniqueFuture, _blEpicMap);
     if (cache.backlog_tickets.length) console.log(`[JIRA] ${cache.backlog_tickets.length} tickets backlog/futurs`);
+  }
+
+  // 5.42 Enrichir sprintName des backlog tickets done sans sprint (v3 API ne retourne pas les sprints fermés)
+  {
+    // Construire un index ticket → dernier sprint fermé depuis la vélocité history
+    const _velSprintMap = {};
+    Object.entries(teamConfigs).forEach(([tid, tc]) => {
+      (tc.velocityHistory || []).forEach(vh => {
+        [].concat(vh.tickets || [], vh.bufferTickets || []).forEach(t => {
+          _velSprintMap[t.id] = vh.name;
+        });
+      });
+    });
+    let enriched = 0;
+    (cache.backlog_tickets || []).forEach(bt => {
+      if (bt.sprintName || !_velSprintMap[bt.id]) return;
+      bt.sprintName = _velSprintMap[bt.id];
+      enriched++;
+    });
+    if (enriched) console.log(`[JIRA] ${enriched} tickets backlog enrichis avec sprintName depuis vélocité`);
   }
 
   // 5.45 Déduire la team et piSprint des epics/features depuis les tickets enfants

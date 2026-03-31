@@ -6,6 +6,28 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publie] - 2026-03-31
 
+### Tableau JIRA PI — ameliorations
+
+- **Colonne Sprint** : affichage du sprint complet avec nom d'equipe (`pi.js`, `views.css`)
+- **Colonne Equipe** : affichage discret de l'equipe par ticket (`pi.js`, `views.css`)
+- **Bouton Hors sprint** : masque par defaut les tickets sans sprint (non comptabilises en velocite), toggle avec recalcul des totaux (`pi.js`, `views.css`)
+- **Section Actions Retro** : tickets `ActionRetro` sans epic regroupes dans une section dediee avant "Sans epic" (`pi.js`, `views.css`)
+- **Badge status nowrap** : "Clos sans suite" sur une seule ligne (`views.css`)
+
+### Fiabilisation donnees sync
+
+- **Team enfants features** : lecture `customfield_10001` sur chaque enfant au lieu d'heriter du parent — corrige GDC-13678 affiche Dezir au lieu de Cameleon (`jira.js`)
+- **Sprint backlog enrichi** : tickets done sans sprint enrichis depuis la velocite history — corrige GDEM-3146 sans sprint affiche (`jira.js`)
+- **Suppression fallbackEpic** : tickets sans parent ne sont plus assignes au premier epic du board (`jira.js`)
+- **Dedup buffer** : tickets backlog buffer non re-ajoutes depuis velocityHistory (`pi.js`)
+- **Progress bar PI** : utilise `_piAllTickets()` au lieu de tous les tickets actifs — chiffres coherents (`pi.js`)
+- **Terme "tix"** : remplace par "tickets" a l'affichage (`pi.js`, `roadmap.js`)
+
+### Rotation support
+
+- **Cadenas verrouillage** : bouton lock/unlock par equipe, persistance, protection shuffle avec flash orange (`settings.js`, `views.css`)
+- **Mode Mer->Mar** : 3e option de semaine support mercredi-mardi (`settings.js`)
+
 ### Pagination JIRA Cloud v3
 
 - **Migration nextPageToken** : l'API v3 `search/jql` ignore `startAt` — migration de toutes les paginations (PI JQL, features, enfants) vers `nextPageToken` + `isLast` (`jira.js`)

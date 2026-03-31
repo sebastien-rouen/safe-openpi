@@ -609,7 +609,7 @@ async function renderRoadmap() {
   const _kpiPiLabel = _kpi.piNum ? `PI ${_kpi.piNum}` : 'PI';
 
   const _kpiTip1 = `${_kpiPiLabel} — Avancement\n✅ ${_kpiDonePts} pts terminés\n🔵 ${_kpiInpPts} pts en cours\n🚧 ${_kpiBlkPts} pts bloqués\n📋 ${_kpiTodoPts} pts à faire\nCapacité : ${_kpiVel.capacity} pts`;
-  const _kpiTip2 = `${_kpiPiLabel} — Story Points\n${_kpiDonePts} terminés / ${_kpiTotalPts} planifiés\n${_kpiAllTix.length} tickets au total\nBuffer : ${_kpiBuf.totalPts} pts (${_kpiBuf.totalTix} tix)`;
+  const _kpiTip2 = `${_kpiPiLabel} — Story Points\n${_kpiDonePts} terminés / ${_kpiTotalPts} planifiés\n${_kpiAllTix.length} tickets au total\nBuffer : ${_kpiBuf.totalPts} pts (${_kpiBuf.totalTix} tickets)`;
   const _kpiTip3 = _kpiVel.teamDetails.map(d => `${d.name}: ${d.avgVel} pts/spr (min ${d.minVel}, max ${d.maxVel})`).join('\n');
   const _kpiTip4 = `${_kpiSprintsLeft} sprint${_kpiSprintsLeft > 1 ? 's' : ''} restant${_kpiSprintsLeft > 1 ? 's' : ''} sur ${_kpiVel.sprintsPerPI}\n${_kpiVel.sprintsDone} sprint${_kpiVel.sprintsDone > 1 ? 's' : ''} fermé${_kpiVel.sprintsDone > 1 ? 's' : ''}\nReste estimé : ${_kpiRemaining} pts`;
   const _kpiTip5 = `${_kpiEpics.length} epics avec tickets\n${_kpiEpicsDone} entièrement terminés\n${_kpiEpics.length - _kpiEpicsDone} en cours`;

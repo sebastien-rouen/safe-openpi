@@ -241,7 +241,7 @@ function renderPI() {
     // JIRA → Miro (chercher les tickets du PI même pour les PIs futurs)
     const _piJiraTeams = _at.length ? _at : Object.keys(CONFIG.teams || {});
     const _piJiraEmpty = document.getElementById('pi-jira');
-    if (_piJiraEmpty) _piJiraEmpty.innerHTML = _piRenderJiraSection(_piAllTickets(_piJiraTeams, _piViewNum), _piViewNum, _piJiraTeams);
+    if (_piJiraEmpty) { _piJiraEmpty.innerHTML = _piRenderJiraSection(_piAllTickets(_piJiraTeams, _piViewNum), _piViewNum, _piJiraTeams); _piJiraUpdateSummary(); }
     return;
   }
   // Clear any previous empty overlay on capacity chart
@@ -295,12 +295,13 @@ function renderPI() {
       (_piRe && _piRe.test(bt.sprintName || ''))
     ));
   const _closedPIBuf = [];
+  const _blPIIds = new Set(_blPIAll.map(t => t.id));
   if (_piRe) {
     Object.entries(CONFIG.teams || {}).forEach(([tid, tc]) => {
       (tc.velocityHistory || []).forEach(vh => {
         if (!_piRe.test(vh.name || '')) return;
         (vh.bufferTickets || []).forEach(bt => {
-          if (!_activeIds.has(bt.id) && !_closedPIBuf.some(x => x.id === bt.id)) _closedPIBuf.push(bt);
+          if (!_activeIds.has(bt.id) && !_blPIIds.has(bt.id) && !_closedPIBuf.some(x => x.id === bt.id)) _closedPIBuf.push(bt);
         });
       });
     });
@@ -311,16 +312,18 @@ function renderPI() {
   const _progEl = document.getElementById('pi-progress-bar');
   if (_progEl) {
     const _vs = _piVelocityStats(allTeams, _piViewNum);
-    const _totalTix = _allPITix.length;
-    const _doneTix  = _allPITix.filter(t => isDone(t.status)).length;
-    const _inpTix   = _allPITix.filter(t => ['inprog','review','test'].includes(t.status)).length;
-    const _blkTix   = _allPITix.filter(t => t.status === 'blocked').length;
+    // Utiliser _piAllTickets pour un décompte propre (exclut features/epics, dédupliqué)
+    const _progTix  = _piAllTickets(allTeams, _piViewNum).filter(t => t.type !== 'feature' && t.type !== 'epic');
+    const _totalTix = _progTix.length;
+    const _doneTix  = _progTix.filter(t => isDone(t.status)).length;
+    const _inpTix   = _progTix.filter(t => ['inprog','review','test'].includes(t.status)).length;
+    const _blkTix   = _progTix.filter(t => t.status === 'blocked').length;
     const _todoTix  = _totalTix - _doneTix - _inpTix - _blkTix;
-    const _totalPts = _allPITix.reduce((s, t) => s + (t.points || 0), 0);
-    const _donePts  = _allPITix.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
-    const _inpPts   = _allPITix.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
-    const _blkPts   = _allPITix.filter(t => t.status === 'blocked').reduce((s, t) => s + (t.points || 0), 0);
-    const _bufTix   = _allPITix.filter(t => t.buffer);
+    const _totalPts = _progTix.reduce((s, t) => s + (t.points || 0), 0);
+    const _donePts  = _progTix.filter(t => isDone(t.status)).reduce((s, t) => s + (t.points || 0), 0);
+    const _inpPts   = _progTix.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
+    const _blkPts   = _progTix.filter(t => t.status === 'blocked').reduce((s, t) => s + (t.points || 0), 0);
+    const _bufTix   = _progTix.filter(t => t.buffer);
     const _bufPts   = _bufTix.reduce((s, t) => s + (t.points || 0), 0);
     const _todoPts  = _totalPts - _donePts - _inpPts - _blkPts;
     const _piLbl    = _piViewNum ? `PI ${_piViewNum}` : 'PI';
@@ -342,11 +345,11 @@ function renderPI() {
     const _progTip = `<div style="min-width:260px">
       <div style="font-weight:700;margin-bottom:6px">${_piLbl} — État des lieux</div>
       <table style="width:100%;font-size:11px;border-collapse:collapse;margin-bottom:6px">
-        <tr><td style="color:#22C55E">✅ Terminé</td><td style="text-align:right;font-weight:600">${_donePts} pts</td><td style="text-align:right;color:var(--text-muted)">${_doneTix} tix</td></tr>
-        <tr><td style="color:#3B82F6">🔄 En cours</td><td style="text-align:right;font-weight:600">${_inpPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_inpTix} tix</td></tr>
-        ${_blkTix ? `<tr><td style="color:#EF4444">🚫 Bloqué</td><td style="text-align:right;font-weight:600">${_blkPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_blkTix} tix</td></tr>` : ''}
-        <tr><td style="color:#94A3B8">📋 À faire</td><td style="text-align:right;font-weight:600">${_todoPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_todoTix} tix</td></tr>
-        ${_bufPts ? `<tr><td style="color:#8B5CF6">🛡️ Buffer</td><td style="text-align:right;font-weight:600">${_bufPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_bufTix.length} tix</td></tr>` : ''}
+        <tr><td style="color:#22C55E">✅ Terminé</td><td style="text-align:right;font-weight:600">${_donePts} pts</td><td style="text-align:right;color:var(--text-muted)">${_doneTix} tickets</td></tr>
+        <tr><td style="color:#3B82F6">🔄 En cours</td><td style="text-align:right;font-weight:600">${_inpPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_inpTix} tickets</td></tr>
+        ${_blkTix ? `<tr><td style="color:#EF4444">🚫 Bloqué</td><td style="text-align:right;font-weight:600">${_blkPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_blkTix} tickets</td></tr>` : ''}
+        <tr><td style="color:#94A3B8">📋 À faire</td><td style="text-align:right;font-weight:600">${_todoPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_todoTix} tickets</td></tr>
+        ${_bufPts ? `<tr><td style="color:#8B5CF6">🛡️ Buffer</td><td style="text-align:right;font-weight:600">${_bufPts} pts</td><td style="text-align:right;color:var(--text-muted)">${_bufTix.length} tickets</td></tr>` : ''}
       </table>
       <hr style="border:none;border-top:1px solid rgba(255,255,255,.15);margin:6px 0">
       <div style="font-weight:700;margin-bottom:4px;font-size:11px">📈 Vélocité — Capacité PI</div>
@@ -619,6 +622,7 @@ function renderPI() {
   if (_piJiraEl) {
     const _jiraAllTix = _piAllTickets(_piFistTeams, _piViewNum);
     _piJiraEl.innerHTML = _piRenderJiraSection(_jiraAllTix, _piViewNum, _piFistTeams);
+    _piJiraUpdateSummary();
   }
 }
 
@@ -1296,7 +1300,9 @@ function _renderPIBuffer(tickets, allTeams) {
   const _piRe      = _piNum ? new RegExp(`(^|\\D)${_piNum}\\.\\d+`) : null;
 
   const _teamSet = new Set(allTeams);
-  const bufferTickets = tickets.filter(t => t.buffer && (!_teamSet.size || _teamSet.has(t.team)));
+  // Utiliser _piAllTickets pour inclure les tickets buffer des sprints fermés (pas seulement le sprint actif)
+  const _bufAllTix = typeof _piAllTickets === 'function' ? _piAllTickets(allTeams, _piNum) : tickets;
+  const bufferTickets = _bufAllTix.filter(t => t.buffer && t.type !== 'feature' && t.type !== 'epic' && (!_teamSet.size || _teamSet.has(t.team)));
   if (!bufferTickets.length) {
     const _bufLabel = _piNum ? `PI ${_piNum}` : 'ce PI';
     el.innerHTML = `<div class="pi-empty">
@@ -1346,12 +1352,16 @@ function _renderPIBuffer(tickets, allTeams) {
   const _bufSprintsPerPI = (CONFIG.sprint && CONFIG.sprint.sprintsPerPI) || 5;
   const _bufReSprint = /(\d{2,3})\.(\d+)/;
   const _bufTicketSprintIdx = (t) => {
-    const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || ''];
+    const sources = [t.sprintName, ...(t.allSprints || [])];
     for (const s of sources) {
       if (!s) continue;
       const m = s.match(_bufReSprint);
       if (m && m[1] === _piNum) return parseInt(m[2]) - 1;
     }
+    // Fallback : ticket dans le sprint actif de son équipe
+    const teamSprint = CONFIG.teams[t.team]?.sprintName || '';
+    const ts = teamSprint.match(_bufReSprint);
+    if (ts && ts[1] === _piNum && isDone(t.status)) return parseInt(ts[2]) - 1;
     return null;
   };
   const _bufSprintLabels = Array.from({ length: _bufSprintsPerPI }, (_, i) =>
@@ -1587,6 +1597,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
   // Group tickets: feature → epic → tickets[]
   const tree = {}; // { featureId: { info, epics: { epicId: { info, tickets[] } } } }
   const noEpic = []; // tickets without epic
+  const retroTickets = []; // tickets ActionRetro without epic
 
   // Set of known feature/epic IDs for hierarchy detection
   // In JIRA: Epic > Feature > Ticket. In code: FEATURES (top) > EPICS (mid) > TICKETS
@@ -1666,7 +1677,10 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     const epicId = t.epic || null;
     const featureId = epicId ? (epicToFeature[epicId] || null) : null;
 
-    if (!epicId) { noEpic.push(t); return; }
+    if (!epicId) {
+      if ((t.labels || []).some(l => /^actionretro$/i.test(l))) { retroTickets.push(t); } else { noEpic.push(t); }
+      return;
+    }
 
     // Si le parent direct est déjà un nœud feature dans le tree → placer le ticket directement dessous
     if (tree[epicId]) {
@@ -1772,12 +1786,16 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     const isBuf = _isTicketBuffer(t);
     const bufClass = isBuf ? ' pj-ticket-buffer' : '';
     const bufBadge = isBuf ? '<span class="pj-type" style="background:#EDE9FE;color:#7C3AED;border:1px solid #7C3AED44">🛡️ BUFFER</span> ' : '';
-    return `<tr class="pj-ticket-row${t._cadrage ? ' pj-cadrage-row' : ''}${bufClass}" data-buffer="${isBuf ? '1' : ''}" onclick="openModal('${(t.id || '').replace(/'/g, "\\'")}')">
+    const sprintLabel = t.sprintName || (t.allSprints && t.allSprints[t.allSprints.length - 1]) || '';
+    const noSprint = !sprintLabel && !['feature','epic'].includes(t.type);
+    return `<tr class="pj-ticket-row${t._cadrage ? ' pj-cadrage-row' : ''}${bufClass}${noSprint ? ' pj-no-sprint' : ''}" data-buffer="${isBuf ? '1' : ''}" onclick="openModal('${(t.id || '').replace(/'/g, "\\'")}')">
       <td>${bufBadge}<span class="pj-type" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}44">${_typeIcon(t.type)} ${_typeLabel(t.type)}</span></td>
       <td class="pj-key">${_jiraLink(t.id)}</td>
       <td class="pj-summary">${_escHtml(t.title || t.summary || '')}${cadrage}</td>
       <td class="pj-status"><span class="badge badge-${t.status}">${_statusLbl(t)}</span></td>
       <td class="pj-pts">${t.points || '–'}</td>
+      <td class="pj-sprint">${_escHtml(sprintLabel)}</td>
+      <td class="pj-team">${_escHtml(CONFIG.teams[t.team]?.name || t.team || '')}</td>
     </tr>`;
   };
 
@@ -1804,7 +1822,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     // Feature row (skip fake "_no_feature" group)
     if (feat.id !== '_no_feature') {
       rows += `<tr class="pj-feat-row${featIsBuffer ? ' pj-feat-buffer' : ''}">
-        <td colspan="5"><span class="pj-feat-icon">${featIsBuffer ? '🛡️' : '📦'}</span> <strong>${_jiraLink(feat.id)}</strong> — ${_escHtml(feat.title)} <span class="pj-feat-stats">${(() => {
+        <td colspan="7"><span class="pj-feat-icon">${featIsBuffer ? '🛡️' : '📦'}</span> <strong>${_jiraLink(feat.id)}</strong> — ${_escHtml(feat.title)} <span class="pj-feat-stats">${(() => {
           // Story points de la feature elle-même (depuis backlog)
           const ownPts = tickets.find(tx => tx.id === feat.id)?.points || 0;
           if (featCnt) return `${featCnt} tickets · ${featPts} pts`;
@@ -1824,7 +1842,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
       if (epic._normalTix.length || !epic._bufferTix.length) {
         if (epic.id !== feat.id) {
           rows += `<tr class="pj-epic-row${epicEmpty ? ' pj-empty-row' : ''}">
-            <td colspan="5"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(epic.id)}</strong> — ${_escHtml(epic.title)} <span class="pj-epic-stats">${epicEmpty ? 'Aucun ticket' : `${epic._normalTix.length} tickets · ${epicPts} pts`}</span></td>
+            <td colspan="7"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(epic.id)}</strong> — ${_escHtml(epic.title)} <span class="pj-epic-stats">${epicEmpty ? 'Aucun ticket' : `${epic._normalTix.length} tickets · ${epicPts} pts`}</span></td>
           </tr>`;
         }
         _sortTix(epic._normalTix).forEach(t => { rows += _ticketRow(t); });
@@ -1832,12 +1850,19 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     });
   });
 
+  // Actions Rétro (label ActionRetro, sans epic)
+  if (retroTickets.length) {
+    const retroPts = retroTickets.reduce((s, t) => s + (t.points || 0), 0);
+    rows += `<tr class="pj-feat-row pj-retro-row"><td colspan="7"><span class="pj-feat-icon">🔄</span> <strong>Actions Rétrospective</strong> <span class="pj-feat-stats">${retroTickets.length} tickets${retroPts ? ` · ${retroPts} pts` : ''}</span></td></tr>`;
+    _sortTix(retroTickets).forEach(t => { rows += _ticketRow(t); });
+  }
+
   // Orphan non-buffer tickets (no epic)
   const noEpicNormal = noEpic.filter(t => !t.buffer);
   const noEpicBuffer = noEpic.filter(t => t.buffer);
   bufferTickets.push(...noEpicBuffer);
   if (noEpicNormal.length) {
-    rows += `<tr class="pj-feat-row"><td colspan="5"><span class="pj-feat-icon">📄</span> <strong>Sans epic</strong> <span class="pj-feat-stats">${noEpicNormal.length} tickets</span></td></tr>`;
+    rows += `<tr class="pj-feat-row"><td colspan="7"><span class="pj-feat-icon">📄</span> <strong>Sans epic</strong> <span class="pj-feat-stats">${noEpicNormal.length} tickets</span></td></tr>`;
     _sortTix(noEpicNormal).forEach(t => { rows += _ticketRow(t); });
   }
 
@@ -1856,7 +1881,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     const bufFeat = bufferFeatId ? (features.find(f => f.id === bufferFeatId) || epics.find(e => e.id === bufferFeatId)) : null;
     const bufFeatHtml = bufFeat ? ` ${_jiraLink(bufFeat.id)} — ${_escHtml(bufFeat.title)}` : '';
     rows += `<tr class="pj-buffer-row">
-      <td colspan="5"><span class="pj-feat-icon">🛡️</span> <strong>Buffer</strong>${bufFeatHtml} <span class="pj-feat-stats">${bufferTickets.length} tickets · ${bufPts} pts</span></td>
+      <td colspan="7"><span class="pj-feat-icon">🛡️</span> <strong>Buffer</strong>${bufFeatHtml} <span class="pj-feat-stats">${bufferTickets.length} tickets · ${bufPts} pts</span></td>
     </tr>`;
     // Group buffer by epic
     const bufByEpic = {};
@@ -1874,7 +1899,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
         const eTitle = _resolveTitle(eid);
         const ePts = tix.reduce((s, t) => s + (t.points || 0), 0);
         rows += `<tr class="pj-epic-row" style="background:rgba(139,92,246,.04)">
-          <td colspan="5"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(eid)}</strong> — ${_escHtml(eTitle)} <span class="pj-epic-stats">${tix.length} tickets · ${ePts} pts</span></td>
+          <td colspan="7"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(eid)}</strong> — ${_escHtml(eTitle)} <span class="pj-epic-stats">${tix.length} tickets · ${ePts} pts</span></td>
         </tr>`;
       }
       _sortTix(tix).forEach(t => { rows += _ticketRow(t); });
@@ -1909,11 +1934,12 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
   return `
     <div class="pj-toolbar">
       <span class="pj-summary-label">${totalTix} tickets · ${featCount} features [${totalPts} pts = 📦 build ${buildPts} pts + 🛡️ buffer ${bufPts} pts]</span>
+      <button class="btn btn-sm btn-secondary pj-toggle-nosprint" onclick="_piJiraToggleNoSprint(this)" title="Afficher/masquer les tickets sans sprint (non comptabilisés en vélocité)">Hors sprint</button>
       <button class="btn btn-sm btn-secondary" onclick="_piJiraCopyTSV()">📋 Copier (TSV)</button>
       <button class="btn btn-sm btn-secondary" onclick="_piJiraCopyMiro()">🟡 Copier Miro</button>
     </div>
     <div class="pj-table-wrap">
-      <table class="pj-table" id="pj-table">
+      <table class="pj-table pj-hide-nosprint" id="pj-table">
         <thead>
           <tr>
             <th style="width:160px">Type</th>
@@ -1921,6 +1947,8 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
             <th>Résumé</th>
             <th style="width:110px">État</th>
             <th style="width:60px">Pts</th>
+            <th style="width:100px" class="pj-sprint-th">Sprint</th>
+            <th style="width:80px" class="pj-team-th">Équipe</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -1951,7 +1979,9 @@ function _piJiraExtractRows() {
   const table = document.getElementById('pj-table');
   if (!table) return [];
   const rows = [];
+  const hideNoSprint = table.classList.contains('pj-hide-nosprint');
   table.querySelectorAll('.pj-ticket-row').forEach(row => {
+    if (hideNoSprint && row.classList.contains('pj-no-sprint')) return;
     const cells = row.querySelectorAll('td');
     rows.push({
       type:    cells[0]?.textContent?.trim() || '',
@@ -1962,6 +1992,34 @@ function _piJiraExtractRows() {
     });
   });
   return rows;
+}
+
+// Toggle visibility of no-sprint tickets (hidden by default)
+let _piJiraNoSprintHidden = true;
+function _piJiraToggleNoSprint(btn) {
+  _piJiraNoSprintHidden = !_piJiraNoSprintHidden;
+  const table = document.getElementById('pj-table');
+  if (table) table.classList.toggle('pj-hide-nosprint', _piJiraNoSprintHidden);
+  if (btn) btn.classList.toggle('active', !_piJiraNoSprintHidden);
+  _piJiraUpdateSummary();
+}
+
+function _piJiraUpdateSummary() {
+  const table = document.getElementById('pj-table');
+  const label = document.querySelector('.pj-summary-label');
+  if (!table || !label) return;
+  const hidden = table.classList.contains('pj-hide-nosprint');
+  let tix = 0, pts = 0, bufPts = 0, featCount = 0;
+  table.querySelectorAll('.pj-feat-row').forEach(r => { if (!r.classList.contains('pj-retro-row') && !r.querySelector('.pj-feat-icon')?.textContent?.includes('📄')) featCount++; });
+  table.querySelectorAll('.pj-ticket-row').forEach(r => {
+    if (hidden && r.classList.contains('pj-no-sprint')) return;
+    tix++;
+    const p = parseFloat(r.querySelector('.pj-pts')?.textContent) || 0;
+    pts += p;
+    if (r.dataset.buffer === '1') bufPts += p;
+  });
+  const buildPts = pts - bufPts;
+  label.textContent = `${tix} tickets · ${featCount} features [${pts} pts = \u{1F4E6} build ${buildPts} pts + \u{1F6E1}\uFE0F buffer ${bufPts} pts]`;
 }
 
 // Copy as TSV + HTML table (paste into Excel/Sheets/Miro with "paste special")
