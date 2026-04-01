@@ -341,10 +341,18 @@ function _piAllTickets(teams, piNum) {
   const teamList = teams.length ? teams : Object.keys(CONFIG.teams || {});
   const activeInPI = piRe.test(CONFIG.sprint?.label || '') ||
     teamList.some(tid => piRe.test((CONFIG.teams[tid]?.sprintName || '')));
-  // Exclure les tickets dont le piSprint pointe explicitement vers un AUTRE PI
+  // Exclure les tickets dont le piSprint pointe vers un AUTRE PI,
+  // SAUF si leur sprint d'itération appartient bien au PI courant (ex: "Fuego - Ité 29.1")
   const otherPiRe = new RegExp(`PI\\s*#?\\s*(?!${piNum}\\b)\\d+`, 'i');
   const filtered = activeInPI
-    ? active.filter(t => (!teamSet.size || teamSet.has(t.team)) && !otherPiRe.test(t.piSprint || ''))
+    ? active.filter(t => {
+        if (teamSet.size && !teamSet.has(t.team)) return false;
+        // Si piSprint pointe vers un autre PI, garder uniquement si le sprint d'itération matche ce PI
+        if (otherPiRe.test(t.piSprint || '')) {
+          return piRe.test(t.sprintName || '') || (t.allSprints || []).some(s => piRe.test(s));
+        }
+        return true;
+      })
     : [];
   const activeIds = new Set(filtered.map(t => t.id));
 
