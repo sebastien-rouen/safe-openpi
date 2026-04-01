@@ -9,7 +9,7 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 ### Securite
 
 - **Token JIRA retire du client** : `JIRA_TOKEN` n'est plus expose dans `window.ENV` / `env.js` — le proxy `server.js` gere l'auth. `generate-env.js` n'exporte plus que `JIRA_HAS_TOKEN: true` (`env.js`, `generate-env.js`, `config.js`, `navigation.js`, `settings.js`)
-- **Protection XSS** : ajout de `escapeHtml()` globale dans `utils.js` pour echapper les donnees JIRA avant injection HTML. Le doublon local `_escHtml` dans `pi.js` utilise desormais la globale
+- **Protection XSS deployee** : `escapeHtml()` globale appliquee sur 57+ points d'injection innerHTML dans 12 fichiers (`modal.js`, `scrum.js`, `navigation.js`, `sidebar.js`, `sync.js`, `support.js`, `filter.js`, `roadmap.js`, `inno.js`, `amelioration.js`, `piprep.js`, `reports.js`). Couvre titres, assignees, equipes, labels, composants, auteurs, sprints, input recherche utilisateur
 - **Protection SSRF proxy** : validation du path dans `server.js` — seuls `/api/` et `/agile/` sont autorises, traversal (`..`) bloque
 
 ### Performance

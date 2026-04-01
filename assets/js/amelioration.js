@@ -195,7 +195,7 @@ function _amelTicketCard(t) {
       <span class="ticket-prio-key">${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
       ${ptsBadge(t.points, {size:'small'})}
     </div>
-    <div class="ticket-title">${t.title}</div>
+    <div class="ticket-title">${escapeHtml(t.title)}</div>
     <div class="ticket-meta">
       <span class="badge badge-${t.type}">${typeName(t.type)}</span>
       ${epicTag(epic, t.epic)}

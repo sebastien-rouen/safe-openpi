@@ -190,7 +190,7 @@ function _renderModalContent(t) {
   const teamColor   = _teamColor(t.team);
 
   document.getElementById('modal-title').innerHTML =
-    `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:${_chipBg};border:1.5px solid ${_chipClr}33;font-size:12px;font-weight:700;vertical-align:middle;margin-right:8px;white-space:nowrap;">${_chipHtml}</span>${t.title}`;
+    `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;background:${_chipBg};border:1.5px solid ${_chipClr}33;font-size:12px;font-weight:700;vertical-align:middle;margin-right:8px;white-space:nowrap;">${_chipHtml}</span>${escapeHtml(t.title)}`;
 
   // Flags row
   const flags = [];
@@ -319,7 +319,7 @@ function _renderModalContent(t) {
   // Labels / Tags
   if (t.labels && t.labels.length) {
     const tags = t.labels.map(l =>
-      `<span class="mdl-tag">${l}</span>`
+      `<span class="mdl-tag">${escapeHtml(l)}</span>`
     ).join('');
     _extraSections.push(`<div class="mdl-extra-section">
       <div class="mdl-extra-label">🏷️ Étiquettes</div>
@@ -330,7 +330,7 @@ function _renderModalContent(t) {
   // Components
   if (t.components && t.components.length) {
     const comps = t.components.map(c =>
-      `<span class="mdl-component">${c}</span>`
+      `<span class="mdl-component">${escapeHtml(c)}</span>`
     ).join('');
     _extraSections.push(`<div class="mdl-extra-section">
       <div class="mdl-extra-label">🧩 Composants</div>
@@ -343,10 +343,10 @@ function _renderModalContent(t) {
     const linkRows = t.links.map(l => {
       const statusCls = _mapLinkStatus(l.status);
       return `<div class="mdl-link-row">
-        <span class="mdl-link-type">${l.type}</span>
+        <span class="mdl-link-type">${escapeHtml(l.type)}</span>
         ${_jiraBrowse(l.id, { style: 'font-weight:600;font-size:12px;color:var(--primary);text-decoration:none;flex-shrink:0;' })}
-        <span class="mdl-link-title">${l.title}</span>
-        <span class="badge badge-${statusCls}" style="font-size:10px;flex-shrink:0;">${l.status}</span>
+        <span class="mdl-link-title">${escapeHtml(l.title)}</span>
+        <span class="badge badge-${statusCls}" style="font-size:10px;flex-shrink:0;">${escapeHtml(l.status)}</span>
       </div>`;
     }).join('');
     _extraSections.push(`<div class="mdl-extra-section">
@@ -371,7 +371,7 @@ function _renderModalContent(t) {
       return `<div class="mdl-comment">
         <div class="mdl-comment-header">
           ${avatarBadge(c.author, MEMBER_COLORS[c.author] || CLR.slate, {w:18, fs:'8px'})}
-          <span class="mdl-comment-author">${c.author}</span>
+          <span class="mdl-comment-author">${escapeHtml(c.author)}</span>
           <span class="mdl-comment-date">${commentDate}</span>
         </div>
         <div class="mdl-comment-body">${_formatDescription(c.body)}</div>
@@ -388,7 +388,7 @@ function _renderModalContent(t) {
 
   // --- Team chip
   const teamChip = t.team
-    ? `<span class="mdl-sep">·</span><span style="display:inline-flex;align-items:center;gap:4px;">${statusDot(teamColor, 'sm')}<span style="font-size:11px;font-weight:600;color:${teamColor};">${t.team}</span></span>`
+    ? `<span class="mdl-sep">·</span><span style="display:inline-flex;align-items:center;gap:4px;">${statusDot(teamColor, 'sm')}<span style="font-size:11px;font-weight:600;color:${teamColor};">${escapeHtml(t.team)}</span></span>`
     : '';
 
   // --- Sprint chips
@@ -398,7 +398,7 @@ function _renderModalContent(t) {
     const last = sprints[sprints.length - 1];
     const rest = sprints.slice(0, -1);
     const uid  = 'mdl-sp-' + Date.now();
-    sprintChipsHtml = `<span class="mdl-sep">·</span><span class="mdl-sprint-chips"><span class="mdl-sprint-chip-main">🏃 ${last}</span>${rest.length ? `<button class="mdl-sprint-chip-toggle" onclick="document.getElementById('${uid}').classList.toggle('mdl-sprint-chips-open');this.textContent=this.textContent.trim()==='+${rest.length}'?'−':'+${rest.length}'" title="${rest.join(', ')}">+${rest.length}</button><span class="mdl-sprint-chips-rest" id="${uid}">${rest.map(s => `<span class="mdl-sprint-chip-item">${s}</span>`).join('')}</span>` : ''}</span>`;
+    sprintChipsHtml = `<span class="mdl-sep">·</span><span class="mdl-sprint-chips"><span class="mdl-sprint-chip-main">🏃 ${escapeHtml(last)}</span>${rest.length ? `<button class="mdl-sprint-chip-toggle" onclick="document.getElementById('${uid}').classList.toggle('mdl-sprint-chips-open');this.textContent=this.textContent.trim()==='+${rest.length}'?'−':'+${rest.length}'" title="${escapeHtml(rest.join(', '))}">+${rest.length}</button><span class="mdl-sprint-chips-rest" id="${uid}">${rest.map(s => `<span class="mdl-sprint-chip-item">${escapeHtml(s)}</span>`).join('')}</span>` : ''}</span>`;
   }
 
   // --- Epic chip (line 2 right)
@@ -418,7 +418,7 @@ function _renderModalContent(t) {
       <div class="mdl-meta-row">
         <div class="mdl-meta-left">
           ${avatarBadge(t.assignee, avatarColor, {w:20, fs:'9px'})}
-          <span style="font-size:12px;font-weight:600;">${t.assignee || 'Non assigné'}</span>
+          <span style="font-size:12px;font-weight:600;">${escapeHtml(t.assignee) || 'Non assigné'}</span>
           ${teamChip}
           ${sprintChipsHtml}
         </div>

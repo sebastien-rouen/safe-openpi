@@ -200,7 +200,7 @@ function renderScrum() {
   if (_el('sprint-pct'))      _el('sprint-pct').textContent      = pct + '%';
   if (_el('pts-done'))        _el('pts-done').textContent        = ptsDone + ' / ' + ptsTotal;
   if (_el('pts-rem'))         _el('pts-rem').textContent         = ptsRem + ' pts';
-  if (_el('sprint-goal'))     _el('sprint-goal').innerHTML       = s.goal ? `<strong>🎯 Goal</strong>${s.goal}` : '';
+  if (_el('sprint-goal'))     _el('sprint-goal').innerHTML       = s.goal ? `<strong>🎯 Goal</strong>${escapeHtml(s.goal)}` : '';
 
   _renderSprintAlerts();
   if (_moodPanelOpen) _renderMoodPanel();
@@ -437,7 +437,7 @@ function _daRenderRow(c) {
     const toS   = _mapStatus(c.to) || c.to;
     transitionHtml = `<span class="badge badge-${fromS}" style="font-size:10px;">${statusLabel(fromS)}</span><span class="da-arrow">→</span><span class="badge badge-${toS}" style="font-size:10px;">${statusLabel(toS)}</span>`;
   } else {
-    transitionHtml = `<span class="da-field-badge">${_daFieldLabel(c.field)}</span><span class="da-field-val" title="${c.from || '-'}">${c.from || '-'}</span><span class="da-arrow">→</span><span class="da-field-val" title="${c.to || '-'}">${c.to || '-'}</span>`;
+    transitionHtml = `<span class="da-field-badge">${_daFieldLabel(c.field)}</span><span class="da-field-val" title="${escapeHtml(c.from || '-')}">${escapeHtml(c.from || '-')}</span><span class="da-arrow">→</span><span class="da-field-val" title="${escapeHtml(c.to || '-')}">${escapeHtml(c.to || '-')}</span>`;
   }
   const mappedTo = c.kind === 'status' ? (_mapStatus(c.to) || c.to) : '';
   return `<div class="da-row${isDone(mappedTo) ? ' da-done' : ''}${c.kind === 'field' ? ' da-field' : ''}" onclick="openModal('${c.id}')">
@@ -445,7 +445,7 @@ function _daRenderRow(c) {
     <span class="da-transition">${transitionHtml}</span>
     <span class="da-ticket">
       <span class="da-ticket-id">${_jiraBrowse(c.id)}</span>
-      <span class="da-ticket-title">${c.title}</span>
+      <span class="da-ticket-title">${escapeHtml(c.title)}</span>
     </span>
     <span class="da-assignee" title="${authorName}">
       ${avatarBadge(authorName, avatarColor, {w:20, fs:'9px'})}
@@ -561,10 +561,10 @@ function _renderScrumQuickFilters() {
       <option value="">Type</option>${types.map(t => `<option value="${t}"${_scrumTypeFilter === t ? ' selected' : ''}>${typeName(t)}</option>`).join('')}
     </select>` +
     `<select class="sqf-select${_scrumAssignee ? ' active' : ''}" onchange="_setScrumAssignee(this.value)" title="Filtrer par assigné">
-      <option value="">Assigné</option>${assignees.map(a => `<option value="${a}"${_scrumAssignee === a ? ' selected' : ''}>${a}</option>`).join('')}
+      <option value="">Assigné</option>${assignees.map(a => `<option value="${a}"${_scrumAssignee === a ? ' selected' : ''}>${escapeHtml(a)}</option>`).join('')}
     </select>` +
     `<select class="sqf-select${_scrumEpicFilter ? ' active' : ''}" onchange="_setScrumEpic(this.value)" title="Filtrer par epic">
-      <option value="">Epic</option>${epics.map(e => { const ep = EPICS.find(x => x.id === e); return `<option value="${e}"${_scrumEpicFilter === e ? ' selected' : ''}>${ep ? ep.title : e}</option>`; }).join('')}
+      <option value="">Epic</option>${epics.map(e => { const ep = EPICS.find(x => x.id === e); return `<option value="${e}"${_scrumEpicFilter === e ? ' selected' : ''}>${ep ? escapeHtml(ep.title) : e}</option>`; }).join('')}
     </select>` +
     `<input id="sqf-text" type="text" placeholder="🔍 Rechercher…" value="${_scrumTextFilter.replace(/"/g,'&quot;')}"
       oninput="_setScrumText(this.value)">` +
@@ -920,7 +920,7 @@ function _deadlineCard(t, dateStr) {
     <span style="font-size:11px;color:var(--text-muted);min-width:45px;flex-shrink:0;">${dateStr}</span>
     <span class="badge badge-${t.status}" style="font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
     <span class="ticket-prio-key">${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
-    <span class="sc-truncate-sm">${t.title}</span>
+    <span class="sc-truncate-sm">${escapeHtml(t.title)}</span>
     ${epicTag(epic, t.epic)}
     ${ptsBadge(t.points, {size:'small'})}
     ${avatarBadge(t.assignee, avatarColor, {w:22, fs:'9px'})}
@@ -1006,7 +1006,7 @@ function _renderBoardList(filtered) {
       return `<div class="bl-row${rowCls}${_tkDone ? ' bl-done' : ''}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
         <span class="bl-cell" style="width:30px;">${priorityIcon(t.priority)}</span>
         <span class="bl-cell bl-key" style="width:70px;">${_jiraBrowse(t.id)}</span>
-        <span class="bl-cell bl-title" style="flex:1;">${t.title}</span>
+        <span class="bl-cell bl-title" style="flex:1;">${escapeHtml(t.title)}</span>
         <span class="bl-cell" style="width:75px;"><span class="badge badge-${t.type}" style="font-size:10px;">${typeName(t.type)}</span></span>
         <span class="bl-cell" style="width:80px;"><span class="badge badge-${t.status}" style="font-size:10px;">${statusLabel(t.status)}</span></span>
         <span class="bl-cell" style="width:55px;">${ptsBadge(t.points, {size:'small'})}</span>
@@ -1058,7 +1058,7 @@ function _showScrumStatDetail(filter) {
         ${flagBadge}
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-        <span class="sc-truncate-title" style="${strike}">${_jiraBrowse(t.id)} - ${t.title}</span>
+        <span class="sc-truncate-title" style="${strike}">${_jiraBrowse(t.id)} - ${escapeHtml(t.title)}</span>
         <span class="badge badge-${t.status}" style="white-space:nowrap;font-size:10px;flex-shrink:0;">${statusLabel(t.status)}</span>
         ${epicTag(epic, t.epic)}
         ${ptsBadge(t.points)}
@@ -1201,11 +1201,11 @@ function _showScopeCreepDetail() {
     return `<div class="sc-ticket-row" onclick="closeModalDirect();openModal('${t.id}')">
       <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
       <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-      <span class="sc-truncate-title">${_jiraBrowse(t.id)} - ${t.title}</span>
+      <span class="sc-truncate-title">${_jiraBrowse(t.id)} - ${escapeHtml(t.title)}</span>
       ${epicTag(epic, t.epic)}
       ${ptsBadge(t.points)}
       ${avatarBadge(t.assignee, avatarColor)}
-      ${addedBy ? `<span style="font-size:11px;color:#64748B;white-space:nowrap;">par ${addedBy}${timeStr ? ' à ' + timeStr : ''}</span>` : ''}
+      ${addedBy ? `<span style="font-size:11px;color:#64748B;white-space:nowrap;">par ${escapeHtml(addedBy)}${timeStr ? ' à ' + timeStr : ''}</span>` : ''}
     </div>`;
   }).join('');
 
@@ -1248,7 +1248,7 @@ function ticketCard(t) {
       ${ptsBadge(t.points, {size:'small'})}
       ${dailyDone}
     </div>
-    <div class="ticket-title">${t.title}</div>
+    <div class="ticket-title">${escapeHtml(t.title)}</div>
     <div class="ticket-meta">
       <span class="badge badge-${t.type}">${typeName(t.type)}</span>
       ${epicTag(epic, t.epic)}

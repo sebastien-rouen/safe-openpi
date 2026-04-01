@@ -134,7 +134,7 @@ function renderGroupBtns() {
     return `<button class="group-btn${isActive ? ' active' : ''}" style="${activeStyle}" onclick="selectGroup('${g.id}')">
       <span class="group-dot" style="background:${g.color}"></span>
       <span class="group-btn-inner" data-tooltip="${tooltip}">
-        <span class="group-btn-name">${g.name}</span>
+        <span class="group-btn-name">${escapeHtml(g.name)}</span>
         <span class="group-btn-teams">${teamLabels}</span>
       </span>
       <span class="group-btn-count">${activeTeams.length}</span>
@@ -148,7 +148,7 @@ function updateSidebarGroupLabel() {
   if (currentGroup) {
     const g = GROUPS.find(x => x.id === currentGroup);
     el.style.display = 'block';
-    el.innerHTML = `<span class="group-badge" style="background:${g.color}">Groupe: ${g.name}</span>`;
+    el.innerHTML = `<span class="group-badge" style="background:${g.color}">Groupe: ${escapeHtml(g.name)}</span>`;
   } else {
     el.style.display = 'none';
   }

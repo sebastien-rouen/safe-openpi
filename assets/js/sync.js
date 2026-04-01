@@ -27,7 +27,7 @@ function _computeDiff(before, after) {
   // New tickets
   TICKETS.forEach(t => {
     if (!before.ids.has(t.id)) {
-      changes.push({ type: 'new', icon: '🆕', label: `${_link(t.id)} - ${t.title}`, color: '#16A34A', team: t.team || '' });
+      changes.push({ type: 'new', icon: '🆕', label: `${_link(t.id)} - ${escapeHtml(t.title)}`, color: '#16A34A', team: t.team || '' });
     }
   });
 
@@ -59,7 +59,7 @@ function _computeDiff(before, after) {
   // Removed tickets
   before.ids.forEach(id => {
     if (!afterIds.has(id)) {
-      changes.push({ type: 'removed', icon: '🗑', label: `${_link(id)} - ${before.titles[id] || '?'} retiré`, color: '#94A3B8', team: before.teams[id] || '' });
+      changes.push({ type: 'removed', icon: '🗑', label: `${_link(id)} - ${escapeHtml(before.titles[id] || '?')} retiré`, color: '#94A3B8', team: before.teams[id] || '' });
     }
   });
 

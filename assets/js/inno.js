@@ -265,10 +265,10 @@ function renderInno() {
             <span class="badge badge-${t.type}" style="font-size:8px;padding:1px 4px;">${typeName(t.type)}</span>
             <span style="font-size:9px;color:var(--text-muted);font-weight:600;">${t.id}</span>
           </div>
-          <div style="font-size:11px;color:var(--text);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.title || ''}</div>
+          <div style="font-size:11px;color:var(--text);line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t.title)}</div>
           <div style="display:flex;align-items:center;gap:4px;margin-top:3px;">
             ${tc ? `<span style="width:6px;height:6px;border-radius:50%;background:${tc.color || '#94A3B8'};flex-shrink:0;"></span>` : ''}
-            ${t.assignee ? `<span style="font-size:9px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.assignee.split(' ')[0]}</span>` : '<span style="font-size:9px;color:var(--text-muted);font-style:italic;">Non assigné</span>'}
+            ${t.assignee ? `<span style="font-size:9px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(t.assignee.split(' ')[0])}</span>` : '<span style="font-size:9px;color:var(--text-muted);font-style:italic;">Non assigné</span>'}
           </div>
         </div>`;
     };
@@ -289,7 +289,7 @@ function renderInno() {
         <div style="padding:14px 16px 10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <span style="font-size:20px;">💡</span>
           <div style="flex:1;min-width:200px;">
-            <div style="font-weight:700;font-size:14px;color:var(--text);">${g.title}</div>
+            <div style="font-weight:700;font-size:14px;color:var(--text);">${escapeHtml(g.title)}</div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap;">
               ${teamBadges} ${sprintBadges}
             </div>

@@ -832,7 +832,7 @@ function _ppObjectivesSection(activeTeams) {
     const st   = ST.find(s => s.v === o.status) || ST[0];
     const tc   = _teamColor(o.team);
     const teamSel = activeTeams.map(t =>
-      `<option value="${t}" ${o.team === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`
+      `<option value="${t}" ${o.team === t ? 'selected' : ''}>${escapeHtml(CONFIG.teams[t]?.name || t)}</option>`
     ).join('');
     const typeSel = TY.map(t =>
       `<option value="${t.v}" ${o.type === t.v ? 'selected' : ''}>${t.l}</option>`
@@ -1179,7 +1179,7 @@ function _ppROAMSection(activeTeams) {
       <div class="pp-roam-suggest-title">💡 Tickets bloqués JIRA - importer comme risque "Owned"</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${suggestions.map(t => `
-          <button onclick="_ppRoamImport('${t.id}','${(t.title || '').replace(/'/g,"\\'")}','${t.team || activeTeams[0] || 'A'}');"
+          <button onclick="_ppRoamImport('${t.id}','${escapeHtml((t.title || '').replace(/'/g,"\\'")}','${t.team || activeTeams[0] || 'A'}');"
             class="pp-roam-suggest-btn">
             ➕ ${t.id}
           </button>`).join('')}
@@ -1207,7 +1207,7 @@ function _ppROAMSection(activeTeams) {
           <div class="pp-roam-footer">
             <select onchange="_ppRoamField('${r.id}','team',this.value);_ppRefreshROAM();"
               style="border:1px solid var(--border);border-radius:5px;padding:2px 5px;font-size:10px;font-weight:700;color:${tc2};background:${tc2}18;">
-              ${activeTeams.map(t => `<option value="${t}" ${r.team === t ? 'selected' : ''}>${CONFIG.teams[t]?.name || t}</option>`).join('')}
+              ${activeTeams.map(t => `<option value="${t}" ${r.team === t ? 'selected' : ''}>${escapeHtml(CONFIG.teams[t]?.name || t)}</option>`).join('')}
             </select>
             <div>${moveBtns(r.id)}</div>
           </div>
@@ -2223,7 +2223,7 @@ function _ppObjSummarySection(activeTeams) {
           : '';
         return `<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);${isDone ? 'opacity:.7;' : ''}">
           <span style="font-size:13px;flex-shrink:0">${statusIcon[o.status] || '⬜'}</span>
-          <span style="font-size:12px;color:var(--text);flex:1;${isDone ? 'text-decoration:line-through;' : ''}">${o.title || 'Sans titre'}</span>
+          <span style="font-size:12px;color:var(--text);flex:1;${isDone ? 'text-decoration:line-through;' : ''}">${escapeHtml(o.title || 'Sans titre')}</span>
           ${typeTag}
           <span style="flex-shrink:0;font-size:11px;white-space:nowrap;font-weight:600;color:${isDone ? '#16A34A' : '#D97706'}">💰 ${bv}</span>
         </div>`;
@@ -2327,7 +2327,7 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
     return `<tr class="pp-tr">
       <td style="padding:6px 10px;font-size:12px;font-weight:700;color:${t.color};white-space:nowrap;border-right:1px solid var(--border);">
         <span class="pp-team-dot" style="background:${t.color};margin-right:4px;"></span>
-        ${t.name}
+        ${escapeHtml(t.name)}
         <div style="font-size:9px;color:var(--text-muted);font-weight:400;">${t.teamSize} dev · ${t.velocity} pts/sprint</div>
       </td>
       ${cells}

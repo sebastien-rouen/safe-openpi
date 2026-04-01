@@ -484,16 +484,16 @@ function _rptSprint(el, isSlack) {
     h += `</table>`;
     if (tickets.length) {
       h += `<h2>✅ Terminées</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th><th>Statut</th></tr>`;
-      h += done.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
+      h += done.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${x.points||0}</td><td>${escapeHtml(x.assignee||'-')}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
       h += done.length ? '' : '<tr><td colspan="5"><em>Aucune</em></td></tr>';
       h += `</table><h2>⏳ Non terminées</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Statut</th></tr>`;
-      h += notDone.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
+      h += notDone.map(x => `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${x.points||0}</td><td>${statusLabel(x.status)}</td></tr>`).join('');
       h += notDone.length ? '' : '<tr><td colspan="4"><em>Toutes complétées ✅</em></td></tr>';
       h += `</table>`;
       if (bugs.length || incidents.length) {
         h += `<h2>🐛 Bugs & Incidents</h2><ul>`;
-        bugs.forEach(x => { h += `<li>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})} - ${x.title} ${x.status==='done'?'✅':'⚠️'}</li>`; });
-        incidents.forEach(x => { h += `<li>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})} - ${x.title} (Incident) ${x.status==='done'?'✅':'🔴'}</li>`; });
+        bugs.forEach(x => { h += `<li>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})} - ${escapeHtml(x.title)} ${x.status==='done'?'✅':'⚠️'}</li>`; });
+        incidents.forEach(x => { h += `<li>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})} - ${escapeHtml(x.title)} (Incident) ${x.status==='done'?'✅':'🔴'}</li>`; });
         h += `</ul>`;
       }
     } else if (sd.isHistorical) {
@@ -537,7 +537,7 @@ function _rptSprintGroup(el, isSlack) {
     t += `\n\n_${_rptDate()} - JIRA Dashboard_`;
     _rptSetSlack(el, t);
   } else {
-    let h = `<h1>📊 Rapport Groupe ${g.name} - ${sprintLabel}</h1>`;
+    let h = `<h1>📊 Rapport Groupe ${escapeHtml(g.name)} - ${sprintLabel}</h1>`;
     h += `<p><em>${g.teams.map(tid => _rptName(tid)).join(', ')} | ${_rptDate()}</em></p>`;
     h += `<h2>📊 Résumé</h2><table><tr><th>Métrique</th><th>Valeur</th></tr>`;
     h += `<tr><td>Points</td><td><strong>${ptsDone}/${ptsTotal} (${pct}%)</strong></td></tr>`;
@@ -595,7 +595,7 @@ function _rptKanban(el, isSlack) {
       if (!items.length) return;
       const pts = items.reduce((s,x) => s+(x.points||0), 0);
       h += `<h2>${c.l} (${items.length} - ${pts} pts)</h2><table><tr><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th><th>Statut</th></tr>`;
-      items.forEach(x => { h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td><td>${statusLabel(x.status)}</td></tr>`; });
+      items.forEach(x => { h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${x.points||0}</td><td>${escapeHtml(x.assignee||'-')}</td><td>${statusLabel(x.status)}</td></tr>`; });
       h += `</table>`;
     });
     _rptSetConf(el, h);
@@ -778,7 +778,7 @@ function _rptPI(el, isSlack) {
       const avgVel = Math.round(piVelHistConf.reduce((s,v) => s+v.velocity, 0) / piVelHistConf.length);
       h += `<h2>📈 Vélocité${piLabel ? ` ${piLabel}` : ''} par sprint</h2><table><tr><th>Sprint</th><th>Vélocité</th></tr>`;
       const totalVel = piVelHistConf.reduce((s,v) => s+v.velocity, 0);
-      piVelHistConf.forEach(v => { h += `<tr><td>${v.name}</td><td>${v.velocity} pts</td></tr>`; });
+      piVelHistConf.forEach(v => { h += `<tr><td>${escapeHtml(v.name)}</td><td>${v.velocity} pts</td></tr>`; });
       h += `<tr style="border-top:2px solid #DFE1E6"><td><strong>Total</strong></td><td><strong>${totalVel} pts</strong></td></tr>`;
       h += `<tr><td><strong>Moyenne</strong></td><td><strong>${avgVel} pts</strong></td></tr></table>`;
     }
@@ -800,13 +800,13 @@ function _rptPI(el, isSlack) {
         const et = tickets.filter(x => x.epic === e.id);
         const ed = et.filter(x => isDone(x.status)).length;
         const ep = et.reduce((s,x) => s+(x.points||0), 0);
-        h += `<tr><td>${_rptStatus(e.status, e._jiraStatus)}</td><td>${_jiraBrowse(e.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${e.title}</td><td>${ed}/${et.length} done</td><td>${ep} pts</td></tr>`;
+        h += `<tr><td>${_rptStatus(e.status, e._jiraStatus)}</td><td>${_jiraBrowse(e.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${escapeHtml(e.title)}</td><td>${ed}/${et.length} done</td><td>${ep} pts</td></tr>`;
       });
       h += `</table>`;
     }
     if (blocked.length) {
       h += `<h2>🚫 Bloquants</h2><table><tr><th>Statut</th><th>Clé</th><th>Titre</th></tr>`;
-      blocked.forEach(x => { h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${x.title}</td></tr>`; });
+      blocked.forEach(x => { h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${escapeHtml(x.title)}</td></tr>`; });
       h += `</table>`;
     }
     // Tickets regroupés par feature
@@ -815,10 +815,10 @@ function _rptPI(el, isSlack) {
       const _noFeatConf = [];
       piFeatures.forEach(g => {
         const gPts = g.tickets.reduce((s,x) => s+(x.points||0), 0);
-        h += `<h3>🏷️ ${g.feature.title} (${g.tickets.length} · ${gPts} pts)</h3>`;
+        h += `<h3>🏷️ ${escapeHtml(g.feature.title)} (${g.tickets.length} · ${gPts} pts)</h3>`;
         h += `<table><tr><th>Statut</th><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th></tr>`;
         g.tickets.forEach(x => {
-          h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td></tr>`;
+          h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${x.points||0}</td><td>${escapeHtml(x.assignee||'-')}</td></tr>`;
         });
         h += `</table>`;
       });
@@ -832,7 +832,7 @@ function _rptPI(el, isSlack) {
         h += `<h3>📋 Autres tickets (${_noFeatConf.length} · ${nfPts} pts)</h3>`;
         h += `<table><tr><th>Statut</th><th>Clé</th><th>Titre</th><th>Pts</th><th>Assigné</th></tr>`;
         _noFeatConf.forEach(x => {
-          h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.assignee||'-'}</td></tr>`;
+          h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id, {style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${x.points||0}</td><td>${escapeHtml(x.assignee||'-')}</td></tr>`;
         });
         h += `</table>`;
       }
@@ -925,7 +925,7 @@ function _rptSupport(el, isSlack) {
       h += `<table><tr><th>ID</th><th>Titre</th><th>Statut</th><th>Assigné</th><th>Équipe</th><th>Date</th></tr>`;
       items.forEach(x => {
         const sIcon = isDone(x.status) ? '✅' : x.status === 'inprog' ? '⏳' : '📭';
-        h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${sIcon}</td><td>${x.assignee||'-'}</td><td>${x.team||'-'}</td><td>${x.date||'-'}</td></tr>`;
+        h += `<tr><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${sIcon}</td><td>${escapeHtml(x.assignee||'-')}</td><td>${escapeHtml(x.team||'-')}</td><td>${x.date||'-'}</td></tr>`;
       });
       h += `</table>`;
     });
@@ -1038,7 +1038,7 @@ function _rptRoadmap(el, isSlack) {
 
     h += `<h2>📋 Backlog priorisé</h2><table><tr><th>Statut</th><th>Clé</th><th>Titre</th><th>Pts</th><th>Priorité</th><th>Epic</th></tr>`;
     sorted.slice(0, 30).forEach(x => {
-      h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${x.title}</td><td>${x.points||0}</td><td>${x.priority}</td><td>${x.epic ? _jiraBrowse(x.epic,{style:'color:#0284C7;font-size:11px'}) : '-'}</td></tr>`;
+      h += `<tr><td>${_rptStatus(x.status, x._jiraStatus)}</td><td>${_jiraBrowse(x.id,{style:'color:#0284C7'})}</td><td>${escapeHtml(x.title)}</td><td>${x.points||0}</td><td>${x.priority}</td><td>${x.epic ? _jiraBrowse(x.epic,{style:'color:#0284C7;font-size:11px'}) : '-'}</td></tr>`;
     });
     if (sorted.length > 30) h += `<tr><td colspan="6"><em>… et ${sorted.length-30} autres tickets</em></td></tr>`;
     h += `</table>`;
@@ -1154,7 +1154,7 @@ function _rptPIPrep(el, isSlack) {
     h += `<h2>🎯 Objectifs PI (${objs.length})</h2>`;
     if (objs.length) {
       h += `<table><tr><th>Objectif</th><th>Équipe</th><th>Type</th><th>BV</th><th>Statut</th></tr>`;
-      objs.forEach(o => { h += `<tr><td>${o.title}</td><td>${_rptName(o.team)}</td><td>${o.type==='committed'?'📌 Committed':'🎯 Stretch'}</td><td>${o.bv||'-'}</td><td>${o.status||'-'}</td></tr>`; });
+      objs.forEach(o => { h += `<tr><td>${escapeHtml(o.title)}</td><td>${_rptName(o.team)}</td><td>${o.type==='committed'?'📌 Committed':'🎯 Stretch'}</td><td>${o.bv||'-'}</td><td>${o.status||'-'}</td></tr>`; });
       h += `</table>`;
     } else { h += `<p><em>Aucun objectif défini</em></p>`; }
 
@@ -1162,7 +1162,7 @@ function _rptPIPrep(el, isSlack) {
     h += `<h2>⚠️ ROAM (${roam.length})</h2>`;
     if (roam.length) {
       h += `<table><tr><th>Catégorie</th><th>Risque</th><th>Note</th></tr>`;
-      roam.forEach(r => { h += `<tr><td>${roamCats[r.cat]||r.cat}</td><td>${r.title}</td><td>${r.note||'-'}</td></tr>`; });
+      roam.forEach(r => { h += `<tr><td>${roamCats[r.cat]||r.cat}</td><td>${escapeHtml(r.title)}</td><td>${r.note||'-'}</td></tr>`; });
       h += `</table>`;
     } else { h += `<p><em>Aucun</em></p>`; }
 
@@ -1808,7 +1808,7 @@ function _rptMoodVelocity(el, isSlack) {
       const moodStr = ts.avgMood !== null ? `${ts.avgMood}/5` : '-';
       const delta = ts.avgVel - ts.velTarget;
       const deltaColor = delta >= 0 ? '#16A34A' : '#DC2626';
-      h += `<tr><td><strong>${ts.team}</strong></td><td>${moodStr}</td><td>${ts.avgVel} pts</td><td>${ts.velTarget} pts</td><td style="color:${deltaColor};font-weight:700">${delta >= 0 ? '+' : ''}${delta}</td><td>${ts.dataPoints} sprints</td></tr>`;
+      h += `<tr><td><strong>${escapeHtml(ts.team)}</strong></td><td>${moodStr}</td><td>${ts.avgVel} pts</td><td>${ts.velTarget} pts</td><td style="color:${deltaColor};font-weight:700">${delta >= 0 ? '+' : ''}${delta}</td><td>${ts.dataPoints} sprints</td></tr>`;
     });
     h += `</tbody></table>`;
 
@@ -1817,7 +1817,7 @@ function _rptMoodVelocity(el, isSlack) {
       h += `<table><thead><tr><th>Équipe</th><th>Sprint</th><th>Mood</th><th>Vélocité</th></tr></thead><tbody>`;
       withMood.slice(-15).forEach(r => {
         const moodColor = r.mood >= 4 ? '#16A34A' : r.mood >= 3 ? '#F59E0B' : '#DC2626';
-        h += `<tr><td>${r.team}</td><td>${r.sprint}</td><td style="color:${moodColor};font-weight:700">${r.mood}/5</td><td>${r.velocity} pts</td></tr>`;
+        h += `<tr><td>${escapeHtml(r.team)}</td><td>${escapeHtml(r.sprint)}</td><td style="color:${moodColor};font-weight:700">${r.mood}/5</td><td>${r.velocity} pts</td></tr>`;
       });
       h += `</tbody></table>`;
     }

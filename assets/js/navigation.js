@@ -537,7 +537,7 @@ window._onSearchInput = function(q) {
     // Also search tickets visible on current page
     const pageTickets = _searchPageTickets(lq);
     const all = [...filtered, ...pageTickets];
-    if (!all.length) { el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + q + '"</div>'; return; }
+    if (!all.length) { el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + escapeHtml(q) + '"</div>'; return; }
     _renderSearchResults(all);
     return;
   }
@@ -546,7 +546,7 @@ window._onSearchInput = function(q) {
   const results = window._globalSearch(q);
   if (!q.trim()) { el.innerHTML = ''; return; }
   if (!results.length) {
-    el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + q + '"</div>';
+    el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + escapeHtml(q) + '"</div>';
     return;
   }
   _renderSearchResults(results);

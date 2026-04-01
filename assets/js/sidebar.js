@@ -35,8 +35,8 @@ function _renderSidebarProgress() {
       <span>${st}</span>
       <span class="sb-buf-ticket-id">${t.id}</span>
       <span class="sb-buf-ticket-type" style="background:${typeClr}22;color:${typeClr};">${typeName(t.type || 'story')}</span>
-      <span class="sb-buf-ticket-title">${t.title || ''}</span>
-      ${assignee ? `<span class="sb-buf-ticket-assignee">${assignee}</span>` : ''}
+      <span class="sb-buf-ticket-title">${escapeHtml(t.title)}</span>
+      ${assignee ? `<span class="sb-buf-ticket-assignee">${escapeHtml(assignee)}</span>` : ''}
       <span class="sb-buf-ticket-pts">${t.points || 0} pts</span>
     </div>`;
   };
@@ -135,8 +135,8 @@ function _renderSidebarBuffer() {
         <span>${st}</span>
         <span class="sb-buf-ticket-id">${t.id}</span>
         <span class="sb-buf-ticket-type" style="background:${typeClr}22;color:${typeClr};">${typeName(t.type || 'story')}</span>
-        <span class="sb-buf-ticket-title">${t.title || ''}</span>
-        ${assignee ? `<span class="sb-buf-ticket-assignee">${assignee}</span>` : ''}
+        <span class="sb-buf-ticket-title">${escapeHtml(t.title)}</span>
+        ${assignee ? `<span class="sb-buf-ticket-assignee">${escapeHtml(assignee)}</span>` : ''}
         <span class="sb-buf-ticket-pts">${t.points || 0} pts</span>
       </div>`;
     }).join('');
@@ -145,7 +145,7 @@ function _renderSidebarBuffer() {
     return `<div class="sb-buf-team">
       <div class="sb-buf-team-header">
         <span class="sb-buf-dot" style="background:${color};"></span>
-        <span class="sb-buf-team-name" style="color:${color};">${name}</span>
+        <span class="sb-buf-team-name" style="color:${color};">${escapeHtml(name)}</span>
         <span class="sb-buf-team-stats">${teamDone}/${tks.length} · ${teamPts} pts</span>
       </div>
       ${rows}
@@ -231,7 +231,7 @@ function _renderSidebarObjectives() {
     return `<div class="sb-obj-row${o.status === 'done' ? ' sb-obj-row--done' : ''}" title="${(o.title || '(sans titre)').replace(/"/g, '&quot;')} — ${teamName} · BV${o.bv || '?'}">
       <span>${st.icon}</span>
       <span class="sb-obj-dot" style="background:${tc};" title="${teamName}"></span>
-      <span class="sb-risk-title${isStretch ? ' sb-obj-row--stretch' : ''}">${o.title || '(sans titre)'}</span>
+      <span class="sb-risk-title${isStretch ? ' sb-obj-row--stretch' : ''}">${escapeHtml(o.title || '(sans titre)')}</span>
       <span class="sb-obj-bv">BV${o.bv || '?'}</span>
     </div>`;
   }).join('');
@@ -334,14 +334,14 @@ function _renderSidebarRisks() {
   if (blocked.length) {
     const pts = blocked.reduce((a, t) => a + (t.points || 0), 0);
     items.push({ icon: '🚧', label: `${blocked.length} bloqué${blocked.length > 1 ? 's' : ''} · ${pts} pts`, color: '#F87171',
-      sub: blocked.map(t => `${t.id} — ${t.title || '?'} (${t.points || 0} pts)`) });
+      sub: blocked.map(t => `${t.id} — ${escapeHtml(t.title || '?')} (${t.points || 0} pts)`) });
   }
 
   const flagged = tickets.filter(t => t.flagged && !isDone(t.status) && t.status !== 'blocked');
   if (flagged.length) {
     const pts = flagged.reduce((a, t) => a + (t.points || 0), 0);
     items.push({ icon: '🚩', label: `${flagged.length} flaggé${flagged.length > 1 ? 's' : ''} · ${pts} pts`, color: '#F87171',
-      sub: flagged.map(t => `${t.id} — ${t.title || '?'} (${t.points || 0} pts)`) });
+      sub: flagged.map(t => `${t.id} — ${escapeHtml(t.title || '?')} (${t.points || 0} pts)`) });
   }
 
   // PI objectives at risk

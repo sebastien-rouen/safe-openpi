@@ -280,7 +280,7 @@ function _roadmapVisual(_featureData, _sprintPlan, s) {
 
     // Group header spanning all columns
     swimlanesHtml += `<div class="rm-vr-group-header" style="border-left:4px solid ${g.color};background:${g.color}0D;">
-      <span class="rm-vr-group-name" style="color:${g.color};">${g.name}</span>
+      <span class="rm-vr-group-name" style="color:${g.color};">${escapeHtml(g.name)}</span>
     </div>`;
 
     groupTeams.forEach(tid => {
@@ -298,9 +298,9 @@ function _roadmapVisual(_featureData, _sprintPlan, s) {
       epicsForTeam.forEach(e => {
         const cells = piColumns.map(pi => _vrBarCell(e, pi)).join('');
         swimlanesHtml += `<div class="rm-vr-row">
-          <div class="rm-vr-label" title="${e.title}\n${e.totalPts} pts · ${e.pct}%" style="cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
+          <div class="rm-vr-label" title="${escapeHtml(e.title)}\n${e.totalPts} pts · ${e.pct}%" style="cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
             <span class="rm-vr-feat-id" style="color:${e.color};">${e.id}</span>
-            <span class="rm-vr-feat-title">${(e.title).slice(0, 30)}${e.title.length > 30 ? '…' : ''}</span>
+            <span class="rm-vr-feat-title">${escapeHtml((e.title).slice(0, 30))}${e.title.length > 30 ? '…' : ''}</span>
           </div>
           ${cells}
         </div>`;
@@ -321,9 +321,9 @@ function _roadmapVisual(_featureData, _sprintPlan, s) {
     epicsForTeam.forEach(e => {
       const cells = piColumns.map(pi => _vrBarCell(e, pi)).join('');
       swimlanesHtml += `<div class="rm-vr-row">
-        <div class="rm-vr-label" title="${e.title}\n${e.totalPts} pts · ${e.pct}%" style="cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
+        <div class="rm-vr-label" title="${escapeHtml(e.title)}\n${e.totalPts} pts · ${e.pct}%" style="cursor:pointer;" onclick="_showVrEpicDetail('${e.id}')">
           <span class="rm-vr-feat-id" style="color:${e.color};">${e.id}</span>
-          <span class="rm-vr-feat-title">${(e.title).slice(0, 30)}${e.title.length > 30 ? '…' : ''}</span>
+          <span class="rm-vr-feat-title">${escapeHtml((e.title).slice(0, 30))}${e.title.length > 30 ? '…' : ''}</span>
         </div>
         ${cells}
       </div>`;
@@ -410,9 +410,9 @@ function _showVrEpicDetail(epicId) {
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
           <span style="display:inline-block;width:12px;height:12px;border-radius:3px;background:${color};flex-shrink:0;"></span>
           <span style="font-size:11px;font-weight:700;color:${color};">${_jiraBrowse(epic.id)}</span>
-          ${epic.team ? `<span style="font-size:10px;font-weight:600;color:${teamColor};background:${teamColor}15;padding:1px 6px;border-radius:4px;">${epic.team}</span>` : ''}
+          ${epic.team ? `<span style="font-size:10px;font-weight:600;color:${teamColor};background:${teamColor}15;padding:1px 6px;border-radius:4px;">${escapeHtml(epic.team)}</span>` : ''}
         </div>
-        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px;">${epic.title || epic.id}</div>
+        <div style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:12px;">${escapeHtml(epic.title) || epic.id}</div>
         <div class="rm-detail-progress">
           <div class="rm-detail-bar">
             <div style="height:100%;width:${pct}%;background:${pctColor};border-radius:4px;transition:width .3s;"></div>
@@ -476,7 +476,7 @@ function _showVrEpicDetail(epicId) {
         <span style="flex-shrink:0;width:18px;text-align:center;font-size:12px;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.status}" style="font-size:9px;padding:1px 5px;flex-shrink:0;">${statusLabel(t.status)}</span>
         <span class="badge badge-${t.type}" style="font-size:9px;padding:1px 5px;flex-shrink:0;">${typeName(t.type)}</span>
-        <span class="rm-ticket-title" style="${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} ${t.title}</span>
+        <span class="rm-ticket-title" style="${_tkDone ? 'text-decoration:line-through;' : ''}">${_jiraBrowse(t.id)} ${escapeHtml(t.title)}</span>
         ${ptsBadge(t.points)}
         ${avatarBadge(t.assignee, avatarColor, {w:22, fs:'9px'})}
       </div>`;
@@ -491,7 +491,7 @@ function _showVrEpicDetail(epicId) {
     </div>`;
   }).join('');
 
-  document.getElementById('modal-title').innerHTML = `${_jiraBrowse(epic.id, { style: 'color:' + color + ';font-weight:700;text-decoration:none;' })} <span style="font-weight:400;color:var(--text-muted);font-size:14px;">- ${(epic.title || '').slice(0, 50)}</span>`;
+  document.getElementById('modal-title').innerHTML = `${_jiraBrowse(epic.id, { style: 'color:' + color + ';font-weight:700;text-decoration:none;' })} <span style="font-weight:400;color:var(--text-muted);font-size:14px;">- ${escapeHtml((epic.title || '').slice(0, 50))}</span>`;
   document.getElementById('modal-body').innerHTML = header + stats + statusBar + ticketSections;
 
   window._modalTicketList = eTickets.map(t => t.id);
@@ -610,7 +610,7 @@ async function renderRoadmap() {
 
   const _kpiTip1 = `${_kpiPiLabel} — Avancement\n✅ ${_kpiDonePts} pts terminés\n🔵 ${_kpiInpPts} pts en cours\n🚧 ${_kpiBlkPts} pts bloqués\n📋 ${_kpiTodoPts} pts à faire\nCapacité : ${_kpiVel.capacity} pts`;
   const _kpiTip2 = `${_kpiPiLabel} — Story Points\n${_kpiDonePts} terminés / ${_kpiTotalPts} planifiés\n${_kpiAllTix.length} tickets au total\nBuffer : ${_kpiBuf.totalPts} pts (${_kpiBuf.totalTix} tickets)`;
-  const _kpiTip3 = _kpiVel.teamDetails.map(d => `${d.name}: ${d.avgVel} pts/spr (min ${d.minVel}, max ${d.maxVel})`).join('\n');
+  const _kpiTip3 = _kpiVel.teamDetails.map(d => `${escapeHtml(d.name)}: ${d.avgVel} pts/spr (min ${d.minVel}, max ${d.maxVel})`).join('\n');
   const _kpiTip4 = `${_kpiSprintsLeft} sprint${_kpiSprintsLeft > 1 ? 's' : ''} restant${_kpiSprintsLeft > 1 ? 's' : ''} sur ${_kpiVel.sprintsPerPI}\n${_kpiVel.sprintsDone} sprint${_kpiVel.sprintsDone > 1 ? 's' : ''} fermé${_kpiVel.sprintsDone > 1 ? 's' : ''}\nReste estimé : ${_kpiRemaining} pts`;
   const _kpiTip5 = `${_kpiEpics.length} epics avec tickets\n${_kpiEpicsDone} entièrement terminés\n${_kpiEpics.length - _kpiEpicsDone} en cours`;
 
@@ -834,21 +834,21 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
     if ((isPast || !_pi.isCurrent) && piSp) {
       // Completed sprint from velocity history (or any sprint with data when viewing non-current PI)
       const pct = piMax ? Math.round((piSp.vel / piMax) * 100) : 0;
-      piBars.push(`<div class="rm-hist-bar-wrap" title="Ité ${sprintKey}: ${piSp.vel} pts">
+      piBars.push(`<div class="rm-hist-bar-wrap" title="Ité ${escapeHtml(sprintKey)}: ${piSp.vel} pts">
         <div class="rm-hist-bar-zone"><div class="rm-hist-bar-inner" style="height:${Math.max(pct, 4)}%"></div></div>
         <div class="rm-hist-bar-val">${piSp.vel}</div>
-        <div class="rm-hist-bar-label">${sprintKey}</div>
+        <div class="rm-hist-bar-label">${escapeHtml(sprintKey)}</div>
       </div>`);
     } else if (isCurrent) {
       // Current active sprint (feature pts only, buffer shown separately)
       const curPts = featurePts;
       const curPct = piMax ? Math.round((curPts / piMax) * 100) : 0;
-      piBars.push(`<div class="rm-hist-bar-wrap rm-hist-bar-current" title="Ité ${sprintKey}: ${curPts} pts (hors buffer)">
+      piBars.push(`<div class="rm-hist-bar-wrap rm-hist-bar-current" title="Ité ${escapeHtml(sprintKey)}: ${curPts} pts (hors buffer)">
         <div class="rm-hist-bar-zone">
           <div class="rm-hist-bar-inner" style="height:${Math.max(curPct, 4)}%"></div>
         </div>
         <div class="rm-hist-bar-val">${curPts}</div>
-        <div class="rm-hist-bar-label">${sprintKey}</div>
+        <div class="rm-hist-bar-label">${escapeHtml(sprintKey)}</div>
       </div>`);
     } else {
       // Future or missing sprint placeholder
@@ -859,10 +859,10 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
   function _emptyBar(num) {
     const isIP = num === sprintsPerPI;
     const label = _pi.piNum ? `${_pi.piNum}.${num}` : (isIP ? 'IP' : `S${num}`);
-    return `<div class="rm-hist-bar-wrap rm-hist-bar-future" title="${label} — à venir">
+    return `<div class="rm-hist-bar-wrap rm-hist-bar-future" title="${escapeHtml(label)} — à venir">
       <div class="rm-hist-bar-zone"><div class="rm-hist-bar-inner rm-hist-bar-placeholder" style="height:15%"></div></div>
       <div class="rm-hist-bar-val">–</div>
-      <div class="rm-hist-bar-label">${label}</div>
+      <div class="rm-hist-bar-label">${escapeHtml(label)}</div>
     </div>`;
   }
 
@@ -879,10 +879,10 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
   const bufMax = Math.max(bufferPts, 1);
   const _bufBar = (pts, color, label) => {
     const pct = Math.round((pts / bufMax) * 100);
-    return `<div class="rm-hist-bar-wrap" title="${label}: ${pts} pts">
+    return `<div class="rm-hist-bar-wrap" title="${escapeHtml(label)}: ${pts} pts">
       <div class="rm-hist-bar-zone"><div class="rm-hist-bar-inner" style="height:${Math.max(pct, pts ? 4 : 0)}%;background:${color};opacity:1;"></div></div>
       <div class="rm-hist-bar-val">${pts}</div>
-      <div class="rm-hist-bar-label">${label}</div>
+      <div class="rm-hist-bar-label">${escapeHtml(label)}</div>
     </div>`;
   };
   const bufBars = _bufBar(bufTodoPts, '#94A3B8', '⬜ Todo')
@@ -911,7 +911,7 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
                 <div class="rm-kpi-popin-title">Vélocité moyenne par équipe</div>
                 ${_velStats.teamDetails.map(d => `<div class="rm-kpi-popin-row">
                   <span class="rm-kpi-popin-dot" style="background:${d.color}"></span>
-                  <span class="rm-kpi-popin-name">${d.name}</span>
+                  <span class="rm-kpi-popin-name">${escapeHtml(d.name)}</span>
                   <span class="rm-kpi-popin-val">${d.avgVel} <small>pts/spr</small></span>
                   <span class="rm-kpi-popin-val" style="color:#94A3B8;font-size:9px">${d.minVel}–${d.maxVel}</span>
                 </div>`).join('')}
@@ -927,7 +927,7 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
                 <div class="rm-kpi-popin-title">Capacité par équipe</div>
                 ${_velStats.teamDetails.map(d => `<div class="rm-kpi-popin-row">
                   <span class="rm-kpi-popin-dot" style="background:${d.color}"></span>
-                  <span class="rm-kpi-popin-name">${d.name}</span>
+                  <span class="rm-kpi-popin-name">${escapeHtml(d.name)}</span>
                   <span class="rm-kpi-popin-val">${d.avgVel} <small>pts/spr</small></span>
                   <span class="rm-kpi-popin-val">${d.teamCap} <small>pts PI</small></span>
                 </div>`).join('')}
@@ -988,7 +988,7 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
               const teamRows = Object.values(bufTeams).sort((a, b) => b.pts - a.pts).map(d =>
                 `<div class="rm-kpi-popin-row">
                   <span class="rm-kpi-popin-dot" style="background:${d.color}"></span>
-                  <span class="rm-kpi-popin-name">${d.name}</span>
+                  <span class="rm-kpi-popin-name">${escapeHtml(d.name)}</span>
                   <span class="rm-kpi-popin-val">${d.count} <small>tickets</small></span>
                   <span class="rm-kpi-popin-val">${d.pts} <small>pts</small></span>
                 </div>`
@@ -1075,8 +1075,8 @@ function _toggleCapTickets(mode) {
       <span style="flex-shrink:0">${st}</span>
       <span class="badge badge-${t.type}" style="font-size:9px;flex-shrink:0;">${typeName(t.type)}</span>
       <span style="color:var(--text-muted);font-weight:600;flex-shrink:0;font-size:10px">${t.id}</span>
-      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${t.title || ''}</span>
-      <span style="flex-shrink:0;width:8px;height:8px;border-radius:50%;background:${teamColor}" title="${t.team || ''}"></span>
+      <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${escapeHtml(t.title) || ''}</span>
+      <span style="flex-shrink:0;width:8px;height:8px;border-radius:50%;background:${teamColor}" title="${escapeHtml(t.team) || ''}"></span>
       ${ptsBadge(t.points, {size:'small'})}
     </div>`;
   };
@@ -1184,10 +1184,10 @@ function _roadmapBufferCard(totalVel, cap20) {
 let _rmTlUid = 0;
 
 function _rmTicketRow(t) {
-  return `<div class="rm-tl-ticket" onclick="openModal('${t.id}')" style="cursor:pointer;" title="${(t.title || '').replace(/"/g, '&quot;')}">
+  return `<div class="rm-tl-ticket" onclick="openModal('${t.id}')" style="cursor:pointer;" title="${escapeHtml(t.title || '')}">
     ${priorityIcon(t.priority)}
     <span class="rm-tl-tid">${_jiraBrowse(t.id)}</span>
-    <span class="rm-tl-ticket-title">${t.title || t.id}</span>
+    <span class="rm-tl-ticket-title">${escapeHtml(t.title) || t.id}</span>
     <span class="rm-tl-ticket-pts">${t.points ? t.points : '–'}</span>
   </div>`;
 }
@@ -1240,7 +1240,7 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
   const _dateHtml = (start, end, holidays) => {
     const ds = _fmtDate(start), de = _fmtDate(end);
     const dateStr = ds && de ? `${ds} → ${de}` : ds || de || '';
-    const holStr = holidays?.length ? holidays.map(h => `<span class="rm-tl-hol" title="${h.name}">${h.d ? _fmtDate(h.d) + ' ' : ''}${h.name}</span>`).join('') : '';
+    const holStr = holidays?.length ? holidays.map(h => `<span class="rm-tl-hol" title="${escapeHtml(h.name)}">${h.d ? _fmtDate(h.d) + ' ' : ''}${escapeHtml(h.name)}</span>`).join('') : '';
     return dateStr || holStr ? `<div class="rm-tl-dates">${dateStr ? `<span class="rm-tl-daterange">${dateStr}</span>` : ''}${holStr}</div>` : '';
   };
 
@@ -1303,20 +1303,20 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
     const teamHtml = teamBd.length > 1 ? teamBd.map(tb => {
       const tc = CONFIG.teams?.[tb.team];
       const color = tc?.color || 'var(--text-muted)';
-      return `<div style="display:flex;align-items:center;gap:4px;font-size:10px;"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0;"></span><span style="flex:1;color:var(--text-muted)">${tb.team}</span><span style="font-weight:700;">${tb.vel} pts</span></div>`;
+      return `<div style="display:flex;align-items:center;gap:4px;font-size:10px;"><span style="width:7px;height:7px;border-radius:50%;background:${color};flex-shrink:0;"></span><span style="flex:1;color:var(--text-muted)">${escapeHtml(tb.team)}</span><span style="font-weight:700;">${tb.vel} pts</span></div>`;
     }).join('') : '';
 
     // Ticket list (top 5)
     const topTickets = allTix.map(t => {
       const c = (typeof CONFIG !== 'undefined' && CONFIG.typeColors?.[t.type]) || '#64748B';
       const pts = t.points ? `<span style="font-weight:700;margin-left:auto;">${t.points}</span>` : '';
-      return `<div style="display:flex;align-items:center;gap:4px;font-size:10px;padding:2px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="openModal('${(t.id || '').replace(/'/g, "\\'")}')"><span style="color:${c};font-weight:700;min-width:65px;">${t.id || ''}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);">${t.title || t.summary || ''}</span>${pts}</div>`;
+      return `<div style="display:flex;align-items:center;gap:4px;font-size:10px;padding:2px 0;border-bottom:1px solid var(--border);cursor:pointer;" onclick="openModal('${(t.id || '').replace(/'/g, "\\'")}')"><span style="color:${c};font-weight:700;min-width:65px;">${t.id || ''}</span><span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);">${escapeHtml(t.title || t.summary || '')}</span>${pts}</div>`;
     }).join('');
 
     // Members avatars
     const memberAvatars = members.slice(0, 6).map(m => {
       const ini = typeof window.initials === 'function' ? window.initials(m) : (m || '?').slice(0, 2).toUpperCase();
-      return `<span class="avatar" style="width:18px;height:18px;font-size:8px;background:#475569;" title="${m}">${ini}</span>`;
+      return `<span class="avatar" style="width:18px;height:18px;font-size:8px;background:#475569;" title="${escapeHtml(m)}">${ini}</span>`;
     }).join('');
     const memberMore = members.length > 6 ? `<span style="font-size:9px;color:var(--text-muted);">+${members.length - 6}</span>` : '';
 
@@ -1325,7 +1325,7 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
 
     return `<div class="rm-tl-card rm-tl-past${hasDetail ? ' rm-tl-clickable' : ''}" ${hasDetail ? `onclick="_rmToggleTlDetail('${detailId}')"` : ''}>
       <div class="rm-tl-dot rm-tl-dot-past"></div>
-      <div class="rm-tl-name">${h.name.replace(/sprint\s*/i, 'S ')}</div>
+      <div class="rm-tl-name">${escapeHtml(h.name.replace(/sprint\s*/i, 'S '))}</div>
       ${_dateHtml(h.startDate, h.endDate, hols)}
       <div class="rm-tl-pts">${h.vel} pts réalisés${bufTix ? ` · <span style="color:#7C3AED">${bufPts} buf</span>` : ''}</div>
       <div class="rm-tl-bar-wrap"><div class="rm-tl-bar"><div class="rm-tl-fill rm-tl-fill-past" style="width:${pct}%"></div></div></div>
@@ -1871,7 +1871,7 @@ function _roadmapPICalendar(cap80) {
     const inputClr    = s.pres > 0 ? '#92400E' : 'var(--text)';
 
     const holBadges = s.inPeriod.map(h =>
-      `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;padding:2px 7px;border-radius:20px;margin:2px 3px 2px 0;">🇫🇷 ${h.name}</span>`
+      `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;padding:2px 7px;border-radius:20px;margin:2px 3px 2px 0;">🇫🇷 ${escapeHtml(h.name)}</span>`
     ).join('');
 
     const bottomBadge = s.isIP
@@ -2061,7 +2061,7 @@ function _showBacklogHealthDetail(filter) {
       return `<div class="rm-ticket-row" style="${highlight}border-radius:4px;" onclick="closeModalDirect();openModal('${t.id}')">
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>
         <span class="badge badge-${t.type}" style="white-space:nowrap;flex-shrink:0;">${typeName(t.type)}</span>
-        <span class="rm-ticket-title-lg">${_jiraBrowse(t.id)} - ${t.title}</span>
+        <span class="rm-ticket-title-lg">${_jiraBrowse(t.id)} - ${escapeHtml(t.title)}</span>
         ${epic ? epicTag(epic, t.epic) : '<span style="font-size:10px;color:#DC2626;font-weight:600;flex-shrink:0;">Ø epic</span>'}
         ${ptsBadge(t.points)}
         ${extra}
@@ -2091,10 +2091,10 @@ function _roadmapBacklogTable(backlog, cap80) {
     return `<tr class="rm-backlog-row" onclick="openModal('${t.id}')" style="cursor:pointer">
       <td style="width:28px">${priorityIcon(t.priority)}</td>
       <td style="white-space:nowrap">${_jiraBrowse(t.id)}</td>
-      <td class="rm-bt-title">${t.title || '-'}</td>
+      <td class="rm-bt-title">${escapeHtml(t.title) || '-'}</td>
       <td><span class="badge" style="background:${tc}22;color:${tc};border:1px solid ${tc}44">${typeName(t.type)}</span></td>
-      <td>${epic ? `<span style="background:${epic.color || '#2563eb'}22;color:${epic.color || '#2563eb'};padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block">${epic.title}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
-      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)" title="${sn}">${snShort}</td>
+      <td>${epic ? `<span style="background:${epic.color || '#2563eb'}22;color:${epic.color || '#2563eb'};padding:2px 6px;border-radius:4px;font-size:11px;font-weight:600;display:inline-block">${escapeHtml(epic.title)}</span>` : '<span style="color:var(--text-muted)">-</span>'}</td>
+      <td style="white-space:nowrap;font-size:11px;color:var(--text-muted)" title="${escapeHtml(sn)}">${escapeHtml(snShort)}</td>
       <td style="text-align:right">${ptsBadge(t.points, {size:'small'})}</td>
     </tr>`;
   }).join('');

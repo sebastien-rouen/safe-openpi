@@ -75,7 +75,7 @@ function _renderSupportRoster() {
       <span class="sup-roster-dot" style="background:${color}"></span>
       <span class="sup-roster-team-name">${teamName}</span>
       ${memberChips}
-      <span class="sup-roster-names">${names}</span>
+      <span class="sup-roster-names">${escapeHtml(names)}</span>
     </div>`;
   }).join('');
 
@@ -135,7 +135,7 @@ function renderSupportList() {
       return `<div class="sup-group">
         <div class="sup-group-header" style="border-left-color:${g.color}">
           <span class="sup-group-dot" style="background:${g.color}"></span>
-          <span class="sup-group-name">${g.name}</span>
+          <span class="sup-group-name">${escapeHtml(g.name)}</span>
           <span class="sup-group-count">${gTickets.length} ticket${gTickets.length > 1 ? 's' : ''}</span>
         </div>
         ${gTickets.map(t => _supportCard(t, pColors, pLabels, sColors, sLabels, showTeam)).join('')}
@@ -164,14 +164,14 @@ function _supportCard(t, pColors, pLabels, sColors, sLabels, showTeam) {
   const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
   const done        = isDone(t.status);
   const teamHtml    = showTeam
-    ? `<span class="sup-team" style="color:${_teamColor(t.team)}">${CONFIG.teams[t.team]?.name || t.team}</span>`
+    ? `<span class="sup-team" style="color:${_teamColor(t.team)}">${escapeHtml(CONFIG.teams[t.team]?.name || t.team)}</span>`
     : '';
   return `
   <div class="support-card ${t.priority}${done ? ' sup-done' : ''}" onclick="_openSupportModal('${t.id}')" style="cursor:pointer;">
     <div class="support-header">
       <div class="sup-left">
         <span class="sup-id">${_jiraBrowse(t.id, { style: 'color:inherit;text-decoration:none;font-weight:700;' })}</span>
-        <span class="sup-title">${t.title}</span>
+        <span class="sup-title">${escapeHtml(t.title)}</span>
       </div>
       <div class="sup-right">
         <span class="badge" style="background:${pColors[t.priority]}22;color:${pColors[t.priority]}">${pLabels[t.priority]}</span>
