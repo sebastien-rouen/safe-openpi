@@ -645,22 +645,22 @@ function _piTableFilterStatus(btn) {
   if (val === 'all') {
     document.querySelectorAll('#pi-table-filters .pi-tf-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.tf === 'all');
-      if (b.dataset.tf === 'all') { b.style.background = '#475569'; b.style.color = '#fff'; }
-      else { b.style.background = '#fff'; }
+      if (b.dataset.tf === 'all') { b.style.background = 'var(--text-muted)'; b.style.color = '#fff'; }
+      else { b.style.background = 'var(--card)'; }
     });
   } else {
     const allBtn = document.querySelector('#pi-table-filters .pi-tf-btn[data-tf="all"]');
-    if (allBtn) { allBtn.classList.remove('active'); allBtn.style.background = '#fff'; allBtn.style.color = '#475569'; }
+    if (allBtn) { allBtn.classList.remove('active'); allBtn.style.background = 'var(--card)'; allBtn.style.color = 'var(--text-muted)'; }
     btn.classList.toggle('active');
     const isNowActive = btn.classList.contains('active');
     const clr = btn.dataset.color || btn.style.color;
-    btn.style.background = isNowActive ? clr : '#fff';
+    btn.style.background = isNowActive ? clr : 'var(--card)';
     btn.style.color      = isNowActive ? '#fff' : clr;
     btn.style.borderColor = isNowActive ? clr : (clr + '44');
     // if nothing active → reactivate "all"
     const anyActive = [...document.querySelectorAll('#pi-table-filters .pi-tf-btn:not([data-tf="all"])')].some(b => b.classList.contains('active'));
     if (!anyActive && allBtn) {
-      allBtn.classList.add('active'); allBtn.style.background = '#475569'; allBtn.style.color = '#fff';
+      allBtn.classList.add('active'); allBtn.style.background = 'var(--text-muted)'; allBtn.style.color = '#fff';
     }
   }
   _piTableFilter();
@@ -708,7 +708,7 @@ function _piShowCellDetail(team, epicIds) {
       const ticketLink = _jiraBrowse(t.id, { style: `font-weight:700;font-size:12px;color:${typeClr};text-decoration:none;` });
       const _tkDone = isDone(t.status);
 
-      return `<div data-tk-id="${t.id}" data-tk-status="${t.status}" data-tk-type="${t.type || ''}" data-tk-assign="${t.assignee || ''}" data-tk-title="${(t.title || '').replace(/"/g, '&quot;')}" class="pi-ticket-row" style="background:${_tkDone ? '#FAFAFA' : '#fff'};border-color:${_tkDone ? 'var(--border)' : '#E2E8F0'}">
+      return `<div data-tk-id="${t.id}" data-tk-status="${t.status}" data-tk-type="${t.type || ''}" data-tk-assign="${t.assignee || ''}" data-tk-title="${(t.title || '').replace(/"/g, '&quot;')}" class="pi-ticket-row" style="background:${_tkDone ? 'var(--bg)' : 'var(--card)'};border-color:${_tkDone ? 'var(--border)' : '#E2E8F0'}">
         <span style="font-size:13px;flex-shrink:0">${pIcon}</span>
         <span class="pi-type-badge" style="background:${typeClr}22;color:${typeClr};white-space:nowrap">${typeName(t.type || 'story')}</span>
         <span class="pi-ticket-title" style="${_tkDone ? 'opacity:.55;text-decoration:line-through;' : ''}">
@@ -760,30 +760,30 @@ function _piShowCellDetail(team, epicIds) {
   const ST_LABELS = { done:'Terminé', blocked:'Bloqué', inprog:'En cours', review:'En review', test:'En test', todo:'À faire', backlog:'Backlog' };
 
   const filterBar = `
-    <div id="_pimod-filters" style="display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:#F8FAFC;border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
+    <div id="_pimod-filters" style="display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:var(--info-bg);border-radius:8px;margin-bottom:14px;border:1px solid var(--border)">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <input id="_pimod-search" type="text" placeholder="🔍  Titre ou ID…" oninput="_piModFilter()" style="padding:5px 10px;border:1px solid var(--border);border-radius:99px;font-size:12px;outline:none;width:170px">
         <span class="pi-filter-label">Statut :</span>
-        <button class="pimod-btn active" data-mf-type="status" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid #475569;background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
+        <button class="pimod-btn active" data-mf-type="status" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid var(--text-muted);background:var(--text-muted);color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
         ${presentStatuses.map(s => {
           const c = ST_COLORS[s] || CLR.muted;
-          return `<button class="pimod-btn" data-mf-type="status" data-mf-val="${s}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:#fff;color:${c};font-size:11px;font-weight:600;cursor:pointer">${ST_LABELS[s] || s}</button>`;
+          return `<button class="pimod-btn" data-mf-type="status" data-mf-val="${s}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:var(--card);color:${c};font-size:11px;font-weight:600;cursor:pointer">${ST_LABELS[s] || s}</button>`;
         }).join('')}
       </div>
       ${presentTypes.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="pi-filter-label">Type :</span>
-        <button class="pimod-btn active" data-mf-type="type" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid #475569;background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
+        <button class="pimod-btn active" data-mf-type="type" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid var(--text-muted);background:var(--text-muted);color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
         ${presentTypes.map(tp => {
           const c = CONFIG.typeColors?.[tp] || CLR.dark;
-          return `<button class="pimod-btn" data-mf-type="type" data-mf-val="${tp}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:#fff;color:${c};font-size:11px;font-weight:600;cursor:pointer">${typeName(tp)}</button>`;
+          return `<button class="pimod-btn" data-mf-type="type" data-mf-val="${tp}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:var(--card);color:${c};font-size:11px;font-weight:600;cursor:pointer">${typeName(tp)}</button>`;
         }).join('')}
       </div>` : ''}
       ${presentAssigns.length > 1 ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="pi-filter-label">Assigné :</span>
-        <button class="pimod-btn active" data-mf-type="assignee" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid #475569;background:#475569;color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
+        <button class="pimod-btn active" data-mf-type="assignee" data-mf-val="all" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid var(--text-muted);background:var(--text-muted);color:#fff;font-size:11px;font-weight:600;cursor:pointer">Tous</button>
         ${presentAssigns.map(a => {
           const c = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[a]) || teamColor;
-          return `<button class="pimod-btn" data-mf-type="assignee" data-mf-val="${a}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:#fff;color:${c};font-size:11px;font-weight:600;cursor:pointer">${a}</button>`;
+          return `<button class="pimod-btn" data-mf-type="assignee" data-mf-val="${a}" data-color="${c}" onclick="_piModFilterBtn(this)" style="padding:3px 10px;border-radius:99px;border:1px solid ${c}55;background:var(--card);color:${c};font-size:11px;font-weight:600;cursor:pointer">${a}</button>`;
         }).join('')}
       </div>` : ''}
     </div>`;
@@ -830,21 +830,21 @@ window._piModFilterBtn = function(btn) {
       const isAll = b.dataset.mfVal === 'all';
       b.classList.toggle('active', isAll);
       const origClr = b.dataset.color || CLR.dark;
-      b.style.background  = isAll ? '#475569' : '#fff';
+      b.style.background  = isAll ? 'var(--text-muted)' : 'var(--card)';
       b.style.color       = isAll ? '#fff' : origClr;
-      b.style.borderColor = isAll ? '#475569' : (origClr + '55');
+      b.style.borderColor = isAll ? 'var(--text-muted)' : (origClr + '55');
     });
   } else {
-    if (allBtn) { allBtn.classList.remove('active'); allBtn.style.background = '#fff'; allBtn.style.color = '#475569'; allBtn.style.borderColor = '#47556955'; }
+    if (allBtn) { allBtn.classList.remove('active'); allBtn.style.background = 'var(--card)'; allBtn.style.color = 'var(--text-muted)'; allBtn.style.borderColor = 'var(--text-muted)55'; }
     btn.classList.toggle('active');
     const on = btn.classList.contains('active');
     const c  = btn.dataset.color || CLR.dark;
-    btn.style.background  = on ? c : '#fff';
+    btn.style.background  = on ? c : 'var(--card)';
     btn.style.color       = on ? '#fff' : c;
     btn.style.borderColor = on ? c : (c + '55');
     // si plus rien actif → tout réactiver
     const anyOn = [...group].filter(b => b.dataset.mfVal !== 'all').some(b => b.classList.contains('active'));
-    if (!anyOn && allBtn) { allBtn.classList.add('active'); allBtn.style.background = '#475569'; allBtn.style.color = '#fff'; allBtn.style.borderColor = '#475569'; }
+    if (!anyOn && allBtn) { allBtn.classList.add('active'); allBtn.style.background = 'var(--text-muted)'; allBtn.style.color = '#fff'; allBtn.style.borderColor = 'var(--text-muted)'; }
   }
   _piModFilter();
 };
@@ -1130,8 +1130,8 @@ function _renderPIDepAlerts() {
   container.innerHTML = `
     <div style="margin-bottom:16px;">
       <div class="section-header"><div class="section-title">🔗 Alertes dépendances</div></div>
-      <div style="padding:10px 14px;background:#FFFBEB;border:1px solid #FCD34D;border-radius:10px;">
-        ${alerts.map(a => `<div style="font-size:12px;color:#78350F;padding:3px 0;display:flex;align-items:flex-start;gap:6px;">
+      <div style="padding:10px 14px;background:var(--warning-bg);border:1px solid #FCD34D;border-radius:10px;">
+        ${alerts.map(a => `<div style="font-size:12px;color:var(--warning-fg);padding:3px 0;display:flex;align-items:flex-start;gap:6px;">
           <span style="flex-shrink:0;">${a.icon}</span><span>${a.text}</span>
         </div>`).join('')}
       </div>
@@ -1199,8 +1199,8 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
   }
 
   el.innerHTML = `
-    <div style="margin-top:12px;padding:10px 14px;background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;">
-      <div style="font-size:12px;font-weight:700;color:#991B1B;margin-bottom:6px;">🚨 Alertes objectifs PI</div>
+    <div style="margin-top:12px;padding:10px 14px;background:var(--danger-bg);border:1px solid #FECACA;border-radius:10px;">
+      <div style="font-size:12px;font-weight:700;color:var(--danger-fg);margin-bottom:6px;">🚨 Alertes objectifs PI</div>
       ${alerts.map(a => `<div style="font-size:12px;color:#7F1D1D;padding:3px 0;display:flex;align-items:flex-start;gap:6px;">
         <span style="flex-shrink:0;">${a.icon}</span><span>${a.text}</span>
       </div>`).join('')}

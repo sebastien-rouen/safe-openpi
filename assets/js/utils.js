@@ -54,9 +54,7 @@ function blocked_count(tickets) {
 function ptsBadge(points, opts = {}) {
   const size = opts.size || 'normal'; // 'small' | 'normal'
   const val  = points ? points + ' pts' : '– pts';
-  const fs   = size === 'small' ? '10px' : '11px';
-  const pad  = size === 'small' ? '1px 6px' : '2px 7px';
-  return `<span style="background:#1E293B;color:#F8FAFC;font-size:${fs};font-weight:700;padding:${pad};border-radius:99px;white-space:nowrap;flex-shrink:0">${val}</span>`;
+  return `<span class="pts-badge${size === 'small' ? ' pts-badge-sm' : ''}">${val}</span>`;
 }
 
 // Epic tag - shows truncated title, hover reveals key + title with JIRA link
@@ -118,6 +116,12 @@ const STATUS_HEX = {
   blocked: CLR.red, inprog: CLR.blue, review: CLR.purple,
   todo: CLR.muted, done: CLR.darkGrn, test: CLR.amber, backlog: CLR.muted,
 };
+
+// Tri-color threshold: returns green/amber/red based on value vs thresholds
+// Usage: thresholdColor(pct, 70, 40) → green if ≥70, amber if ≥40, red otherwise
+function thresholdColor(val, good, ok) {
+  return val >= good ? CLR.darkGrn : val >= ok ? CLR.amber : CLR.red;
+}
 
 // Colored dot indicator (status, team, epic)
 // size: 'sm' (6px), 'md' (8px), 'lg' (10px, default)

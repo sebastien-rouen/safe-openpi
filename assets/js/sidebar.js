@@ -290,7 +290,7 @@ function _renderSidebarRisks() {
   const intraDeps = deps.filter(d => d.fromTeam && d.toTeam && d.fromTeam === d.toTeam);
 
   const _depStIcons = { todo: '🔲', inprog: '🔵', blocked: '🚧', done: '✅' };
-  const _depStColors = { todo: '#475569', inprog: '#1D4ED8', blocked: '#DC2626', done: '#15803D' };
+  const _depStColors = { todo: 'var(--text-muted)', inprog: 'var(--inprog)', blocked: 'var(--blocked)', done: 'var(--success)' };
 
   if (interDeps.length) {
     const interDetail = interDeps.map(d => {

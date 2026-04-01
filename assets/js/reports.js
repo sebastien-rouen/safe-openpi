@@ -912,9 +912,9 @@ function _rptSupport(el, isSlack) {
 
     // KPI summary
     h += `<div style="display:flex;gap:12px;margin:12px 0;flex-wrap:wrap;">
-      <div style="padding:8px 14px;border-radius:8px;background:#FEF2F2;border:1px solid #FECACA;font-weight:700;color:#DC2626;">${open} ouverts</div>
-      <div style="padding:8px 14px;border-radius:8px;background:#FFFBEB;border:1px solid #FDE68A;font-weight:700;color:#D97706;">${inprog} en cours</div>
-      <div style="padding:8px 14px;border-radius:8px;background:#F0FDF4;border:1px solid #86EFAC;font-weight:700;color:#16A34A;">${resolved} résolus</div>
+      <div style="padding:8px 14px;border-radius:8px;background:var(--danger-bg);border:1px solid var(--danger);font-weight:700;color:#DC2626;">${open} ouverts</div>
+      <div style="padding:8px 14px;border-radius:8px;background:var(--warning-bg);border:1px solid var(--warning);font-weight:700;color:#D97706;">${inprog} en cours</div>
+      <div style="padding:8px 14px;border-radius:8px;background:var(--success-bg);border:1px solid var(--success);font-weight:700;color:#16A34A;">${resolved} résolus</div>
     </div>`;
 
     // Grouped by priority
@@ -1031,8 +1031,8 @@ function _rptRoadmap(el, isSlack) {
 
     // Santé backlog
     h += `<h2>🩺 Santé backlog</h2><div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-      <span style="padding:4px 10px;border-radius:6px;background:#FEF2F2;color:#DC2626;font-weight:600;font-size:12px;">Sans epic : ${noEpic}</span>
-      <span style="padding:4px 10px;border-radius:6px;background:#FFFBEB;color:#D97706;font-weight:600;font-size:12px;">Sans points : ${noPts}</span>
+      <span style="padding:4px 10px;border-radius:6px;background:var(--danger-bg);color:#DC2626;font-weight:600;font-size:12px;">Sans epic : ${noEpic}</span>
+      <span style="padding:4px 10px;border-radius:6px;background:var(--warning-bg);color:#D97706;font-weight:600;font-size:12px;">Sans points : ${noPts}</span>
       <span style="padding:4px 10px;border-radius:6px;background:#EFF6FF;color:#2563EB;font-weight:600;font-size:12px;">Sans priorité : ${noPrio}</span>
     </div>`;
 

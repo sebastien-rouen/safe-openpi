@@ -3,6 +3,20 @@
 // Données persistées dans data/pi-data.json via le serveur
 // ============================================================
 
+// Status options pour objectives et dépendances (réutilisé dans 4 blocs)
+const PP_STATUS_OPTS = [
+  { v: 'todo',    l: '🔲 À faire',  bg: 'var(--info-bg)', c: 'var(--text-muted)' },
+  { v: 'inprog',  l: '🔵 En cours', bg: 'var(--warning-bg)', c: 'var(--warning-fg)' },
+  { v: 'done',    l: '✅ Atteint',  bg: 'var(--success-bg)', c: 'var(--success-fg)' },
+  { v: 'atrisk',  l: '🔴 À risque', bg: 'var(--danger-bg)', c: 'var(--danger-fg)' },
+];
+const PP_STATUS_OPTS_DEP = [
+  { v: 'todo',    l: '🔲 À faire',  bg: 'var(--info-bg)', c: 'var(--text-muted)' },
+  { v: 'inprog',  l: '🔵 En cours', bg: 'var(--warning-bg)', c: 'var(--warning-fg)' },
+  { v: 'blocked', l: '🚧 Bloqué',   bg: 'var(--danger-bg)', c: 'var(--danger-fg)' },
+  { v: 'done',    l: '✅ Terminé',  bg: 'var(--success-bg)', c: 'var(--success-fg)' },
+];
+
 // ----------- Helpers persistance JSON ----------------------
 // pi-data.json stores data per PI: { "_currentPI": "PI29", "PI29": { objectives, roam, deps, capacity }, "PI28": { ... } }
 let _ppFile = null;            // cache mémoire du fichier complet (multi-PI)
@@ -451,8 +465,8 @@ function _ppRefreshFromCapacity(changedTid) {
   document.querySelectorAll('.pp-cap-input').forEach(inp => {
     const v = parseInt(inp.value, 10) || 0;
     inp.style.borderColor = v > 0 ? '#F59E0B' : 'var(--border)';
-    inp.style.background  = v > 0 ? '#FFFBEB' : 'var(--card)';
-    inp.style.color       = v > 0 ? '#92400E' : 'var(--text)';
+    inp.style.background  = v > 0 ? 'var(--warning-bg)' : 'var(--card)';
+    inp.style.color       = v > 0 ? 'var(--warning-fg)' : 'var(--text)';
   });
 }
 
@@ -757,7 +771,7 @@ function _ppReadiness(allBacklog, activeTeams) {
 function _ppSectionHeader(readiness) {
   const { score, checks } = readiness;
   const color  = score >= 80 ? '#16A34A' : score >= 50 ? '#D97706' : '#DC2626';
-  const bg     = score >= 80 ? '#F0FDF4' : score >= 50 ? '#FFFBEB' : '#FEF2F2';
+  const bg     = score >= 80 ? 'var(--success-bg)' : score >= 50 ? 'var(--warning-bg)' : 'var(--danger-bg)';
   const border = score >= 80 ? '#86EFAC' : score >= 50 ? '#FCD34D' : '#FECACA';
   const label  = score >= 80 ? 'Prêt ✓' : score >= 50 ? 'En cours' : 'À compléter';
 
@@ -792,7 +806,7 @@ function _ppSectionHeader(readiness) {
 // ============================================================
 function _ppUnpointedBanner(unpointed) {
   if (!unpointed.length) return `
-    <div style="background:#F0FDF4;border:1.5px solid #86EFAC;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:8px;font-size:13px;color:#15803D;font-weight:600;height:100%;box-sizing:border-box;">
+    <div style="background:var(--success-bg);border:1.5px solid #86EFAC;border-radius:10px;padding:10px 16px;display:flex;align-items:center;gap:8px;font-size:13px;color:var(--success-fg);font-weight:600;height:100%;box-sizing:border-box;">
       ✅ Tout le backlog est pointé - simulation précise
     </div>`;
 
@@ -803,8 +817,8 @@ function _ppUnpointedBanner(unpointed) {
   const more = unpointed.length > 10 ? `<span style="font-size:11px;color:var(--text-muted);margin:2px 4px;">+${unpointed.length - 10} autres</span>` : '';
 
   return `
-    <div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:10px;padding:12px 16px;height:100%;box-sizing:border-box;">
-      <div style="font-size:13px;font-weight:700;color:#92400E;margin-bottom:8px;">⚠️ ${unpointed.length} storie${unpointed.length > 1 ? 's' : ''} sans story points - cliquer pour renseigner</div>
+    <div style="background:var(--warning-bg);border:1.5px solid #FCD34D;border-radius:10px;padding:12px 16px;height:100%;box-sizing:border-box;">
+      <div style="font-size:13px;font-weight:700;color:var(--warning-fg);margin-bottom:8px;">⚠️ ${unpointed.length} storie${unpointed.length > 1 ? 's' : ''} sans story points - cliquer pour renseigner</div>
       <div style="display:flex;flex-wrap:wrap;align-items:center;">${chips}${more}</div>
     </div>`;
 }
@@ -817,12 +831,7 @@ function _ppObjectivesSection(activeTeams) {
   const objs = activeTeams.length ? allObjs.filter(o => activeTeams.includes(o.team)) : allObjs;
   const totalBV = objs.filter(o => o.type === 'committed').reduce((s, o) => s + (parseInt(o.bv, 10) || 0), 0);
 
-  const ST = [
-    { v: 'todo',   l: '🔲 À faire',  bg: '#F1F5F9', c: '#475569' },
-    { v: 'inprog', l: '🔵 En cours', bg: '#DBEAFE', c: '#1D4ED8' },
-    { v: 'done',   l: '✅ Atteint',  bg: '#DCFCE7', c: '#15803D' },
-    { v: 'atrisk', l: '🔴 À risque', bg: '#FEE2E2', c: '#DC2626' },
-  ];
+  const ST = PP_STATUS_OPTS;
   const TY = [
     { v: 'committed', l: '🎯 Committed' },
     { v: 'stretch',   l: '⭐ Stretch' },
@@ -1078,8 +1087,8 @@ function _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) {
         const pct = maxDays ? v / maxDays : 0;
         // 3 colors: green (>=75%), orange (>=40%), red (<40%)
         const cBorder = v === 0 ? 'var(--border)' : pct >= 0.75 ? '#22C55E' : pct >= 0.4 ? '#F59E0B' : '#EF4444';
-        const cBg     = v === 0 ? 'var(--card)' : pct >= 0.75 ? '#F0FDF4' : pct >= 0.4 ? '#FFFBEB' : '#FEF2F2';
-        const cText   = v === 0 ? 'var(--text)' : pct >= 0.75 ? '#15803D' : pct >= 0.4 ? '#92400E' : '#991B1B';
+        const cBg     = v === 0 ? 'var(--card)' : pct >= 0.75 ? 'var(--success-bg)' : pct >= 0.4 ? 'var(--warning-bg)' : 'var(--danger-bg)';
+        const cText   = v === 0 ? 'var(--text)' : pct >= 0.75 ? 'var(--success-fg)' : pct >= 0.4 ? 'var(--warning-fg)' : 'var(--danger-fg)';
         return `<td style="padding:5px 10px;text-align:center;">
           <input type="number" min="0" max="99" value="${v}"
             class="pp-cap-input" data-tid="${tid}" data-si="${i}" data-member="${m}"
@@ -1164,9 +1173,9 @@ function _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) {
 function _ppROAMSection(activeTeams) {
   const roam = _ppRoamList();
   const CATS = [
-    { k: 'R', label: 'Resolved',  emoji: '✅', bg: '#F0FDF4', border: '#86EFAC', tc: '#15803D' },
+    { k: 'R', label: 'Resolved',  emoji: '✅', bg: 'var(--success-bg)', border: '#86EFAC', tc: 'var(--success-fg)' },
     { k: 'O', label: 'Owned',     emoji: '👤', bg: '#EFF6FF', border: '#93C5FD', tc: '#1D4ED8' },
-    { k: 'A', label: 'Accepted',  emoji: '🤝', bg: '#FFFBEB', border: '#FCD34D', tc: '#92400E' },
+    { k: 'A', label: 'Accepted',  emoji: '🤝', bg: 'var(--warning-bg)', border: '#FCD34D', tc: 'var(--warning-fg)' },
     { k: 'M', label: 'Mitigated', emoji: '🛡️', bg: '#F5F3FF', border: '#C4B5FD', tc: '#5B21B6' },
   ];
 
@@ -1277,12 +1286,7 @@ function _ppDepsSection(_activeTeams) {
       `<option value="${s.value}" ${cur === s.value ? 'selected' : ''}>${s.label}</option>`
     ).join('');
 
-  const DEP_ST = [
-    { v: 'todo',    l: '🔲 À faire',  bg: '#F1F5F9', c: '#475569' },
-    { v: 'inprog',  l: '🔵 En cours', bg: '#DBEAFE', c: '#1D4ED8' },
-    { v: 'blocked', l: '🚧 Bloqué',   bg: '#FEE2E2', c: '#DC2626' },
-    { v: 'done',    l: '✅ Terminé',  bg: '#DCFCE7', c: '#15803D' },
-  ];
+  const DEP_ST = PP_STATUS_OPTS_DEP;
   const depStatusSel = (cur) => DEP_ST.map(s =>
     `<option value="${s.v}" style="background:${s.bg};color:${s.c};" ${cur === s.v ? 'selected' : ''}>${s.l}</option>`
   ).join('');
@@ -1495,10 +1499,10 @@ function _ppDepsHeatmap(deps, _allTeams) {
 // Timeline view: deps grouped by sprint
 function _ppDepsTimeline(deps) {
   const DEP_ST = [
-    { v: 'todo',    icon: '🔲', bg: '#F1F5F9', c: '#475569' },
-    { v: 'inprog',  icon: '🔵', bg: '#DBEAFE', c: '#1D4ED8' },
-    { v: 'blocked', icon: '🚧', bg: '#FEE2E2', c: '#DC2626' },
-    { v: 'done',    icon: '✅', bg: '#DCFCE7', c: '#15803D' },
+    { v: 'todo',    icon: '🔲', bg: 'var(--info-bg)', c: 'var(--text-muted)' },
+    { v: 'inprog',  icon: '🔵', bg: 'var(--warning-bg)', c: 'var(--warning-fg)' },
+    { v: 'blocked', icon: '🚧', bg: 'var(--danger-bg)', c: 'var(--danger-fg)' },
+    { v: 'done',    icon: '✅', bg: 'var(--success-bg)', c: 'var(--success-fg)' },
   ];
 
   // Group by sprint
@@ -1573,12 +1577,7 @@ function _ppDepDetailPopin(depId) {
   const deps = _ppDepList();
   const d = deps.find(x => x.id === depId);
   if (!d) return;
-  const DEP_ST = [
-    { v: 'todo',    l: '🔲 À faire',  bg: '#F1F5F9', c: '#475569' },
-    { v: 'inprog',  l: '🔵 En cours', bg: '#DBEAFE', c: '#1D4ED8' },
-    { v: 'blocked', l: '🚧 Bloqué',   bg: '#FEE2E2', c: '#DC2626' },
-    { v: 'done',    l: '✅ Terminé',  bg: '#DCFCE7', c: '#15803D' },
-  ];
+  const DEP_ST = PP_STATUS_OPTS_DEP;
   const st = DEP_ST.find(s => s.v === (d.status || 'todo')) || DEP_ST[0];
   const fc = _teamColor(d.fromTeam);
   const tc = _teamColor(d.toTeam);
@@ -2100,7 +2099,7 @@ function _ppFistSection(activeTeams, overridePiNum) {
   const globalAvg  = totalVotes ? Math.round(allVotes.reduce((s, v) => s + v, 0) / totalVotes * 10) / 10 : null;
   const teamsVoted = activeTeams.filter(t => { const k = _currentKeyForTeam(t); return Array.isArray(fist[k]) ? fist[k].length > 0 : !!fist[k]; }).length;
   const avgColor   = globalAvg === null ? 'var(--text-muted)' : globalAvg < 3 ? '#DC2626' : globalAvg < 4 ? '#D97706' : '#16A34A';
-  const avgBg      = globalAvg === null ? '#F1F5F9' : globalAvg < 3 ? '#FEF2F2' : globalAvg < 4 ? '#FFFBEB' : '#F0FDF4';
+  const avgBg      = globalAvg === null ? 'var(--info-bg)' : globalAvg < 3 ? 'var(--danger-bg)' : globalAvg < 4 ? 'var(--warning-bg)' : 'var(--success-bg)';
   const avgBorder  = globalAvg === null ? 'var(--border)' : globalAvg < 3 ? '#FECACA' : globalAvg < 4 ? '#FDE68A' : '#86EFAC';
 
   const avgBadge = globalAvg !== null
@@ -2299,7 +2298,7 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
   const piLabels = Array.from({ length: piCount }, (_, i) => `PI+${i}`);
 
   const headerCols = scenarios.map(s =>
-    `<th colspan="${piCount}" class="pp-th pp-th-center" style="background:${s.delta === 0 ? '#F0F9FF' : s.delta < 0 ? '#FEF2F2' : '#F0FDF4'};">${s.label}</th>`
+    `<th colspan="${piCount}" class="pp-th pp-th-center" style="background:${s.delta === 0 ? '#F0F9FF' : s.delta < 0 ? 'var(--danger-bg)' : 'var(--success-bg)'};">${s.label}</th>`
   ).join('');
 
   const subHeaderCols = scenarios.flatMap(() =>

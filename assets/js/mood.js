@@ -282,7 +282,7 @@ function _renderMoodPanel() {
   const gAvg     = totalV ? Math.round(allVotes.reduce((s, v) => s + v, 0) / totalV * 10) / 10 : null;
   const teamsV   = teams.filter(t => { const v = md.votes?.[_moodKey(t)]; return Array.isArray(v) && v.length; }).length;
   const gColor   = gAvg === null ? 'var(--text-muted)' : gAvg < 2.5 ? '#DC2626' : gAvg < 3.5 ? '#D97706' : '#16A34A';
-  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2.5 ? '#FEF2F2' : gAvg < 3.5 ? '#FFFBEB' : '#F0FDF4';
+  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2.5 ? 'var(--danger-bg)' : gAvg < 3.5 ? 'var(--warning-bg)' : 'var(--success-bg)';
 
   const avgBadge = gAvg !== null
     ? `<div style="display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:8px;background:${gBg};margin-left:auto;">
@@ -582,7 +582,7 @@ function _piRenderMoodSection(teams, piNum) {
   const gAvg     = totalV ? Math.round(allVotes.reduce((s, v) => s + v, 0) / totalV * 10) / 10 : null;
   const teamsV   = teams.filter(t => { const v = md.votes?.[_moodKey(t)]; return Array.isArray(v) && v.length; }).length;
   const gColor   = gAvg === null ? 'var(--text-muted)' : gAvg < 2.5 ? '#DC2626' : gAvg < 3.5 ? '#D97706' : '#16A34A';
-  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2.5 ? '#FEF2F2' : gAvg < 3.5 ? '#FFFBEB' : '#F0FDF4';
+  const gBg      = gAvg === null ? 'var(--bg)' : gAvg < 2.5 ? 'var(--danger-bg)' : gAvg < 3.5 ? 'var(--warning-bg)' : 'var(--success-bg)';
 
   const avgBadge = gAvg !== null
     ? `<div class="pi-mood-global" style="background:${gBg};">

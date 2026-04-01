@@ -308,6 +308,59 @@ Pattern validé pour les sections avec checklist ou items par équipe. Layout ho
 
 **Dériver pour d'autres contextes** : adapter les éléments SVG à la thématique (Support → tickets/headset, Roadmap → route/jalons, Kanban → colonnes/cartes, etc.), garder le même layout et le même système de couleur dynamique.
 
+## Bonnes pratiques CSS / Styles
+
+### Règle absolue : jamais de couleur hex en dur dans le JS
+
+Toutes les couleurs dans les template literals JS **doivent** utiliser :
+1. **Variables CSS** (`var(--text)`, `var(--border)`, `var(--danger-bg)`, etc.) — pour tout ce qui doit s'adapter au dark mode
+2. **Objet `CLR`** (défini dans `utils.js`) — pour les couleurs sémantiques en JS pur (pas dans un `style=""`)
+3. **`thresholdColor(val, good, ok)`** — pour les ternaires tri-couleur (vert/orange/rouge selon seuil)
+
+**Pourquoi** : les styles inline (`style="background:#FEF2F2"`) ne sont PAS overridables par `[data-theme="dark"]`. Chaque hex en dur = un bug dark mode potentiel.
+
+### Variables CSS sémantiques disponibles
+
+| Variable | Light | Dark | Usage |
+|----------|-------|------|-------|
+| `--success-bg` | `#F0FDF4` | `#1a3a2a` | Fond vert pâle (ticket done, alerte OK) |
+| `--success-fg` | `#15803D` | `#4ADE80` | Texte vert foncé sur fond success |
+| `--success` | `#16A34A` | `#16A34A` | Bordure / accent vert |
+| `--warning-bg` | `#FFFBEB` | `#3a2e1a` | Fond jaune pâle (alerte, at-risk) |
+| `--warning-fg` | `#92400E` | `#FCD34D` | Texte ambré sur fond warning |
+| `--warning` | `#F59E0B` | `#F59E0B` | Bordure / accent ambré |
+| `--danger-bg` | `#FEF2F2` | `#3a1a1a` | Fond rouge pâle (bloqué, erreur) |
+| `--danger-fg` | `#991B1B` | `#FCA5A5` | Texte rouge sur fond danger |
+| `--danger` | `#DC2626` | `#DC2626` | Bordure / accent rouge |
+| `--info-bg` | `#F8FAFC` | `#1E293B` | Fond neutre (zone filtre, tooltip) |
+| `--card` | `#FFFFFF` | `#1E293B` | Fond de carte / zone blanche |
+| `--bg` | `#F1F5F9` | `#0F172A` | Fond principal gris clair |
+| `--surface` | `#FFFFFF` | `#1E293B` | Fond de surface (similaire à card) |
+
+### Classes CSS disponibles (depuis base.css)
+
+| Classe | Usage |
+|--------|-------|
+| `.pts-badge` / `.pts-badge-sm` | Badge story points (adapté dark mode) |
+| `.alert-success` / `.alert-warning` / `.alert-danger` | Boîtes d'alerte colorées |
+| `.bg-success` / `.bg-warning` / `.bg-danger` / `.bg-info` | Fonds sémantiques |
+
+### Quand un style inline est acceptable
+
+- **Valeurs dynamiques** : `width:${pct}%`, `background:${teamColor}`, `left:${offset}px`
+- **Opacité sur couleur dynamique** : `background:${color}22` (hex + alpha suffix)
+- **Couleurs de l'objet CLR** : acceptables dans les attributs `style=""` car ce sont des constantes sémantiques
+
+### Anti-patterns à éviter
+
+| ❌ Mauvais | ✅ Bon |
+|-----------|--------|
+| `style="background:#FEF2F2;color:#991B1B"` | `style="background:var(--danger-bg);color:var(--danger-fg)"` |
+| `style="background:#fff"` (fond de zone) | `style="background:var(--card)"` |
+| `pct > 70 ? '#16A34A' : pct > 40 ? '#F59E0B' : '#DC2626'` | `thresholdColor(pct, 70, 40)` |
+| `style="background:#1E293B;color:#F8FAFC"` | `class="pts-badge"` |
+| Dupliquer une table `[{v:'todo',bg:'...',c:'...'}]` | Utiliser `PP_STATUS_OPTS` (piprep) ou `STATUS_HEX` (utils) |
+
 ## Pièges courants
 
 ### Hiérarchie JIRA ↔ modèle code

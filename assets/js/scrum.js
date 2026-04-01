@@ -1053,7 +1053,7 @@ function _showScrumStatDetail(filter) {
       const _tkDone     = isDone(t.status);
       const strike      = _tkDone ? 'text-decoration:line-through;opacity:.5;' : '';
       const flagBadge   = t.flagged ? '<span class="sc-flag-badge">🚩</span>' : '';
-      const rowBg = t.flagged ? 'background:#FEF2F2;' : t.buffer ? 'background:#F0FDF4;' : '';
+      const rowBg = t.flagged ? 'background:var(--danger-bg);' : t.buffer ? 'background:var(--success-bg);' : '';
       return `<div class="sc-ticket-row" style="${rowBg}${_tkDone ? 'opacity:.6;' : ''}" onclick="closeModalDirect();openModal('${t.id}')">
         ${flagBadge}
         <span style="flex-shrink:0;width:20px;text-align:center;">${priorityIcon(t.priority)}</span>

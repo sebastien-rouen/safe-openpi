@@ -1375,7 +1375,7 @@ function _roadmapTimeline(velRef, cap80, sprintPlan) {
         const c = CONFIG.typeColors[type] || CLR.dark;
         return `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${c}22;color:${c};border:1px solid ${c}44;font-weight:600;">${typeName(type)}×${cnt}</span>`;
       }).join(' ');
-      return `<div class="rm-tl-card" style="border:2px solid #86EFAC;background:#F0FDF4;">
+      return `<div class="rm-tl-card" style="border:2px solid var(--success);background:var(--success-bg);">
         <div class="rm-tl-dot" style="background:#22C55E;border-color:#fff;"></div>
         <div class="rm-tl-name">🍃 ${sp.name || 'IP Sprint'}</div>
         ${futureDateHtml}
@@ -1619,15 +1619,15 @@ function _roadmapSprintPlan(plan, cap80, cap20) {
     return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;padding:3px 0;border-bottom:1px solid #D1FAE5">
       <span>${cat.icon}</span>
       <span style="flex:1;color:var(--text)">${cat.label}</span>
-      <span style="font-weight:700;color:#15803D">~${pts} pts</span>
+      <span style="font-weight:700;color:var(--success-fg)">~${pts} pts</span>
     </div>`;
   }).join('');
 
   const ipCard = `<div class="rm-sprint-card rm-sprint-card-ip">
     <div class="rm-sprint-header">
-      <span class="rm-sprint-label" style="color:#15803D">🍃 Innovation &amp; Planning</span>
+      <span class="rm-sprint-label" style="color:var(--success-fg)">🍃 Innovation &amp; Planning</span>
     </div>
-    <div style="font-size:11px;color:#15803D;font-weight:600;margin-bottom:8px">${cap20} pts · buffer PI</div>
+    <div style="font-size:11px;color:var(--success-fg);font-weight:600;margin-bottom:8px">${cap20} pts · buffer PI</div>
     <div>${ipRows}</div>
     <div style="font-size:10px;color:#6B7280;margin-top:8px;font-style:italic">Retrospective · PI Planning · Exploration · Réduction dette</div>
   </div>`;
@@ -1862,22 +1862,22 @@ function _roadmapPICalendar(cap80) {
     const presTypeIdx = suggestedArr.indexOf(s.idx);
     const presType = presTypeIdx >= 0 ? _PRES_TYPES[presTypeIdx % _PRES_TYPES.length] : null;
 
-    const borderColor = s.isIP ? '#86EFAC' : isSugg ? '#FCD34D' : 'var(--border)';
-    const bgColor     = s.isIP ? '#F0FDF4' : isSugg   ? '#FFFBEB' : 'var(--card)';
+    const borderColor = s.isIP ? 'var(--success)' : isSugg ? 'var(--warning)' : 'var(--border)';
+    const bgColor     = s.isIP ? 'var(--success-bg)' : isSugg   ? 'var(--warning-bg)' : 'var(--card)';
     const wdColor     = s.workDays < 8 ? '#DC2626' : s.workDays < 10 ? '#D97706' : '#16A34A';
     const capColor    = s.workDays < 8 ? '#DC2626' : s.workDays < 10 ? '#D97706' : 'var(--text-muted)';
     const inputBorder = s.pres > 0 ? '#F59E0B' : 'var(--border)';
-    const inputBg     = s.pres > 0 ? '#FFFBEB' : 'var(--card)';
-    const inputClr    = s.pres > 0 ? '#92400E' : 'var(--text)';
+    const inputBg     = s.pres > 0 ? 'var(--warning-bg)' : 'var(--card)';
+    const inputClr    = s.pres > 0 ? 'var(--warning-fg)' : 'var(--text)';
 
     const holBadges = s.inPeriod.map(h =>
-      `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:#FEE2E2;color:#991B1B;border:1px solid #FECACA;padding:2px 7px;border-radius:20px;margin:2px 3px 2px 0;">🇫🇷 ${escapeHtml(h.name)}</span>`
+      `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:500;background:var(--danger-bg);color:var(--danger-fg);border:1px solid var(--danger);padding:2px 7px;border-radius:20px;margin:2px 3px 2px 0;">🇫🇷 ${escapeHtml(h.name)}</span>`
     ).join('');
 
     const bottomBadge = s.isIP
       ? `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;background:#D1FAE5;color:#065F46;border:1px solid #A7F3D0;padding:2px 9px;border-radius:20px;">🍃 Innovation &amp; Planning</div>`
       : isSugg && presType
-        ? `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;background:#FEF3C7;color:#92400E;border:1px solid #FDE68A;padding:2px 9px;border-radius:20px;">${presType.icon} ${presType.label} <span style="font-weight:400;opacity:.7">${presType.note}</span></div>`
+        ? `<div style="margin-top:6px;display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:600;background:var(--warning-bg);color:var(--warning-fg);border:1px solid var(--warning);padding:2px 9px;border-radius:20px;">${presType.icon} ${presType.label} <span style="font-weight:400;opacity:.7">${presType.note}</span></div>`
         : '';
 
     return `
@@ -1985,7 +1985,7 @@ function _roadmapBacklogHealth(backlog) {
   const issues = new Set([...noEpic, ...noPoints, ...noPriority, ...aging].map(t => t.id)).size;
   const healthPct = Math.round((1 - issues / total) * 100);
   const healthColor = healthPct >= 80 ? '#16A34A' : healthPct >= 50 ? '#F59E0B' : '#DC2626';
-  const healthBg    = healthPct >= 80 ? '#F0FDF4' : healthPct >= 50 ? '#FFFBEB' : '#FEF2F2';
+  const healthBg    = healthPct >= 80 ? 'var(--success-bg)' : healthPct >= 50 ? 'var(--warning-bg)' : 'var(--danger-bg)';
   const healthIcon  = healthPct >= 80 ? '✅' : healthPct >= 50 ? '⚠️' : '🔴';
 
   // Store lists globally for the detail popin
@@ -2048,10 +2048,10 @@ function _showBacklogHealthDetail(filter) {
     ${cfg.list.map(t => {
       const epic        = EPICS.find(e => e.id === t.epic);
       const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
-      const highlight   = filter === 'noEpic' && !t.epic ? 'background:#FEF2F2;'
-                        : filter === 'noPoints' && !t.points ? 'background:#FFFBEB;'
+      const highlight   = filter === 'noEpic' && !t.epic ? 'background:var(--danger-bg);'
+                        : filter === 'noPoints' && !t.points ? 'background:var(--warning-bg);'
                         : filter === 'noPriority' ? 'background:#FFF7ED;'
-                        : filter === 'aging' ? 'background:#F8FAFC;' : '';
+                        : filter === 'aging' ? 'background:var(--info-bg);' : '';
       // Extra info depending on filter
       let extra = '';
       if (filter === 'aging' && t.updatedAt) {

@@ -9,6 +9,12 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 ### Securite
 
 - **Token JIRA retire du client** : `JIRA_TOKEN` n'est plus expose dans `window.ENV` / `env.js` — le proxy `server.js` gere l'auth. `generate-env.js` n'exporte plus que `JIRA_HAS_TOKEN: true` (`env.js`, `generate-env.js`, `config.js`, `navigation.js`, `settings.js`)
+- **Dark mode : fonds pastels et couleurs en dur** : remplacement de 76+ couleurs hex en dur par des variables CSS semantiques (`--success-bg`, `--warning-bg`, `--danger-bg`, `--info-bg` + variantes `fg`) avec overrides dark mode (`base.css`, `pi.js`, `piprep.js`, `scrum.js`, `roadmap.js`, `reports.js`, `mood.js`, `sidebar.js`)
+- **ptsBadge() invisible en dark mode** : migre vers classe CSS `.pts-badge` au lieu de `background:#1E293B` en dur (`utils.js`, `base.css`)
+- **thresholdColor()** : nouvelle fonction utilitaire pour les ternaires tri-couleur vert/orange/rouge (`utils.js`)
+- **Table statuts piprep.js factorisee** : 4 copies identiques remplacees par constantes `PP_STATUS_OPTS` / `PP_STATUS_OPTS_DEP`
+- **Bonnes pratiques CSS ajoutees dans CLAUDE.md** : variables semantiques, anti-patterns hex en dur, classes disponibles
+
 - **Protection XSS deployee** : `escapeHtml()` globale appliquee sur 57+ points d'injection innerHTML dans 12 fichiers (`modal.js`, `scrum.js`, `navigation.js`, `sidebar.js`, `sync.js`, `support.js`, `filter.js`, `roadmap.js`, `inno.js`, `amelioration.js`, `piprep.js`, `reports.js`). Couvre titres, assignees, equipes, labels, composants, auteurs, sprints, input recherche utilisateur
 - **Protection SSRF proxy** : validation du path dans `server.js` — seuls `/api/` et `/agile/` sont autorises, traversal (`..`) bloque
 
