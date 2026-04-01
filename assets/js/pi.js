@@ -361,7 +361,7 @@ function renderPI() {
       <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Reste estimé : <strong>${_remaining} pts</strong> · ${sprintsPerPI - _velSprintsDone} sprint${sprintsPerPI - _velSprintsDone > 1 ? 's' : ''} restant${sprintsPerPI - _velSprintsDone > 1 ? 's' : ''}</div>
     </div>`.replace(/"/g, '&quot;');
 
-    const _pctColor = _pct >= 80 ? '#22C55E' : _pct >= 40 ? '#F59E0B' : '#94A3B8';
+    const _pctColor = _pct >= 80 ? CLR.green : _pct >= 40 ? CLR.amber : CLR.muted;
     const _capLabel = _velCapacity ? `${_donePts}/${_velCapacity} pts` : `${_donePts}/${_totalPts} pts`;
 
     _progEl.innerHTML = `<div class="pi-prog" data-tip-prog="${_progTip}">
@@ -918,7 +918,7 @@ function _renderVelocityHistory(allTeams) {
       const entry = teamIterMap[t][iterKey];
       if (!entry) return `<td style="color:var(--text-muted);text-align:center">-</td>`;
       const pct   = empirical ? Math.round(entry.velocity / empirical * 100) : null;
-      const color2 = pct === null ? '' : pct >= 90 ? '#22C55E' : pct >= 70 ? '#F59E0B' : '#EF4444';
+      const color2 = pct === null ? '' : thresholdColor(pct, 90, 70);
       return `<td class="pi-vel-cell" data-vel-detail="${t}|${entry.name}" style="cursor:pointer">
         <strong style="color:${color2 || 'inherit'}">${entry.velocity}</strong>
         ${pct !== null ? `<span class="pi-vel-pct">${pct}%</span>` : ''}
@@ -1380,13 +1380,13 @@ function _renderPIBuffer(tickets, allTeams) {
     const tInprog = tBuf.filter(t => ['inprog','review','test'].includes(t.status)).reduce((s, t) => s + (t.points || 0), 0);
     const tDonePct   = tTotal ? Math.round(tDone / tTotal * 100) : 0;
     const tInprogPct = tTotal ? Math.round(tInprog / tTotal * 100) : 0;
-    const pctColor   = tDonePct >= 80 ? '#22C55E' : tDonePct >= 50 ? '#F59E0B' : '#94A3B8';
+    const pctColor   = tDonePct >= 80 ? CLR.green : tDonePct >= 50 ? CLR.amber : CLR.muted;
     // Per-sprint cells
     const sprintCells = _bufSprintLabels.map((_, si) => {
       const sBuf  = tBuf.filter(t => _bufTicketSprintIdx(t) === si);
       if (!sBuf.length) return `<td style="text-align:center;font-size:11px;color:var(--text-muted)">-</td>`;
       const sDone = sBuf.filter(t => isDone(t.status)).length;
-      const sClr  = sDone === sBuf.length ? '#22C55E' : sDone > 0 ? '#F59E0B' : '#94A3B8';
+      const sClr  = sDone === sBuf.length ? CLR.green : sDone > 0 ? CLR.amber : CLR.muted;
       return `<td style="text-align:center;font-size:11px;font-weight:600;color:${sClr}">${sDone}/${sBuf.length}</td>`;
     }).join('');
     return `<tr>

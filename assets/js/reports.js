@@ -934,7 +934,7 @@ function _rptSupport(el, isSlack) {
     if (moodSummary.length) {
       h += `<h2>😊 Mood Meter (ROTI)</h2><table><tr><th>Équipe</th><th>Score</th><th>Votes</th></tr>`;
       moodSummary.forEach(m => {
-        const c = m.avg >= 3.5 ? '#16A34A' : m.avg >= 2.5 ? '#D97706' : '#DC2626';
+        const c = m.avg >= 3.5 ? CLR.darkGrn : m.avg >= 2.5 ? CLR.darkAmber : CLR.red;
         h += `<tr><td>${_rptName(m.team)}</td><td style="color:${c};font-weight:700;">${m.avg}/5</td><td>${m.count}</td></tr>`;
       });
       h += `</table>`;
@@ -944,7 +944,7 @@ function _rptSupport(el, isSlack) {
     if (confSummary.length) {
       h += `<h2>🗳️ Vote de confiance</h2><table><tr><th>Équipe</th><th>Score</th><th>Votes</th></tr>`;
       confSummary.forEach(c => {
-        const cl = c.avg >= 3.5 ? '#16A34A' : c.avg >= 2 ? '#D97706' : '#DC2626';
+        const cl = c.avg >= 3.5 ? CLR.darkGrn : c.avg >= 2 ? CLR.darkAmber : CLR.red;
         h += `<tr><td>${_rptName(c.team)}</td><td style="color:${cl};font-weight:700;">${c.avg}/5</td><td>${c.count}</td></tr>`;
       });
       h += `</table>`;
@@ -1191,7 +1191,7 @@ function _rptPIPrep(el, isSlack) {
       const fv = Array.isArray(fist[fistKey]) ? fist[fistKey] : (fist[fistKey] ? [fist[fistKey]] : []);
       if (fv.length) {
         const avg = Math.round(fv.reduce((s,v)=>s+v,0)/fv.length*10)/10;
-        const c = avg >= 4 ? '#16A34A' : avg >= 3 ? '#D97706' : '#DC2626';
+        const c = avg >= 4 ? CLR.darkGrn : avg >= 3 ? CLR.darkAmber : CLR.red;
         h += `<tr><td>${_rptName(tid)}</td><td style="color:${c};font-weight:700;">${avg}/5</td><td>${fv.length}</td></tr>`;
       }
     });
@@ -1206,7 +1206,7 @@ function _rptPIPrep(el, isSlack) {
       const mv = Array.isArray(_moodVC[mk]) ? _moodVC[mk] : [];
       if (!mv.length) return null;
       const avg = Math.round(mv.reduce((s,v)=>s+v,0)/mv.length*10)/10;
-      const c = avg >= 3.5 ? '#16A34A' : avg >= 2.5 ? '#D97706' : '#DC2626';
+      const c = avg >= 3.5 ? CLR.darkGrn : avg >= 2.5 ? CLR.darkAmber : CLR.red;
       return `<tr><td>${_rptName(tid)}</td><td style="color:${c};font-weight:700;">${avg}/5</td><td>${mv.length}</td></tr>`;
     }).filter(Boolean);
     if (moodRows.length) {
@@ -1219,7 +1219,7 @@ function _rptPIPrep(el, isSlack) {
       const cv = Array.isArray(_confVC[ck]) ? _confVC[ck] : [];
       if (!cv.length) return null;
       const avg = Math.round(cv.reduce((s,v)=>s+v,0)/cv.length*10)/10;
-      const c = avg >= 3.5 ? '#16A34A' : avg >= 2 ? '#D97706' : '#DC2626';
+      const c = avg >= 3.5 ? CLR.darkGrn : avg >= 2 ? CLR.darkAmber : CLR.red;
       return `<tr><td>${_rptName(tid)}</td><td style="color:${c};font-weight:700;">${avg}/5</td><td>${cv.length}</td></tr>`;
     }).filter(Boolean);
     if (confRows.length) {
@@ -1796,7 +1796,7 @@ function _rptMoodVelocity(el, isSlack) {
     let h = `<h1>😊 Rapport Mood / Vélocité${piTagH}</h1>`;
 
     if (correlation !== null) {
-      const corrColor = correlation > 0.3 ? '#16A34A' : correlation > -0.3 ? '#F59E0B' : '#DC2626';
+      const corrColor = correlation > 0.3 ? CLR.darkGrn : correlation > -0.3 ? CLR.amber : CLR.red;
       h += `<div style="margin:12px 0;padding:12px 16px;background:${corrColor}12;border:1px solid ${corrColor}33;border-radius:8px;">
         <strong style="color:${corrColor}">Corrélation : r = ${correlation}</strong> - ${trend}
       </div>`;
@@ -1807,7 +1807,7 @@ function _rptMoodVelocity(el, isSlack) {
     teamSummary.forEach(ts => {
       const moodStr = ts.avgMood !== null ? `${ts.avgMood}/5` : '-';
       const delta = ts.avgVel - ts.velTarget;
-      const deltaColor = delta >= 0 ? '#16A34A' : '#DC2626';
+      const deltaColor = delta >= 0 ? CLR.darkGrn : CLR.red;
       h += `<tr><td><strong>${escapeHtml(ts.team)}</strong></td><td>${moodStr}</td><td>${ts.avgVel} pts</td><td>${ts.velTarget} pts</td><td style="color:${deltaColor};font-weight:700">${delta >= 0 ? '+' : ''}${delta}</td><td>${ts.dataPoints} sprints</td></tr>`;
     });
     h += `</tbody></table>`;

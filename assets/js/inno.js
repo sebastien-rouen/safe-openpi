@@ -176,7 +176,7 @@ function renderInno() {
 
   // --- Progress bar pleine largeur ---
   const wipPct  = total ? Math.round(wipTix / total * 100) : 0;
-  const pctColor = donePct >= 80 ? '#16A34A' : donePct >= 50 ? '#D97706' : '#6366F1';
+  const pctColor = donePct >= 80 ? CLR.darkGrn : donePct >= 50 ? CLR.darkAmber : CLR.purple;
   const progressBar = `
     <div style="position:relative;height:22px;border-radius:6px;overflow:hidden;background:var(--border);margin-bottom:16px;">
       <div style="height:100%;width:${donePct}%;background:#16A34A;float:left;transition:width .3s"></div>

@@ -101,7 +101,7 @@
   </div>
 
   <div class="group-selector" id="group-selector">
-    <label onclick="toggleGroupSelector()">Groupes <span class="collapse-arrow">▼</span></label>
+    <label onclick="toggleGroupSelector()" aria-expanded="false">Groupes <span class="collapse-arrow">▼</span></label>
     <div id="group-btns"></div>
   </div>
 
@@ -225,46 +225,46 @@
       <div id="pi-tabs"></div>
       <div id="pi-progress-bar"></div>
       <div class="pi-section" id="pi-sec-objectifs">
-        <div class="pi-section-header" onclick="_piToggleSection('objectifs')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🎯</span><span class="pi-section-title">Objectifs PI</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('objectifs')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🎯</span><span class="pi-section-title">Objectifs PI</span></div>
         <div class="pi-section-body">
           <div id="pi-ppobj-actions"></div>
           <div id="pi-pp-objectives"></div>
         </div>
       </div>
       <div class="pi-section" id="pi-sec-buffer">
-        <div class="pi-section-header" onclick="_piToggleSection('buffer')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🛡️</span><span class="pi-section-title">Suivi Buffer</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('buffer')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🛡️</span><span class="pi-section-title">Suivi Buffer</span></div>
         <div class="pi-section-body"><div id="pi-buffer"></div></div>
       </div>
       <div class="pi-section" id="pi-sec-capacite">
-        <div class="pi-section-header" onclick="_piToggleSection('capacite')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📊</span><span class="pi-section-title">Vélocité réelle vs estimée</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('capacite')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📊</span><span class="pi-section-title">Vélocité réelle vs estimée</span></div>
         <div class="pi-section-body"><div class="chart-card" style="margin-top:0;position:relative"><div class="chart-wrap" style="height:220px"><canvas id="piCapacityChart"></canvas></div></div></div>
       </div>
       <div class="pi-section" id="pi-sec-velocite">
-        <div class="pi-section-header" onclick="_piToggleSection('velocite')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Vélocité historique</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('velocite')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Vélocité historique</span></div>
         <div class="pi-section-body"><div id="pi-velocity"></div></div>
       </div>
       <div class="pi-section" id="pi-sec-roam">
-        <div class="pi-section-header" onclick="_piToggleSection('roam')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">⚡</span><span class="pi-section-title">ROAM Board</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('roam')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">⚡</span><span class="pi-section-title">ROAM Board</span></div>
         <div class="pi-section-body"><div id="pi-roam"></div></div>
       </div>
       <div class="pi-section" id="pi-sec-fist">
-        <div class="pi-section-header" onclick="_piToggleSection('fist')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">✋</span><span class="pi-section-title">Fist of Five</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('fist')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">✋</span><span class="pi-section-title">Fist of Five</span></div>
         <div class="pi-section-body"><div id="pi-fist"></div><div class="chart-card" style="margin-top:12px;"><div class="chart-title">📈 Évolution Confiance PI</div><div class="chart-wrap" style="height:200px"><canvas id="fistChartPI"></canvas></div></div></div>
       </div>
       <div class="pi-section" id="pi-sec-animation">
-        <div class="pi-section-header" onclick="_piToggleSection('animation')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🎬</span><span class="pi-section-title">Animation PIP</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('animation')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">🎬</span><span class="pi-section-title">Animation PIP</span></div>
         <div class="pi-section-body"><div id="pi-pip"></div></div>
       </div>
       <div class="pi-section" id="pi-sec-mood">
-        <div class="pi-section-header" onclick="_piToggleSection('mood')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">😊</span><span class="pi-section-title">Mood Meter (ROTI)</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('mood')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">😊</span><span class="pi-section-title">Mood Meter (ROTI)</span></div>
         <div class="pi-section-body"><div id="pi-mood"></div></div>
       </div>
       <div class="pi-section" id="pi-sec-metriques">
-        <div class="pi-section-header" onclick="_piToggleSection('metriques')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Métriques</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('metriques')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📈</span><span class="pi-section-title">Métriques</span></div>
         <div class="pi-section-body"><div id="pi-metriques"></div></div>
       </div>
       <div class="pi-section" id="pi-sec-jira">
-        <div class="pi-section-header" onclick="_piToggleSection('jira')"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📋</span><span class="pi-section-title">JIRA → Miro</span></div>
+        <div class="pi-section-header" onclick="_piToggleSection('jira')" aria-expanded="false"><span class="pi-section-arrow">▼</span><span style="font-size:15px;">📋</span><span class="pi-section-title">JIRA → Miro</span></div>
         <div class="pi-section-body"><div id="pi-jira"></div></div>
       </div>
     </div>
@@ -350,7 +350,7 @@
 <div id="search-overlay" class="search-overlay" role="search" onclick="if(event.target===this)closeSearch()" style="display:none">
   <div class="search-box">
     <input id="search-input" class="search-input" type="text" placeholder="Rechercher un ticket, epic, section… (Ctrl+K)" oninput="_onSearchInput(this.value)" autocomplete="off">
-    <div id="search-results" class="search-results"></div>
+    <div id="search-results" class="search-results" role="listbox" aria-live="polite"></div>
   </div>
 </div>
 

@@ -200,7 +200,7 @@ function _moodTrendSparkline(teams) {
   const prevP = points[points.length - 2];
   const delta = lastP.avg - prevP.avg;
   const arrow = delta > 0.2 ? '↗' : delta < -0.2 ? '↘' : '→';
-  const trendColor = delta > 0.2 ? '#16A34A' : delta < -0.2 ? '#DC2626' : '#F59E0B';
+  const trendColor = delta > 0.2 ? CLR.darkGrn : delta < -0.2 ? CLR.red : CLR.amber;
 
   return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;padding:6px 10px;background:var(--surface);border:1px solid var(--border);border-radius:8px;">
     <span style="font-size:11px;color:var(--text-muted);font-weight:600;white-space:nowrap;">Tendance</span>

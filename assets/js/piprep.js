@@ -770,7 +770,7 @@ function _ppReadiness(allBacklog, activeTeams) {
 // ============================================================
 function _ppSectionHeader(readiness) {
   const { score, checks } = readiness;
-  const color  = score >= 80 ? '#16A34A' : score >= 50 ? '#D97706' : '#DC2626';
+  const color  = thresholdColor(score, 80, 50);
   const bg     = score >= 80 ? 'var(--success-bg)' : score >= 50 ? 'var(--warning-bg)' : 'var(--danger-bg)';
   const border = score >= 80 ? '#86EFAC' : score >= 50 ? '#FCD34D' : '#FECACA';
   const label  = score >= 80 ? 'Prêt ✓' : score >= 50 ? 'En cours' : 'À compléter';
@@ -782,7 +782,7 @@ function _ppSectionHeader(readiness) {
       <span>${c.ok ? '✅' : '⚠️'}</span>
       <span style="flex:1;font-size:12px;color:var(--text);">${c.label}</span>
       <div style="width:80px;height:5px;background:#0001;border-radius:3px;overflow:hidden;">
-        <div style="width:${c.pct}%;height:100%;background:${c.ok ? '#16A34A' : '#D97706'};border-radius:3px;"></div>
+        <div style="width:${c.pct}%;height:100%;background:${c.ok ? CLR.darkGrn : CLR.darkAmber};border-radius:3px;"></div>
       </div>
     </div>`).join('');
 
@@ -1086,7 +1086,7 @@ function _ppCapacitySection(activeTeams, sprintsPerPI, membersByTeam) {
         const maxDays = spWeeks.reduce((s, wi) => s + (weekInfos[wi]?.workDays ?? 5), 0);
         const pct = maxDays ? v / maxDays : 0;
         // 3 colors: green (>=75%), orange (>=40%), red (<40%)
-        const cBorder = v === 0 ? 'var(--border)' : pct >= 0.75 ? '#22C55E' : pct >= 0.4 ? '#F59E0B' : '#EF4444';
+        const cBorder = v === 0 ? 'var(--border)' : thresholdColor(pct * 100, 75, 40);
         const cBg     = v === 0 ? 'var(--card)' : pct >= 0.75 ? 'var(--success-bg)' : pct >= 0.4 ? 'var(--warning-bg)' : 'var(--danger-bg)';
         const cText   = v === 0 ? 'var(--text)' : pct >= 0.75 ? 'var(--success-fg)' : pct >= 0.4 ? 'var(--warning-fg)' : 'var(--danger-fg)';
         return `<td style="padding:5px 10px;text-align:center;">
@@ -1547,7 +1547,7 @@ function _ppDepsTimeline(deps) {
     const doneCount = items.filter(d => d.status === 'done').length;
     const blockedCount = items.filter(d => d.status === 'blocked').length;
     const pct = items.length ? Math.round(doneCount / items.length * 100) : 0;
-    const pctClr = pct >= 70 ? '#22C55E' : pct >= 30 ? '#F59E0B' : '#EF4444';
+    const pctClr = thresholdColor(pct, 70, 30);
     return `<div style="margin-bottom:12px;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <span style="font-size:12px;font-weight:700;color:var(--text);">Ité ${sp}</span>
@@ -1847,7 +1847,7 @@ function _ppPipSection(activeTeams, piNum) {
 
     const doneCount = items.filter(i => i.done).length;
     const pct = items.length ? Math.round(doneCount / items.length * 100) : 0;
-    const pctColor = pct === 100 ? '#22C55E' : pct >= 50 ? '#F59E0B' : 'var(--text-muted)';
+    const pctColor = pct === 100 ? CLR.green : pct >= 50 ? CLR.amber : 'var(--text-muted)';
 
     const rows = items.map((item, idx) => {
       const infoBtn = item.info ? ` <span class="pip-info-btn" title="${item.info.replace(/"/g, '&quot;')}" onclick="event.stopPropagation();_ppPipShowInfo(this)">ℹ️</span>` : '';
@@ -2224,7 +2224,7 @@ function _ppObjSummarySection(activeTeams) {
           <span style="font-size:13px;flex-shrink:0">${statusIcon[o.status] || '⬜'}</span>
           <span style="font-size:12px;color:var(--text);flex:1;${isDone ? 'text-decoration:line-through;' : ''}">${escapeHtml(o.title || 'Sans titre')}</span>
           ${typeTag}
-          <span style="flex-shrink:0;font-size:11px;white-space:nowrap;font-weight:600;color:${isDone ? '#16A34A' : '#D97706'}">💰 ${bv}</span>
+          <span style="flex-shrink:0;font-size:11px;white-space:nowrap;font-weight:600;color:${isDone ? CLR.darkGrn : CLR.darkAmber}">💰 ${bv}</span>
         </div>`;
       }).join('');
 
@@ -2238,7 +2238,7 @@ function _ppObjSummarySection(activeTeams) {
     </div>`;
   }).join('');
 
-  const bvColor = totalBV >= 30 ? '#16A34A' : totalBV >= 15 ? '#D97706' : '#94A3B8';
+  const bvColor = totalBV >= 30 ? CLR.darkGrn : totalBV >= 15 ? CLR.darkAmber : CLR.muted;
 
   return `<div id="pp-obj-summary" class="pp-section" style="padding:16px;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px;">
@@ -2314,7 +2314,7 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
         const cap = totalCap; // same capacity per PI (simplified)
         const color = s.delta === 0 ? t.color : s.delta < 0 ? '#DC2626' : '#16A34A';
         const diff = cap - (t.velocity * sprintsPerPI);
-        const diffStr = s.delta !== 0 ? `<div style="font-size:9px;color:${diff >= 0 ? '#16A34A' : '#DC2626'}">${diff >= 0 ? '+' : ''}${diff} pts</div>` : '';
+        const diffStr = s.delta !== 0 ? `<div style="font-size:9px;color:${diff >= 0 ? CLR.darkGrn : CLR.red}">${diff >= 0 ? '+' : ''}${diff} pts</div>` : '';
         return `<td style="padding:6px 8px;text-align:center;border-right:1px solid var(--border);">
           <div style="font-size:13px;font-weight:700;color:${color}">${cap}</div>
           <div style="font-size:9px;color:var(--text-muted)">${newSize} dev · ${newVel}/sprint</div>
