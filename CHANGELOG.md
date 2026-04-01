@@ -4,6 +4,12 @@ Toutes les modifications notables de ce projet sont documentees dans ce fichier.
 Format base sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [Non publie] - 2026-04-01
+
+### Refactoring
+
+- **loadJiraData() decoupee en 15 sous-fonctions** : la fonction monolithique (~1150 lignes) est decoupee en sous-fonctions nommees (`_jiraDiscoverSPField`, `_jiraBuildFields`, `_jiraFetchBoards`, `_jiraFetchSprintsAndIssues`, `_jiraFetchVelocityHistory`, `_jiraFetchFutureSprints`, `_jiraFetchPITickets`, `_jiraFetchPIFeatures`, `_jiraResolveEpicTitles`, `_jiraFetchInnoFeatures`, `_jiraFetchAmelTickets`, `_jiraBuildGroups`, `_jiraTransformAndSave`, `_jiraFetchCycleTimes`). L'orchestrateur ne fait plus que ~93 lignes. L'etat mutable est regroupe dans un objet `ctx` passe entre les fonctions. Aucun changement de logique, purement structurel (`jira.js`)
+
 ## [Non publie] - 2026-03-31
 
 ### Securite
