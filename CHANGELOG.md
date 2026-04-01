@@ -14,6 +14,9 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 - **thresholdColor()** : nouvelle fonction utilitaire pour les ternaires tri-couleur vert/orange/rouge (`utils.js`)
 - **Table statuts piprep.js factorisee** : 4 copies identiques remplacees par constantes `PP_STATUS_OPTS` / `PP_STATUS_OPTS_DEP`
 - **Bonnes pratiques CSS ajoutees dans CLAUDE.md** : variables semantiques, anti-patterns hex en dur, classes disponibles
+- **Ternaires tri-couleur** : 21+ ternaires migres vers `thresholdColor()` ou `CLR.*` (`pi.js`, `piprep.js`, `reports.js`, `inno.js`, `mood.js`)
+- **Log conditionnel jira.js** : 82 console.log/warn remplaces par `_log()`/`_warn()`, desactive par defaut (activer via `localStorage.jiraDebug = '1'`)
+- **Accessibilite** : `aria-expanded` sur 10 sections collapsibles PI, `role="listbox"` et `aria-live="polite"` sur resultats de recherche, `font-size` minimum 11px (`index.html`, `base.css`)
 
 - **Protection XSS deployee** : `escapeHtml()` globale appliquee sur 57+ points d'injection innerHTML dans 12 fichiers (`modal.js`, `scrum.js`, `navigation.js`, `sidebar.js`, `sync.js`, `support.js`, `filter.js`, `roadmap.js`, `inno.js`, `amelioration.js`, `piprep.js`, `reports.js`). Couvre titres, assignees, equipes, labels, composants, auteurs, sprints, input recherche utilisateur
 - **Protection SSRF proxy** : validation du path dans `server.js` — seuls `/api/` et `/agile/` sont autorises, traversal (`..`) bloque
