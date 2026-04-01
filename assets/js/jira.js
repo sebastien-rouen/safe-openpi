@@ -26,6 +26,11 @@ function _jiraFetch(url, opts) {
   return fetch(url, opts);
 }
 
+// Log conditionnel — désactivé en production (console.log trop verbeux)
+const _JIRA_LOG = (localStorage.getItem('jiraDebug') === '1');
+const _log = _JIRA_LOG ? console.log.bind(console, '[JIRA]') : () => {};
+const _warn = console.warn.bind(console, '[JIRA]');
+
 // Nom de fichier cache fixe (multi-board)
 function _cacheFile() { return 'jira-data.json'; }
 
@@ -182,7 +187,7 @@ function _mapStatus(s) {
   if (/bloc|imped|attente|hold/i.test(s))                             return 'blocked';
   if (/cours|progress|dev|wip|spec|analys/i.test(s))                  return 'inprog';
   if (/backlog/i.test(s))                                             return 'backlog';
-  console.warn(`[JIRA] Statut non mappé : "${s}" → todo`);
+  _warn(`Statut non mappé : "${s}" → todo`);
   return 'todo';
 }
 
@@ -525,7 +530,7 @@ window._fetchRemoteLinks = async function(issueKey) {
       status: rl.object?.status?.description || rl.object?.status?.resolved ? 'Résolu' : '',
     })).filter(l => l.url);
   } catch (e) {
-    console.warn('[JIRA] Remote links fetch failed for', issueKey, e.message);
+    _warn('Remote links fetch failed for', issueKey, e.message);
     return [];
   }
 };
@@ -693,7 +698,7 @@ function _transform(issues, project, sprintId, teamConfigs) {
     if (flagged && !isDone(status)) status = 'blocked';
     const labels  = (f.labels || []).map(l => l.toLowerCase());
     const buffer  = _isBuffer(labels, epicKey, epicMap);
-    if (buffer) console.log(`[JIRA] Buffer détecté (sprint actif): ${i.key} (epic=${epicKey}, epicTitle=${epicMap[epicKey]?.title || '?'}, labels=[${labels.join(',')}])`);
+    if (buffer) _log(`Buffer détecté (sprint actif): ${i.key} (epic=${epicKey}, epicTitle=${epicMap[epicKey]?.title || '?'}, labels=[${labels.join(',')}])`);
     // Due date: duedate or Target end (customfield_10015)
     const dueDate = f.duedate || f.customfield_10015 || null;
     // Last comment
@@ -864,7 +869,7 @@ function _transformBacklog(issues, epicMapOverride) {
       points:      _getPoints(f),
       status:      _mapStatus(f.status?.name) || 'backlog',
       _jiraStatus: f.status?.name || '',
-      buffer:      (() => { const b = _isBuffer(labels, epicKey, _blEpicMap); if (b) console.log(`[JIRA] Buffer détecté (backlog): ${i.key} (epic=${epicKey}, epicTitle=${_blEpicMap[epicKey]?.title || '?'}, labels=[${labels.join(',')}])`); return b; })(),
+      buffer:      (() => { const b = _isBuffer(labels, epicKey, _blEpicMap); if (b) _log(`Buffer détecté (backlog): ${i.key} (epic=${epicKey}, epicTitle=${_blEpicMap[epicKey]?.title || '?'}, labels=[${labels.join(',')}])`); return b; })(),
       priority:    _mapPriority(f.priority?.name),
       sprint:      0,
       sprintName:  sprintObj.name      || '',
@@ -882,14 +887,14 @@ async function _applyCache(cache) {
   // Board column mapping - MUST be restored before tickets (used by _mapStatus)
   if (cache.board_status_map) {
     _boardColumnMap = cache.board_status_map;
-    console.log(`[JIRA] Board status map restauré (${Object.keys(_boardColumnMap).length} statuts)`);
+    _log(`Board status map restauré (${Object.keys(_boardColumnMap).length} statuts)`);
   }
   // Board columns: load from dedicated file, fallback to cache embed
   try {
     const bcRes = await fetch(`${DATA_PROXY}/board-columns.json`);
     if (bcRes.ok) {
       BOARD_COLUMNS = await bcRes.json();
-      console.log(`[JIRA] Board columns chargé depuis board-columns.json (${Object.keys(BOARD_COLUMNS).length} équipes)`);
+      _log(`Board columns chargé depuis board-columns.json (${Object.keys(BOARD_COLUMNS).length} équipes)`);
     } else if (cache.board_columns) {
       BOARD_COLUMNS = cache.board_columns;
     }
@@ -946,7 +951,7 @@ async function _applyCache(cache) {
     });
   }
 
-  console.log(`[JIRA] ${TICKETS.length} tickets · ${EPICS.length} epics · ${SUPPORT_TICKETS.length} support · ${BACKLOG_TICKETS.length} backlog · ${INNO_FEATURES.length} inno · ${AMELIORATION_TICKETS.length} amélio · ${GROUPS.length} groupes`);
+  _log(`${TICKETS.length} tickets · ${EPICS.length} epics · ${SUPPORT_TICKETS.length} support · ${BACKLOG_TICKETS.length} backlog · ${INNO_FEATURES.length} inno · ${AMELIORATION_TICKETS.length} amélio · ${GROUPS.length} groupes`);
 }
 
 // ============================================================
@@ -992,13 +997,13 @@ async function loadJiraData(opts = {}) {
       if (spField) {
         _spFieldId = spField.id;
         _pointsFieldKey = spField.id; // pré-cache pour _getPoints
-        console.log(`[JIRA] Story Points field détecté : ${spField.name} → ${spField.id}`);
+        _log(`Story Points field détecté : ${spField.name} → ${spField.id}`);
       } else {
-        console.warn('[JIRA] Champ Story Points non trouvé via /api/3/field - fallback sur IDs connus');
+        _warn('Champ Story Points non trouvé via /api/3/field - fallback sur IDs connus');
       }
     }
   } catch (e) {
-    console.warn('[JIRA] Découverte champ Story Points échouée :', e.message);
+    _warn('Découverte champ Story Points échouée :', e.message);
   }
 
   const fields = [
@@ -1043,7 +1048,7 @@ async function loadJiraData(opts = {}) {
     : allBoards;
   if (projects.length) {
     const excluded = allBoards.filter(b => !projects.includes(b.location?.projectKey));
-    if (excluded.length) console.log(`[JIRA] Boards exclus (hors projet) : ${excluded.map(b => `"${b.name}" [${b.location?.projectKey || '?'}]`).join(', ')}`);
+    if (excluded.length) _log(`Boards exclus (hors projet) : ${excluded.map(b => `"${b.name}" [${b.location?.projectKey || '?'}]`).join(', ')}`);
   }
 
   // Ne garder que les boards de type scrum - les boards kanban ne supportent pas l'API sprint
@@ -1055,10 +1060,10 @@ async function loadJiraData(opts = {}) {
   const skippedBoards = boards.filter(b => b.type !== 'scrum');
   if (excludeTeams.length && scrumBoardsRaw.length !== scrumBoards.length) {
     const excluded = scrumBoardsRaw.filter(b => excludeTeams.includes(_boardTeamName(b.name).toLowerCase()));
-    console.log(`[JIRA] Équipes exclues (excludeTeams) : ${excluded.map(b => `"${_boardTeamName(b.name)}"`).join(', ')}`);
+    _log(`Équipes exclues (excludeTeams) : ${excluded.map(b => `"${_boardTeamName(b.name)}"`).join(', ')}`);
   }
-  console.log(`[JIRA] ${allBoards.length} boards total → ${boards.length} après filtre projet${projects.length ? ` (${projects.join(', ')})` : ''} → ${scrumBoards.length} scrum (${skippedBoards.length} kanban ignorés)`);
-  if (skippedBoards.length) console.log(`[JIRA] Boards non-scrum ignorés : ${skippedBoards.map(b => `"${b.name}" [${b.location?.projectKey}]`).join(', ')}`);
+  _log(`${allBoards.length} boards total → ${boards.length} après filtre projet${projects.length ? ` (${projects.join(', ')})` : ''} → ${scrumBoards.length} scrum (${skippedBoards.length} kanban ignorés)`);
+  if (skippedBoards.length) _log(`Boards non-scrum ignorés : ${skippedBoards.map(b => `"${b.name}" [${b.location?.projectKey}]`).join(', ')}`);
 
   // 2. Grouper les boards par Espace (location.projectKey)
   //    ex: Espaces > Gestion des Communs > Sprint Fuego → groupe "Gestion des Communs"
@@ -1091,7 +1096,7 @@ async function loadJiraData(opts = {}) {
   for (const board of scrumBoards) {
     // Ignorer les boards PI/agrégateurs - pas des boards d'équipe sprint
     if (_SKIP_BOARD_RE.test(board.name)) {
-      console.log(`[JIRA] Board ignoré (PI/agrégateur) : "${board.name}"`);
+      _log(`Board ignoré (PI/agrégateur) : "${board.name}"`);
       _curStep += 2; // sauter les 2 étapes sprint + issues
       continue;
     }
@@ -1126,7 +1131,7 @@ async function loadJiraData(opts = {}) {
           // Ignorer les boards dont le sprint actif est un PI (ex: "PI#28") - pas des sprints d'équipe
           // Mais garder l'ID pour fetcher les sprints PI futurs (PI#29, PI#30…)
           if (/^PI\s*#?\d+/i.test(sprint.name)) {
-            console.log(`[JIRA] Board "${board.name}" ignoré - sprint PI : "${sprint.name}" (sprints futurs seront fetchés)`);
+            _log(`Board "${board.name}" ignoré - sprint PI : "${sprint.name}" (sprints futurs seront fetchés)`);
             _piBoardIds.push(board.id);
             _curStep++; // sauter l'étape issues
             continue;
@@ -1146,12 +1151,12 @@ async function loadJiraData(opts = {}) {
             CONFIG.sprint.endDate      = _fmtDate(sprint.endDate);
             CONFIG.sprint.startDateISO = sprint.startDate || '';
             CONFIG.sprint.goal      = sprint.goal || '';
-            console.log(`[JIRA] Sprint référence : ${sprint.name} (id=${sprint.id})`);
+            _log(`Sprint référence : ${sprint.name} (id=${sprint.id})`);
           }
         }
       }
     } catch (e) {
-      console.warn(`[JIRA] Sprint board ${board.id} (${board.name}) : ${e.message}`);
+      _warn(`Sprint board ${board.id} (${board.name}) : ${e.message}`);
     }
 
     // Process board column configuration (await the parallel fetch)
@@ -1178,12 +1183,12 @@ async function loadJiraData(opts = {}) {
       });
       _allBoardColumns[teamName] = boardCols;
       const summary = boardCols.map(c => `${c.name}→${c.internal || '?'}(${c.statuses.length})`).join(', ');
-      console.log(`[JIRA] Board "${board.name}" colonnes : ${summary}`);
+      _log(`Board "${board.name}" colonnes : ${summary}`);
     }
 
     if (!sprintId) {
       _curStep++; // sauter l'étape issues
-      console.log(`[JIRA] Board "${board.name}" : pas de sprint actif`);
+      _log(`Board "${board.name}" : pas de sprint actif`);
       continue;
     }
 
@@ -1199,12 +1204,12 @@ async function loadJiraData(opts = {}) {
         issues.forEach(issue => { issue._boardTeam = teamName; });
         allIssues.push(...issues);
         if (issues.length) teamConfigs[teamName].hasIssues = true;
-        console.log(`[JIRA] Board "${board.name}" → équipe "${teamName}" : ${issues.length} issues`);
+        _log(`Board "${board.name}" → équipe "${teamName}" : ${issues.length} issues`);
       } else {
-        console.warn(`[JIRA] Issues board ${board.id} : HTTP ${ir.status}`);
+        _warn(`Issues board ${board.id} : HTTP ${ir.status}`);
       }
     } catch (e) {
-      console.warn(`[JIRA] Issues board ${board.id} (${board.name}) : ${e.message}`);
+      _warn(`Issues board ${board.id} (${board.name}) : ${e.message}`);
     }
   }
 
@@ -1224,7 +1229,7 @@ async function loadJiraData(opts = {}) {
         if (diffDays > INACTIVE_THRESHOLD_DAYS) {
           tc.inactive = true;
           tc.hasIssues = false; // exclure du cache et des vues
-          console.log(`[JIRA] Équipe "${name}" marquée inactive (sprint "${tc.sprintName}" terminé il y a ${diffDays}j, seuil ${INACTIVE_THRESHOLD_DAYS}j)`);
+          _log(`Équipe "${name}" marquée inactive (sprint "${tc.sprintName}" terminé il y a ${diffDays}j, seuil ${INACTIVE_THRESHOLD_DAYS}j)`);
         }
       });
     }
@@ -1237,7 +1242,7 @@ async function loadJiraData(opts = {}) {
     for (let i = allIssues.length - 1; i >= 0; i--) {
       if (_inactiveTeams.has(allIssues[i]._boardTeam)) allIssues.splice(i, 1);
     }
-    if (before !== allIssues.length) console.log(`[JIRA] ${before - allIssues.length} tickets d'équipes inactives retirés`);
+    if (before !== allIssues.length) _log(`${before - allIssues.length} tickets d'équipes inactives retirés`);
   }
 
   // allFutureIssues declared here so it's accessible after the if/else block
@@ -1250,7 +1255,7 @@ async function loadJiraData(opts = {}) {
   // (Skipped in incremental mode - velocity doesn't change during sprint)
   _syncProgress(++_curStep, _totalSteps, 'Vélocité (sprints fermés)…');
   if (opts.incremental) {
-    console.log('[JIRA] Sync incrémentale - vélocité et backlog ignorés');
+    _log('Sync incrémentale - vélocité et backlog ignorés');
   } else {
   // Fetch tous les tickets de chaque sprint fermé, filtre les "Done" en JS
   // (pas de JQL status=Done car les statuts varient selon les instances JIRA)
@@ -1293,13 +1298,13 @@ async function loadJiraData(opts = {}) {
               : `sprint=${sprint.id}`;
             const ir  = await _jiraFetch(`${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${_velFields}`, { headers: { Accept: 'application/json' } });
             if (!ir.ok) {
-              console.warn(`[JIRA] Vélocité ${teamName} sprint ${sprint.name} : HTTP ${ir.status}`);
+              _warn(`Vélocité ${teamName} sprint ${sprint.name} : HTTP ${ir.status}`);
               return { sprint, issues: [] };
             }
             const issues = (await ir.json()).issues || [];
             return { sprint, issues };
           } catch (e) {
-            console.warn(`[JIRA] Vélocité ${teamName} sprint ${sprint.name} : ${e.message}`);
+            _warn(`Vélocité ${teamName} sprint ${sprint.name} : ${e.message}`);
             return { sprint, issues: [] };
           }
         }));
@@ -1343,11 +1348,11 @@ async function loadJiraData(opts = {}) {
           const doneIssues = sd.issues.filter(i => isDone(_mapStatus(i.fields.status?.name))).filter(i => {
             // Ticket présent dans le sprint actif → il a glissé vers le sprint courant
             if (activeKeys.has(i.key)) {
-              console.log(`[JIRA] Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → sprint actif)`);
+              _log(`Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → sprint actif)`);
               return false;
             }
             if (issueLastSprint.get(i.key) !== idx) {
-              console.log(`[JIRA] Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → ${sprintData[issueLastSprint.get(i.key)]?.sprint.name})`);
+              _log(`Vélocité ${teamName} ${sd.sprint.name} : ${i.key} exclu (glissé → ${sprintData[issueLastSprint.get(i.key)]?.sprint.name})`);
               return false;
             }
             return true;
@@ -1395,9 +1400,9 @@ async function loadJiraData(opts = {}) {
           const sprintMembers = [...new Set(sd.issues.map(i => (i.fields.assignee?.displayName || '').trim()).filter(Boolean))];
           return { name: sd.sprint.name, velocity, tickets, bufferTickets, members: sprintMembers, startDate: sd.sprint.startDate || '', endDate: sd.sprint.endDate || '' };
         });
-        console.log(`[JIRA] Vélocité ${teamName} : ${tc.velocityHistory.map(s => `${s.name}=${s.velocity}`).join(', ')}`);
+        _log(`Vélocité ${teamName} : ${tc.velocityHistory.map(s => `${s.name}=${s.velocity}`).join(', ')}`);
       } catch (e) {
-        console.warn(`[JIRA] Vélocité ${teamName} : ${e.message}`);
+        _warn(`Vélocité ${teamName} : ${e.message}`);
       }
     }));
   }
@@ -1433,9 +1438,9 @@ async function loadJiraData(opts = {}) {
           });
         }
         const count = allFutureIssues.filter(i => i._boardTeam === teamName).length;
-        if (count) console.log(`[JIRA] Sprints futurs "${teamName}" : ${count} tickets (${futureSprints.length} sprints)`);
+        if (count) _log(`Sprints futurs "${teamName}" : ${count} tickets (${futureSprints.length} sprints)`);
       } catch (e) {
-        console.warn(`[JIRA] Sprints futurs ${teamName} : ${e.message}`);
+        _warn(`Sprints futurs ${teamName} : ${e.message}`);
       }
     }));
   }
@@ -1462,7 +1467,7 @@ async function loadJiraData(opts = {}) {
         ? ` AND project IN (${CONFIG.jira.projects.map(p => `"${p}"`).join(',')})`
         : '';
       const piJql = `sprint IN (${piNames.join(',')})${projFilter} ORDER BY priority ASC`;
-      console.log(`[JIRA] Recherche tickets PI : ${piJql}`);
+      _log(`Recherche tickets PI : ${piJql}`);
       const _piActiveKeys = new Set(allIssues.map(i => i.key));
 
       try {
@@ -1479,7 +1484,7 @@ async function loadJiraData(opts = {}) {
           const body = await ir.json();
           const page = body.issues || [];
           allPiIssues = allPiIssues.concat(page);
-          console.log(`[JIRA] PI page ${p+1}: ${page.length} issues (fetched: ${allPiIssues.length})`);
+          _log(`PI page ${p+1}: ${page.length} issues (fetched: ${allPiIssues.length})`);
           if (body.isLast !== false || !page.length) break;
           piNextToken = body.nextPageToken;
           if (!piNextToken) break;
@@ -1535,7 +1540,7 @@ async function loadJiraData(opts = {}) {
               if (existing) { existing._piSprintName = piName; enriched++; }
               // Features/Epics : s'assurer qu'elles sont dans allFutureIssues avec piSprintName
               const iType = (issue.fields?.issuetype?.name || '').toLowerCase();
-              if (iType === 'feature' || iType === 'fonctionnalité') console.log(`[JIRA] PI Feature in activeKeys: ${issue.key} type=${iType} piName=${piName} boardTeam=${existing?._boardTeam}`);
+              if (iType === 'feature' || iType === 'fonctionnalité') _log(`PI Feature in activeKeys: ${issue.key} type=${iType} piName=${piName} boardTeam=${existing?._boardTeam}`);
               if (iType === 'feature' || iType === 'fonctionnalité' || iType === 'epic') {
                 // Si déjà dans allFutureIssues, enrichir piSprintName
                 const existingFuture = allFutureIssues.find(fi => fi.key === issue.key);
@@ -1575,10 +1580,10 @@ async function loadJiraData(opts = {}) {
           // Distribution des PI trouvés
           const piDist = {};
           allFutureIssues.forEach(fi => { if (fi._piSprintName) piDist[fi._piSprintName] = (piDist[fi._piSprintName] || 0) + 1; });
-          console.log(`[JIRA] Tickets PI : ${issues.length} trouvés, ${added} nouveaux, ${enriched} enrichis - distribution:`, piDist);
+          _log(`Tickets PI : ${issues.length} trouvés, ${added} nouveaux, ${enriched} enrichis - distribution:`, piDist);
         }
       } catch (e) {
-        console.warn(`[JIRA] Recherche tickets PI : ${e.message}`);
+        _warn(`Recherche tickets PI : ${e.message}`);
       }
 
       _syncProgress(++_curStep, _totalSteps, 'Features PI…');
@@ -1636,7 +1641,7 @@ async function loadJiraData(opts = {}) {
               }
             }
           });
-          if (featIssues.length) console.log(`[JIRA] Features ${piSprintName} : ${featIssues.length} trouvées, ${featAdded} ajoutées`);
+          if (featIssues.length) _log(`Features ${piSprintName} : ${featIssues.length} trouvées, ${featAdded} ajoutées`);
 
           // Fetch enfants de TOUTES les features PI (stories/tasks sans sprint)
           const allFeatKeys = featIssues.map(i => i.key);
@@ -1685,13 +1690,13 @@ async function loadJiraData(opts = {}) {
                   if (!nextPageToken) break;
                 }
               } catch (e2) {
-                console.warn(`[JIRA] Enfants Features PI#${piN} batch : ${e2.message}`);
+                _warn(`Enfants Features PI#${piN} batch : ${e2.message}`);
               }
             }
-            if (totalChildAdded) console.log(`[JIRA] Enfants Features ${piSprintName} : ${totalChildAdded} ajoutés (${allFeatKeys.length} features)`);
+            if (totalChildAdded) _log(`Enfants Features ${piSprintName} : ${totalChildAdded} ajoutés (${allFeatKeys.length} features)`);
           }
         } catch (e) {
-          console.warn(`[JIRA] Features PI#${piN} : ${e.message}`);
+          _warn(`Features PI#${piN} : ${e.message}`);
         }
       }
     }
@@ -1721,10 +1726,10 @@ async function loadJiraData(opts = {}) {
         if (res.ok) {
           const body = await res.json();
           (body.issues || []).forEach(i => { allIssues.push(i); allFutureIssues.push(i); });
-          console.log(`[JIRA] ${body.issues?.length || 0} epic(s)/feature(s) résolue(s)`);
+          _log(`${body.issues?.length || 0} epic(s)/feature(s) résolue(s)`);
         }
       } catch (e) {
-        console.warn('[JIRA] Résolution epics :', e.message);
+        _warn('Résolution epics :', e.message);
       }
     }
   }
@@ -1738,14 +1743,14 @@ async function loadJiraData(opts = {}) {
       ? ` AND project IN (${CONFIG.jira.projects.map(p => `"${p}"`).join(',')})`
       : '';
     const _innoJql = `issuetype in (Feature, Fonctionnalité) AND labels in (Inno, inno, innovation, Innovation)${_innoProjFilter} ORDER BY priority ASC`;
-    console.log(`[JIRA] Innovation Features : ${_innoJql}`);
+    _log(`Innovation Features : ${_innoJql}`);
     try {
       const _innoUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_innoJql)}&maxResults=200&fields=${fields}`;
       const _innoRes = await _jiraFetch(_innoUrl, { headers: { Accept: 'application/json' } });
       if (_innoRes.ok) {
         const _innoIssues = (await _innoRes.json()).issues || [];
         const _innoKeys = _innoIssues.map(i => i.key);
-        console.log(`[JIRA] Innovation : ${_innoIssues.length} features trouvées (${_innoKeys.join(', ')})`);
+        _log(`Innovation : ${_innoIssues.length} features trouvées (${_innoKeys.join(', ')})`);
 
         // Stocker les Features en tant qu'INNO_FEATURES
         _innoIssues.forEach(i => {
@@ -1769,7 +1774,7 @@ async function loadJiraData(opts = {}) {
         // Récupérer les tickets enfants des Features d'innovation
         if (_innoKeys.length) {
           const _childJql = `parent in (${_innoKeys.join(',')})${_innoProjFilter} ORDER BY priority ASC`;
-          console.log(`[JIRA] Innovation enfants : ${_childJql}`);
+          _log(`Innovation enfants : ${_childJql}`);
           try {
             const _childUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_childJql)}&maxResults=500&fields=${fields}`;
             const _childRes = await _jiraFetch(_childUrl, { headers: { Accept: 'application/json' } });
@@ -1806,17 +1811,17 @@ async function loadJiraData(opts = {}) {
                 allIssues.push(i);
                 _childAdded++;
               });
-              console.log(`[JIRA] Innovation enfants : ${_childIssues.length} trouvés, ${_childAdded} ajoutés, ${_childEnriched} déjà connus`);
+              _log(`Innovation enfants : ${_childIssues.length} trouvés, ${_childAdded} ajoutés, ${_childEnriched} déjà connus`);
             }
           } catch (e) {
-            console.warn('[JIRA] Innovation enfants :', e.message);
+            _warn('Innovation enfants :', e.message);
           }
         }
       } else {
-        console.warn(`[JIRA] Innovation Features : HTTP ${_innoRes.status}`);
+        _warn(`Innovation Features : HTTP ${_innoRes.status}`);
       }
     } catch (e) {
-      console.warn('[JIRA] Innovation Features :', e.message);
+      _warn('Innovation Features :', e.message);
     }
   }
 
@@ -1827,13 +1832,13 @@ async function loadJiraData(opts = {}) {
       ? ` AND project IN (${CONFIG.jira.projects.map(p => `"${p}"`).join(',')})`
       : '';
     const _amelJql = `(labels in (Rétro, ActionRetro, Amélioration, postmortem, retro, retro-tech, RetroFonc, Adapt, CoP-méthodo, cop-dev, Methodo) OR summary ~ Rétro OR summary ~ Retro OR summary ~ postmortem OR summary ~ "post-mortem" OR summary ~ CoP) AND (statusCategory != Done OR resolved >= -15d)${_amelProjFilter} ORDER BY labels DESC, status DESC, Rank ASC`;
-    console.log(`[JIRA] Amélioration continue : ${_amelJql}`);
+    _log(`Amélioration continue : ${_amelJql}`);
     try {
       const _amelUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_amelJql)}&maxResults=500&fields=${fields}`;
       const _amelRes = await _jiraFetch(_amelUrl, { headers: { Accept: 'application/json' } });
       if (_amelRes.ok) {
         const _amelIssues = (await _amelRes.json()).issues || [];
-        console.log(`[JIRA] Amélioration continue : ${_amelIssues.length} tickets trouvés`);
+        _log(`Amélioration continue : ${_amelIssues.length} tickets trouvés`);
         _amelIssues.forEach(i => {
           const f = i.fields;
           const sprintRaw  = f[CONFIG.sync.sprintField];
@@ -1868,10 +1873,10 @@ async function loadJiraData(opts = {}) {
           });
         });
       } else {
-        console.warn(`[JIRA] Amélioration continue : HTTP ${_amelRes.status}`);
+        _warn(`Amélioration continue : HTTP ${_amelRes.status}`);
       }
     } catch (e) {
-      console.warn('[JIRA] Amélioration continue :', e.message);
+      _warn('Amélioration continue :', e.message);
     }
   }
 
@@ -1912,9 +1917,9 @@ async function loadJiraData(opts = {}) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(_allBoardColumns, null, 2),
     });
-    console.log('[JIRA] Board columns sauvegardé → board-columns.json');
+    _log('Board columns sauvegardé → board-columns.json');
   } catch (e) {
-    console.warn('[JIRA] Sauvegarde board-columns.json échouée :', e.message);
+    _warn('Sauvegarde board-columns.json échouée :', e.message);
   }
 
   // 5.3 Enrichir les features depuis toutes les issues (sprint actif + fermés + backlog)
@@ -1974,7 +1979,7 @@ async function loadJiraData(opts = {}) {
 
     // NOTE: la déduction de team des epics/features est faite APRÈS la construction du backlog (plus bas)
     if (cache.features.length > 1 || (cache.features.length === 1 && cache.features[0].id !== 'F-1')) {
-      console.log(`[JIRA] Features extraites : ${cache.features.map(f => `${f.id}="${f.title}"`).join(', ')}`);
+      _log(`Features extraites : ${cache.features.map(f => `${f.id}="${f.title}"`).join(', ')}`);
     }
   }
 
@@ -1982,7 +1987,7 @@ async function loadJiraData(opts = {}) {
   if (opts.incremental) {
     // Preserve existing backlog from memory
     cache.backlog_tickets = (typeof BACKLOG_TICKETS !== 'undefined' ? [...BACKLOG_TICKETS] : []);
-    console.log(`[JIRA] Sync incrémentale - backlog conservé (${cache.backlog_tickets.length})`);
+    _log(`Sync incrémentale - backlog conservé (${cache.backlog_tickets.length})`);
   } else {
     const _seenActive = new Set(allIssues.map(i => i.key));
     // Issues trouvées par le JQL PI ou features/epics doivent passer dans le backlog
@@ -1996,9 +2001,9 @@ async function loadJiraData(opts = {}) {
     const _blEpicMap = { ..._sharedEpicMap };
     (cache.epics || []).forEach(e => { _blEpicMap[e.id] = { title: e.title || '' }; });
     const bufferEpics = Object.entries(_blEpicMap).filter(([, v]) => (v.title || '').toLowerCase().includes('buffer'));
-    console.log(`[JIRA] EpicMap backlog: ${Object.keys(_blEpicMap).length} entrées (${bufferEpics.length} buffer: ${bufferEpics.map(([k, v]) => `${k}="${v.title}"`).join(', ')})`);
+    _log(`EpicMap backlog: ${Object.keys(_blEpicMap).length} entrées (${bufferEpics.length} buffer: ${bufferEpics.map(([k, v]) => `${k}="${v.title}"`).join(', ')})`);
     cache.backlog_tickets = _transformBacklog(_uniqueFuture, _blEpicMap);
-    if (cache.backlog_tickets.length) console.log(`[JIRA] ${cache.backlog_tickets.length} tickets backlog/futurs`);
+    if (cache.backlog_tickets.length) _log(`${cache.backlog_tickets.length} tickets backlog/futurs`);
   }
 
   // 5.42 Enrichir sprintName des backlog tickets done sans sprint (v3 API ne retourne pas les sprints fermés)
@@ -2018,7 +2023,7 @@ async function loadJiraData(opts = {}) {
       bt.sprintName = _velSprintMap[bt.id];
       enriched++;
     });
-    if (enriched) console.log(`[JIRA] ${enriched} tickets backlog enrichis avec sprintName depuis vélocité`);
+    if (enriched) _log(`${enriched} tickets backlog enrichis avec sprintName depuis vélocité`);
   }
 
   // 5.45 Déduire la team et piSprint des epics/features depuis les tickets enfants
@@ -2066,14 +2071,14 @@ async function loadJiraData(opts = {}) {
 
     const enrichedTeams = (cache.epics || []).filter(e => e._isFeature && e.team && e.team !== '_PI' && e.team !== '').length;
     const enrichedPi = (cache.features || []).filter(f => f.piSprint).length;
-    console.log(`[JIRA] Enrichissement features : ${enrichedTeams} avec team, ${enrichedPi} avec piSprint`);
+    _log(`Enrichissement features : ${enrichedTeams} avec team, ${enrichedPi} avec piSprint`);
   }
 
   // 5.5 Lead time / Cycle time - fetch changelog des tickets Done
   {
     const doneTickets = cache.tickets.filter(t => isDone(t.status));
     if (doneTickets.length) {
-      console.log(`[JIRA] Calcul lead/cycle time pour ${doneTickets.length} tickets terminés…`);
+      _log(`Calcul lead/cycle time pour ${doneTickets.length} tickets terminés…`);
       const _batchSize = CONFIG.sync.cycleTimeBatchSize || 10;
       const batches = [];
       for (let i = 0; i < doneTickets.length; i += _batchSize) batches.push(doneTickets.slice(i, i + _batchSize));
@@ -2109,7 +2114,7 @@ async function loadJiraData(opts = {}) {
         }));
       }
       const withCT = cache.tickets.filter(t => t.cycleTimeDays != null).length;
-      console.log(`[JIRA] Cycle time calculé pour ${withCT}/${doneTickets.length} tickets`);
+      _log(`Cycle time calculé pour ${withCT}/${doneTickets.length} tickets`);
     }
   }
 
@@ -2120,9 +2125,9 @@ async function loadJiraData(opts = {}) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(cache),
     });
-    console.log(`[JIRA] Cache sauvegardé → ${_cacheFile()}`);
+    _log(`Cache sauvegardé → ${_cacheFile()}`);
   } catch (e) {
-    console.warn('[JIRA] Sauvegarde cache échouée :', e.message);
+    _warn('Sauvegarde cache échouée :', e.message);
   }
 
   // 7. Appliquer
