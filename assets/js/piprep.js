@@ -1188,7 +1188,7 @@ function _ppROAMSection(activeTeams) {
       <div class="pp-roam-suggest-title">💡 Tickets bloqués JIRA - importer comme risque "Owned"</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
         ${suggestions.map(t => `
-          <button onclick="_ppRoamImport('${t.id}','${escapeHtml((t.title || '').replace(/'/g,"\\'")}','${t.team || activeTeams[0] || 'A'}');"
+          <button onclick="_ppRoamImport('${t.id}','${escapeHtml((t.title || '').replace(/'/g,"\\'"))}','${t.team || activeTeams[0] || 'A'}');"
             class="pp-roam-suggest-btn">
             ➕ ${t.id}
           </button>`).join('')}
