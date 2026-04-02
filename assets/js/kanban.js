@@ -2,7 +2,40 @@
 // KANBAN VIEW - Flux continu, limites WIP, répartition, cycle time
 // ============================================================
 
+// ----------- Support banner (rotation) -----------
+function _renderKanbanSupportBanner() {
+  const el = document.getElementById('kanban-support-banner');
+  if (!el) return;
+  if (typeof _getSupportRosterData !== 'function') { el.innerHTML = ''; return; }
+  const teams = typeof getActiveTeams === 'function' ? getActiveTeams() : [];
+  const data = _getSupportRosterData(teams);
+  if (!data.current) { el.innerHTML = ''; return; }
+
+  const membersHtml = data.current.members.map(m => {
+    const c = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[m.name]) || (typeof _teamColor === 'function' ? _teamColor(m.team) : '#64748B');
+    const firstName = escapeHtml((m.name || '').split(' ')[0]);
+    return `<span class="scrum-support-member">${avatarBadge(m.name, c, { w: 20, fs: '9px' })} ${firstName}</span>`;
+  }).join('');
+
+  let nextHtml = '';
+  if (data.next) {
+    const nextNames = data.next.members.map(m => escapeHtml((m.name || '').split(' ')[0])).join(', ');
+    nextHtml = `<div class="scrum-support-next">&rarr; Releve ${escapeHtml(data.next.weekInfo.dateRange.split(' ')[0])} : ${nextNames}</div>`;
+  }
+
+  el.innerHTML = `<div class="scrum-support-banner">
+    <div class="scrum-support-current">
+      <span class="scrum-support-icon">🛡️</span>
+      <span class="scrum-support-label">Support</span>
+      <span class="scrum-support-dates">${escapeHtml(data.current.weekInfo.dateRange)}</span>
+      <span class="scrum-support-members">${membersHtml}</span>
+    </div>
+    ${nextHtml}
+  </div>`;
+}
+
 function renderKanban() {
+  _renderKanbanSupportBanner();
   const tickets = getTickets();
 
   // Build columns dynamically from JIRA board configuration

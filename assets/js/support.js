@@ -28,6 +28,38 @@ function renderSupport() {
   renderSupportList();
 }
 
+// Shared utility: returns current and next week support rotation data for given teams
+// Returns { current: { weekInfo, members: [{name, team}] }, next: { weekInfo, members: [{name, team}] } | null }
+function _getSupportRosterData(teams) {
+  if (!_supportRotation || !Object.keys(_supportRotation).length) return { current: null, next: null };
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const result = { current: null, next: null };
+
+  for (const teamId of teams) {
+    const k = typeof _rotTeamKey === 'function' ? _rotTeamKey(teamId) : teamId;
+    const rot = _supportRotation[k];
+    if (!rot || !rot.weeks) continue;
+    const wMode = rot.weekMode || 'friday';
+    const weekInfos = typeof _rotWeekInfos === 'function' ? _rotWeekInfos(0, wMode) : [];
+    const wi = weekInfos.findIndex(w => today >= w._start && today <= w._end);
+    if (wi < 0) continue;
+
+    // Current week
+    if (rot.weeks[wi] && rot.weeks[wi].length) {
+      if (!result.current) result.current = { weekInfo: weekInfos[wi], members: [] };
+      rot.weeks[wi].forEach(m => result.current.members.push({ name: m, team: teamId }));
+    }
+
+    // Next week (handover)
+    if (wi + 1 < weekInfos.length && rot.weeks[wi + 1] && rot.weeks[wi + 1].length) {
+      if (!result.next) result.next = { weekInfo: weekInfos[wi + 1], members: [] };
+      rot.weeks[wi + 1].forEach(m => result.next.members.push({ name: m, team: teamId }));
+    }
+  }
+
+  return result;
+}
+
 function _renderSupportRoster() {
   const el = document.getElementById('support-roster');
   if (!el) return;

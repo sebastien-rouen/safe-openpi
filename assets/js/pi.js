@@ -242,6 +242,7 @@ function renderPI() {
     const _piJiraTeams = _at.length ? _at : Object.keys(CONFIG.teams || {});
     const _piJiraEmpty = document.getElementById('pi-jira');
     if (_piJiraEmpty) { _piJiraEmpty.innerHTML = _piRenderJiraSection(_piAllTickets(_piJiraTeams, _piViewNum), _piViewNum, _piJiraTeams); _piJiraUpdateSummary(); }
+    _piRenderSupportSchedule();
     return;
   }
   // Clear any previous empty overlay on capacity chart
@@ -624,6 +625,9 @@ function renderPI() {
     _piJiraEl.innerHTML = _piRenderJiraSection(_jiraAllTix, _piViewNum, _piFistTeams);
     _piJiraUpdateSummary();
   }
+
+  // Support rotation schedule
+  _piRenderSupportSchedule();
 }
 
 // ---- Filtres du tableau PI ----
@@ -2079,4 +2083,61 @@ function _piJiraCopyMiro() {
 
   html += '</table>';
   _piJiraClipboard(tsv, html, 'Cartes copiées — coller dans Miro → Pense-bêtes');
+}
+
+// ============================================================
+// PI Support Schedule — rotation display per team for the PI
+// ============================================================
+
+function _piRenderSupportSchedule() {
+  const el = document.getElementById('pi-support-schedule');
+  if (!el) return;
+  if (!_supportRotation || !Object.keys(_supportRotation).length) { el.innerHTML = ''; return; }
+
+  const activeTeams = typeof getActiveTeams === 'function' ? getActiveTeams() : Object.keys(CONFIG.teams || {});
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+
+  const teamsHtml = [];
+  for (const teamId of activeTeams) {
+    const k = typeof _rotTeamKey === 'function' ? _rotTeamKey(teamId) : teamId;
+    const rot = _supportRotation[k];
+    if (!rot || !rot.weeks) continue;
+    const wMode = rot.weekMode || 'friday';
+    const weekInfos = typeof _rotWeekInfos === 'function' ? _rotWeekInfos(0, wMode) : [];
+    if (!weekInfos.length) continue;
+
+    const color = typeof _teamColor === 'function' ? _teamColor(teamId) : '#64748B';
+    const teamName = CONFIG.teams[teamId]?.name || teamId;
+
+    const weeksHtml = weekInfos.map((wi, idx) => {
+      const isCurrent = today >= wi._start && today <= wi._end;
+      const members = rot.weeks[idx] || [];
+      const membersHtml = members.map(m => {
+        const c = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[m]) || color;
+        const firstName = escapeHtml((m || '').split(' ')[0]);
+        return `<div class="pi-sup-member">${avatarBadge(m, c, { w: 18, fs: '8px' })} ${firstName}</div>`;
+      }).join('') || '<div class="pi-sup-member" style="color:var(--text-muted);font-style:italic">-</div>';
+
+      return `<div class="pi-sup-week${isCurrent ? ' pi-sup-week-current' : ''}">
+        <div class="pi-sup-week-label">${escapeHtml(wi.label)}</div>
+        <div class="pi-sup-week-dates">${escapeHtml(wi.dateRange)}</div>
+        <div class="pi-sup-week-members">${membersHtml}</div>
+      </div>`;
+    }).join('');
+
+    teamsHtml.push(`<div class="pi-sup-team">
+      <div class="pi-sup-team-hdr" style="border-left:3px solid ${color}">
+        <span class="pi-sup-dot" style="background:${color}"></span>
+        <span class="pi-sup-team-name">${escapeHtml(teamName)}</span>
+      </div>
+      <div class="pi-sup-weeks">${weeksHtml}</div>
+    </div>`);
+  }
+
+  if (!teamsHtml.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = `<div class="pi-support-schedule">
+    <div class="section-header"><div class="section-title">🛡️ Rotation Support</div></div>
+    <div class="pi-support-grid">${teamsHtml.join('')}</div>
+  </div>`;
 }

@@ -98,6 +98,8 @@ let _rotHiddenMembers = {};    // hidden members
 // Absences variables & functions → absences.js
 let _rotPIOffset = 0;
 let _rotTeamCollapsed = {};
+let _rotGroupCollapsed = {};
+let _rotAddingGroup = null; // group currently showing add input
 
 // --- supports.json persistence ---
 let _supSaveTimer = null;
@@ -541,6 +543,364 @@ function _rotRemoveMember(team, member) {
   _rotRefreshTeam(team);
 }
 
+// ============================================================
+// Rotation groupée — fonctions utilitaires
+// ============================================================
+
+// Clé de stockage pour un groupe rotation
+function _rotGroupKey(groupId) {
+  const piNum = _rotWeekInfos()?._piNum || 'unknown';
+  return `GROUP_${groupId}__pi${piNum}`;
+}
+
+// Pool de membres fusionné (union dédupliquée de toutes les équipes du groupe)
+function _rotGroupMembers(group) {
+  const all = [];
+  const seen = new Set();
+  for (const t of group.teams) {
+    for (const m of _rotTeamMembers(t)) {
+      if (!seen.has(m)) { seen.add(m); all.push(m); }
+    }
+  }
+  all.sort((a, b) => a.localeCompare(b, 'fr'));
+  return all;
+}
+
+// ============================================================
+// Rotation groupée — panel
+// ============================================================
+
+function _rotGroupPanel(group) {
+  const members = _rotGroupMembers(group);
+  if (!members.length) return '';
+  const color = group.color;
+  const name  = group.name;
+  const gid   = group.id;
+  const rot   = _supportRotation[_rotGroupKey(gid)] || { membersPerWeek: 2, weeks: {} };
+  const mpw   = rot.membersPerWeek || 2;
+  const wMode = rot.weekMode || 'friday';
+  const weekInfos = _rotWeekInfos(null, wMode);
+  const totalWeeks = weekInfos.length;
+
+  const weekHeaders = weekInfos.map(w => {
+    const holTip = w.holidays.length ? ` title="${w.holidays.join(', ')}"` : '';
+    const holBadge = w.holidays.length ? `<span class="rot-wk-hol"${holTip}>${w.holidays.length}j férié${w.holidays.length > 1 ? 's' : ''}</span>` : '';
+    return `<th class="rot-wk-th"><span class="rot-wk-label">${w.label}</span>${w.dateRange ? `<span class="rot-wk-dates">${w.dateRange}</span>` : ''}${holBadge}</th>`;
+  }).join('');
+
+  const memberRows = members.map(m => {
+    const cells = Array.from({ length: totalWeeks }, (_, wi) => {
+      const selected = (rot.weeks[wi] || []).includes(m);
+      const w = weekInfos[wi];
+      const absDays = _getAbsDaysForRange(m, w._start, w._end);
+      const absent = absDays >= (w.workDays || 5) / 2;
+      const absentCls = absent ? ' rot-cell-absent' : absDays > 0 ? ' rot-cell-partial' : '';
+      const absBadge = absDays > 0 ? `<span class="rot-abs-badge${absent ? ' rot-abs-full' : ''}" title="${absDays}j congé">${absDays % 1 ? absDays.toFixed(1).replace('.', ',') : absDays}j</span>` : '';
+      return `<td class="rot-cell${absentCls}">
+        ${absBadge}
+        <button class="rot-chip${selected ? ' rot-chip-on' : ''}" style="${selected ? `background:${color}22;color:${color};border-color:${color}` : ''}"
+          onclick="_rotToggleGroupMember('${gid}',${wi},'${m.replace(/'/g, "\\'")}')">${selected ? '✓' : ''}</button>
+      </td>`;
+    }).join('');
+    const hasAbsData = _rotAbsAllNames.size > 0;
+    let matchDot = '';
+    if (hasAbsData) {
+      const matched = _isMemberInAbsData(m);
+      matchDot = `<span class="rot-member-match ${matched ? 'matched' : 'unmatched'}" title="${matched ? 'Congés référencés' : 'Non trouvé dans les congés'}"></span>`;
+    }
+    return `<tr><td class="rot-member">${matchDot}${m}</td>${cells}</tr>`;
+  }).join('');
+
+  // Week counts
+  const countCells = Array.from({ length: totalWeeks }, (_, wi) => {
+    const cnt = (rot.weeks[wi] || []).length;
+    const ok  = cnt === mpw;
+    return `<td class="rot-cell rot-count${ok ? '' : ' rot-count-warn'}">${cnt}/${mpw}</td>`;
+  }).join('');
+
+  // Capacity row: total available person-days per week
+  const capaCells = Array.from({ length: totalWeeks }, (_, wi) => {
+    const w = weekInfos[wi];
+    const wd = w?.workDays ?? 5;
+    let totalAbs = 0;
+    members.forEach(m => { totalAbs += _getAbsDaysForRange(m, w._start, w._end); });
+    const totalCap = members.length * wd;
+    const availCap = Math.max(0, totalCap - totalAbs);
+    const pct = totalCap > 0 ? Math.round(availCap / totalCap * 100) : 100;
+    const warn = pct < 60 ? ' rot-capa-warn' : pct < 80 ? ' rot-capa-mid' : '';
+    return `<td class="rot-cell rot-capa${warn}" title="${availCap}/${totalCap} jours dispo (${pct}%)">${availCap}j <span class="rot-capa-pct">${pct}%</span></td>`;
+  }).join('');
+
+  const collapsed = _rotGroupCollapsed[gid] ?? false;
+  const filledWeeks = Object.keys(rot.weeks).filter(wi => (rot.weeks[wi] || []).length > 0).length;
+  const correctWeeks = Object.keys(rot.weeks).filter(wi => (rot.weeks[wi] || []).length === mpw).length;
+  const weeksPct = totalWeeks > 0 ? Math.round(filledWeeks / totalWeeks * 100) : 0;
+  const weeksOk = filledWeeks === totalWeeks;
+  const correctOk = correctWeeks === totalWeeks;
+  const summaryWeeksCls = weeksOk && correctOk ? 'rot-sum-ok' : filledWeeks > 0 ? 'rot-sum-partial' : 'rot-sum-empty';
+  const summary = collapsed ? `<span class="rot-team-summary">
+    <span class="rot-sum-pill rot-sum-members">${members.length} membre${members.length > 1 ? 's' : ''}</span>
+    <span class="rot-sum-pill ${summaryWeeksCls}">${filledWeeks}/${totalWeeks} sem.</span>
+    ${!correctOk && filledWeeks > 0 ? `<span class="rot-sum-pill rot-sum-partial">${correctWeeks}/${totalWeeks} complet${correctWeeks > 1 ? 's' : ''}</span>` : ''}
+    <span class="rot-sum-bar"><span class="rot-sum-fill ${summaryWeeksCls}" style="width:${weeksPct}%"></span></span>
+  </span>` : '';
+
+  return `<div class="rot-team-panel rot-group-panel" id="rot-group-${gid}" style="border-left:4px solid ${color}">
+    <div class="rot-team-hdr" onclick="_rotToggleGroupPanel('${gid}')" style="cursor:pointer;">
+      <span class="rot-team-chevron">${collapsed ? '▶' : '▼'}</span>
+      <span class="rot-team-dot" style="background:${color}"></span>
+      <span class="rot-team-name">${name}</span>
+      <span class="rot-group-badge">Groupe · ${group.teams.length} équipes</span>
+      ${summary}
+      ${!collapsed ? `<label class="rot-mpw-label" onclick="event.stopPropagation()">Effectif / sem. :
+        <input type="number" min="1" max="10" value="${mpw}" class="rot-mpw-input"
+          onchange="_rotSetGroupMPW('${gid}',+this.value)">
+      </label>
+      <span class="rot-wmode" onclick="event.stopPropagation()" title="Mode semaine support">
+        <button class="rot-wmode-btn${wMode === 'friday' ? ' rot-wmode-on' : ''}" onclick="_rotSetGroupWeekMode('${gid}','friday')">Ven→Jeu</button>
+        <button class="rot-wmode-btn${wMode === 'monday' ? ' rot-wmode-on' : ''}" onclick="_rotSetGroupWeekMode('${gid}','monday')">Lun→Ven</button>
+        <button class="rot-wmode-btn${wMode === 'wednesday' ? ' rot-wmode-on' : ''}" onclick="_rotSetGroupWeekMode('${gid}','wednesday')">Mer→Mar</button>
+      </span>
+      <button class="rot-lock-btn${rot.locked ? ' rot-locked' : ''}" onclick="event.stopPropagation();_rotToggleGroupLock('${gid}')" title="${rot.locked ? 'Déverrouiller' : 'Verrouiller'} la rotation">${rot.locked ? '🔒' : '🔓'}</button>
+      <button class="rot-copy-btn" onclick="event.stopPropagation();_rotCopyGroup('${gid}')" title="Copier la rotation">📋</button>
+      <button class="rot-gen-btn" onclick="event.stopPropagation();_rotShuffleGroup('${gid}')" title="Générer une nouvelle rotation pour ce groupe">🎲</button>
+      <button class="rot-add-btn" onclick="event.stopPropagation();_rotAddGroupMember('${gid}')" title="Ajouter un membre">+ Membre</button>` : ''}
+    </div>
+    ${!collapsed ? `<div class="rot-table-wrap">
+      <table class="rot-table">
+        <thead><tr><th class="rot-member-th">Membre</th>${weekHeaders}</tr></thead>
+        <tbody>${memberRows}
+          <tr class="rot-count-row"><td class="rot-member rot-count-label">Total</td>${countCells}</tr>
+          <tr class="rot-capa-row"><td class="rot-member rot-count-label">Capacité</td>${capaCells}</tr>
+        </tbody>
+      </table>
+      <div class="rot-capa-legend">
+        <span class="legend-ok">&ge;80%</span>
+        <span class="legend-mid">60-80%</span>
+        <span class="legend-warn">&lt;60%</span>
+      </div>
+      ${_rotAddingGroup === gid ? _rotAddGroupInputHtml(gid) : ''}
+    </div>` : ''}
+  </div>`;
+}
+
+// ============================================================
+// Rotation groupée — fonctions de contrôle
+// ============================================================
+
+function _rotToggleGroupPanel(gid) {
+  _rotGroupCollapsed[gid] = !(_rotGroupCollapsed[gid] ?? false);
+  _rotRefreshGroup(gid);
+}
+
+function _rotRefreshGroup(gid) {
+  const el = document.getElementById(`rot-group-${gid}`);
+  if (!el) return;
+  const group = GROUPS.find(g => g.id === gid);
+  if (!group) return;
+  el.outerHTML = _rotGroupPanel(group);
+}
+
+function _rotShuffleGroup(gid) {
+  const group = GROUPS.find(g => g.id === gid);
+  if (!group) return;
+  const k = _rotGroupKey(gid);
+  if (_supportRotation[k]?.locked) {
+    const panel = document.getElementById('rot-group-' + gid);
+    if (panel) { panel.classList.add('rot-locked-flash'); setTimeout(() => panel.classList.remove('rot-locked-flash'), 5000); }
+    if (typeof showToast === 'function') showToast(`🔒 ${group.name} est verrouillé`, 'warning');
+    return;
+  }
+  _rotParseAbsencesLive();
+  const totalWeeks = _piWeeks();
+  const members = _rotGroupMembers(group);
+  if (!members.length) return;
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 2, weeks: {} };
+  const mpw = _supportRotation[k].membersPerWeek || 2;
+  const weeks = {};
+  const counts = {};
+  members.forEach(m => counts[m] = 0);
+
+  const weekInfos = _rotWeekInfos(null, _supportRotation[k].weekMode || 'friday');
+  for (let wi = 0; wi < totalWeeks; wi++) {
+    const w = weekInfos[wi];
+    const wd = w?.workDays ?? 5;
+    const available = members.filter(m => {
+      const abs = _getAbsDaysForRange(m, w._start, w._end);
+      if (abs >= wd / 2) return false;
+      return (wd - abs) >= 1;
+    });
+    available.sort((a, b) => {
+      const aAbs = _getAbsDaysForRange(a, w._start, w._end);
+      const bAbs = _getAbsDaysForRange(b, w._start, w._end);
+      const aPresent = wd - aAbs;
+      const bPresent = wd - bAbs;
+      const aFull = aAbs === 0 ? 0 : 1;
+      const bFull = bAbs === 0 ? 0 : 1;
+      if (aFull !== bFull) return aFull - bFull;
+      if (counts[a] !== counts[b]) return counts[a] - counts[b];
+      if (aPresent !== bPresent) return bPresent - aPresent;
+      return Math.random() - 0.5;
+    });
+    const picked = available.slice(0, Math.min(mpw, available.length));
+    weeks[wi] = picked;
+    picked.forEach(m => counts[m]++);
+  }
+
+  _supportRotation[k].weeks = weeks;
+  _saveRotation();
+  _rotRefreshGroup(gid);
+  if (typeof showToast === 'function') showToast(`🔄 Rotation générée pour ${group.name}`, 'success');
+}
+
+function _rotSetGroupMPW(gid, n) {
+  const k = _rotGroupKey(gid);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 2, weeks: {} };
+  _supportRotation[k].membersPerWeek = Math.max(1, Math.min(10, n));
+  _saveRotation();
+  renderSettings();
+}
+
+function _rotSetGroupWeekMode(gid, mode) {
+  const k = _rotGroupKey(gid);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 2, weeks: {} };
+  _supportRotation[k].weekMode = mode;
+  _supportRotation[k].weeks = {};
+  _saveRotation();
+  _rotRefreshGroup(gid);
+}
+
+function _rotToggleGroupMember(gid, wi, member) {
+  const k = _rotGroupKey(gid);
+  if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 2, weeks: {} };
+  const weeks = _supportRotation[k].weeks;
+  if (!weeks[wi]) weeks[wi] = [];
+  const arr = weeks[wi];
+  const idx = arr.indexOf(member);
+  if (idx >= 0) arr.splice(idx, 1);
+  else arr.push(member);
+  _saveRotation();
+  _rotRefreshGroup(gid);
+}
+
+function _rotToggleGroupLock(gid) {
+  const k = _rotGroupKey(gid);
+  if (!_supportRotation[k]) _supportRotation[k] = { weeks: {} };
+  _supportRotation[k].locked = !_supportRotation[k].locked;
+  _saveRotation();
+  _rotRefreshGroup(gid);
+}
+
+function _rotCopyGroup(gid) {
+  const group = GROUPS.find(g => g.id === gid);
+  if (!group) return;
+  const rot = _supportRotation[_rotGroupKey(gid)] || { weeks: {} };
+  const weekInfos = _rotWeekInfos(null, rot.weekMode || 'friday');
+  const lines = [];
+  lines.push(`**${group.name}** (${group.teams.length} équipes)`);
+  lines.push('');
+  for (let wi = 0; wi < weekInfos.length; wi++) {
+    const w = weekInfos[wi];
+    const members = rot.weeks[wi] || [];
+    const datePart = w.dateRange ? ` (${w.dateRange.replace(' → ', '– ')})` : '';
+    lines.push(`* 🟦 Itération ${w.label}${datePart}`);
+    if (members.length) {
+      lines.push(`    * ${members.map(m => '@' + m).join(', ')}`);
+    } else {
+      lines.push(`    * (aucun)`);
+    }
+    lines.push('');
+  }
+  const text = lines.join('\n');
+  navigator.clipboard.writeText(text).then(() => {
+    if (typeof showToast === 'function') showToast('📋 Rotation groupe copiée !', 'success');
+  });
+}
+
+function _rotAddGroupMember(gid) {
+  if (_rotAddingGroup === gid) { _rotAddingGroup = null; _rotRefreshGroup(gid); return; }
+  _rotAddingGroup = gid;
+  _rotRefreshGroup(gid);
+  setTimeout(() => {
+    const inp = document.getElementById(`rot-add-input-group-${gid}`);
+    if (inp) inp.focus();
+  }, 30);
+}
+
+function _rotConfirmAddGroup(gid) {
+  const inp = document.getElementById(`rot-add-input-group-${gid}`);
+  const name = inp?.value?.trim();
+  if (!name) return;
+  // Add member to the first team in the group that exists
+  const group = GROUPS.find(g => g.id === gid);
+  if (!group || !group.teams.length) return;
+  const targetTeam = group.teams[0];
+  if (!_rotExtraMembers[targetTeam]) _rotExtraMembers[targetTeam] = [];
+  if (!_rotExtraMembers[targetTeam].includes(name)) _rotExtraMembers[targetTeam].push(name);
+  const hk = _rotTeamKey(targetTeam);
+  if (_rotHiddenMembers[hk]) {
+    _rotHiddenMembers[hk] = _rotHiddenMembers[hk].filter(m => m !== name);
+  }
+  _supSave();
+  _rotAddingGroup = null;
+  _rotRefreshGroup(gid);
+  if (typeof showToast === 'function') showToast(`✅ ${name} ajouté via ${CONFIG.teams[targetTeam]?.name || targetTeam}`, 'success');
+}
+
+function _rotAddGroupInputKeydown(e, gid) {
+  if (e.key === 'Enter') { e.preventDefault(); _rotConfirmAddGroup(gid); }
+  if (e.key === 'Escape') { _rotAddingGroup = null; _rotRefreshGroup(gid); }
+}
+
+function _rotGroupSuggestions(gid) {
+  const group = GROUPS.find(g => g.id === gid);
+  if (!group) return [];
+  const current = new Set(_rotGroupMembers(group));
+  const suggestions = [];
+  // From all MEMBERS (all teams)
+  Object.entries(MEMBERS).forEach(([t, ms]) => {
+    ms.forEach(m => { if (!current.has(m) && !suggestions.includes(m)) suggestions.push(m); });
+  });
+  // From extra members
+  Object.entries(_rotExtraMembers).forEach(([t, ms]) => {
+    ms.forEach(m => { if (!current.has(m) && !suggestions.includes(m)) suggestions.push(m); });
+  });
+  // From absences data names
+  _rotAbsAllNames.forEach(absName => {
+    const origName = _normalizeExcelName(absName);
+    if (!current.has(origName) && !suggestions.includes(origName)) suggestions.push(origName);
+  });
+  suggestions.sort((a, b) => a.localeCompare(b, 'fr'));
+  return suggestions;
+}
+
+function _rotAddGroupInputHtml(gid) {
+  const suggestions = _rotGroupSuggestions(gid);
+  const listId = `rot-add-list-group-${gid}`;
+  return `<div class="rot-add-row">
+    <input id="rot-add-input-group-${gid}" type="text" class="rot-add-input" placeholder="Nom du membre…"
+      list="${listId}" autocomplete="off"
+      onkeydown="_rotAddGroupInputKeydown(event,'${gid}')">
+    <datalist id="${listId}">
+      ${suggestions.map(s => `<option value="${s}">`).join('')}
+    </datalist>
+    <button class="rot-add-confirm" onclick="_rotConfirmAddGroup('${gid}')" title="Ajouter">✓</button>
+    <button class="rot-add-cancel" onclick="_rotAddingGroup=null;_rotRefreshGroup('${gid}')" title="Annuler">✕</button>
+  </div>`;
+}
+
+// Toggle activation/désactivation d'un groupe de rotation
+function _rotToggleGroupRotation(gid) {
+  const k = _rotGroupKey(gid);
+  if (_supportRotation[k]) {
+    delete _supportRotation[k];
+  } else {
+    _supportRotation[k] = { membersPerWeek: 2, weeks: {} };
+  }
+  _saveRotation();
+  renderSettings();
+}
+
 function _rotTeamPanel(team) {
   const members = _rotTeamMembers(team);
   if (!members.length) return '';
@@ -734,6 +1094,7 @@ function _rotShuffle() {
       ...GROUPS.flatMap(g => g.teams),
     ])].sort());
     for (const team of realTeams) _rotShuffleTeam(team);
+    GROUPS.filter(g => _supportRotation[_rotGroupKey(g.id)]).forEach(g => _rotShuffleGroup(g.id));
     const piLabel = _rotWeekInfos()._piNum || '?';
     if (btn) { btn.disabled = false; btn.innerHTML = origHtml; }
     if (typeof showToast === 'function') showToast(`🔄 Rotation PI ${piLabel} générée pour toutes les équipes !`, 'success');
@@ -776,6 +1137,12 @@ function _rotClearAll() {
     const k = _rotTeamKey(team);
     if (_supportRotation[k]) _supportRotation[k].weeks = {};
   }
+  // Clear group rotation keys
+  Object.keys(_supportRotation).forEach(k => {
+    if (k.startsWith('GROUP_')) {
+      _supportRotation[k].weeks = {};
+    }
+  });
   _saveRotation();
   renderSettings();
 }
@@ -1106,6 +1473,17 @@ function renderSettings() {
           <button class="btn ${_rotPIOffset === 0 ? 'btn-primary' : 'btn-secondary'} stg-btn-sm" onclick="_rotTogglePI(0)">PI ${piLabel}</button>
           <button class="btn ${_rotPIOffset === 1 ? 'btn-primary' : 'btn-secondary'} stg-btn-sm" onclick="_rotTogglePI(1)">PI ${nextPiLabel}</button>
         </div>
+        <div class="rot-group-selector">
+          ${GROUPS.filter(g => g.teams.length > 1).map(g => {
+            const gk = _rotGroupKey(g.id);
+            const active = !!_supportRotation[gk];
+            return `<button class="btn ${active ? 'btn-primary' : 'btn-secondary'} stg-btn-sm rot-group-toggle"
+              onclick="_rotToggleGroupRotation('${g.id}')"
+              style="border-left:3px solid ${g.color}">
+              ${active ? '✓' : '+'} ${g.name}
+            </button>`;
+          }).join('')}
+        </div>
         <button class="btn btn-primary stg-btn-sm" onclick="_rotShuffle()">🎲 Générer la rotation pour toutes les équipes</button>
         <button class="btn btn-secondary stg-btn-sm" onclick="_rotClearAll()">🗑️ Réinitialiser</button>
         <button class="stg-btn-info rot-algo-toggle" onclick="_rotToggleAlgoLegend()" title="Algorithme de génération">ℹ️ Algorithme</button>
@@ -1128,6 +1506,7 @@ function renderSettings() {
       })() : ''}
     </div>
     ${!_settingsCollapsed['rotation'] ? `<div class="stg-body">
+      ${GROUPS.filter(g => _supportRotation[_rotGroupKey(g.id)]).map(g => _rotGroupPanel(g)).join('')}
       ${_stgLiveTeams(realTeams).map(t => _rotTeamPanel(t)).join('')}
     </div>` : ''}
   </div>
