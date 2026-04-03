@@ -4,8 +4,9 @@
 
 /* ===== SCRUM BOARD ===== */
 .board { display: flex; gap: 16px; margin-top: 16px; overflow-x: auto; padding-bottom: 8px; }
-.board-col { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); min-width: 240px; flex: 1 0 0%; transition: min-width .3s, flex .3s, opacity .3s; }
-.board-col.col-empty-state { min-width: 0; flex: 0 1 110px; opacity: .35; }
+.board-col { background: var(--surface); border-radius: var(--radius); border: 1px solid var(--border); min-width: 180px; flex: 1 1 0%; transition: min-width .3s, flex .3s, opacity .3s; }
+.board-col.col-empty-state { min-width: 0; flex: 0 0 56px; opacity: .3; }
+.board-col.col-empty-state .col-label { writing-mode: vertical-lr; text-orientation: mixed; font-size: 10px; transform: rotate(180deg); }
 .board-col.col-empty-state .col-body { min-height: 60px; padding: 4px; }
 .board-col.col-empty-state .col-header { padding: 8px 10px; }
 .board-col.col-empty-state .col-title { font-size: 11px; gap: 4px; }

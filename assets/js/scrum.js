@@ -794,7 +794,7 @@ function _renderBoardColumns(filtered) {
   });
 
   // Build grid template: columns with tickets in ANY swimlane get full width
-  const gridCols = cols.map(col => colHasTickets[col.key] ? 'minmax(240px,1fr)' : 'minmax(110px,auto)').join(' ');
+  const gridCols = cols.map(col => colHasTickets[col.key] ? 'minmax(180px,1fr)' : '56px').join(' ');
 
   // Sticky header bar
   const stickyHtml = `<div class="board-sticky-bar" style="grid-template-columns:${gridCols}">${cols.map(col => {
