@@ -5,12 +5,12 @@
 const _RPT_SECTIONS = [
   { id: 'sprint',  icon: '📋', label: 'Sprint' },
   { id: 'kanban',  icon: '🗂️', label: 'Kanban' },
-  { id: 'pi',      icon: '🗓️', label: 'PI Planning' },
   { id: 'support', icon: '🎫', label: 'Support' },
   { id: 'roadmap', icon: '🗺️', label: 'Roadmap' },
-  { id: 'piprep',  icon: '📋', label: 'Prépa PI' },
   { id: 'mood',    icon: '😊', label: 'Mood / Vélocité' },
   { id: 'sondage', icon: '🎲', label: 'Sondage' },
+  { id: 'pi',      icon: '🗓️', label: 'PI Planning' },
+  { id: 'piprep',  icon: '📋', label: 'Prépa PI' },
   { id: 'finpip',  icon: '✅', label: 'Fin de PIP' },
 ];
 
@@ -244,12 +244,12 @@ function renderReport() {
   const gen = {
     sprint:  () => _rptSprint(el, isSlack),
     kanban:  () => _rptKanban(el, isSlack),
-    pi:      () => _rptPI(el, isSlack),
     support: () => _rptSupport(el, isSlack),
     roadmap: () => _rptRoadmap(el, isSlack),
-    piprep:  () => _rptPIPrep(el, isSlack),
     mood:    () => _rptMoodVelocity(el, isSlack),
     sondage: () => _rptSondage(el, isSlack),
+    pi:      () => _rptPI(el, isSlack),
+    piprep:  () => _rptPIPrep(el, isSlack),
     finpip:  () => _rptFinPIP(el, isSlack),
   };
 
@@ -1533,7 +1533,7 @@ function _rptFinPIP(el, isSlack) {
     t += `• ${committed.length} objectifs committed · ${stretch.length} stretch\n`;
     if (confAvg) t += `• Vote de confiance : ${confAvg}/5 ${confEmoji}\n`;
 
-    _rptRender(el, t, true);
+    _rptSetSlack(el, t);
   } else {
     // Format Confluence (HTML)
     let h = `<h1>✅ PI Planning - Équipe ${escapeHtml(teamName)}</h1>`;
@@ -1597,7 +1597,7 @@ function _rptFinPIP(el, isSlack) {
     if (confAvg) h += `<li>Vote de confiance : ${confAvg}/5 ${confEmoji}</li>`;
     h += '</ul>';
 
-    _rptRender(el, h, false);
+    _rptSetConf(el, h);
   }
 }
 
