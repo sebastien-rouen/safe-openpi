@@ -723,8 +723,8 @@ function _transform(issues, project, sprintId, teamConfigs) {
       _jiraStatus: f.status?.name || '',
       priority:    _mapPriority(f.priority?.name),
       sprint:      sprintId,
-      sprintName:  sprintObj.name || '',
-      allSprints:  sprintList.map(s => s.name).filter(Boolean),
+      sprintName:  sprintObj.name || i._activeSprintName || '',
+      allSprints:  sprintList.map(s => s.name).filter(Boolean).concat(i._activeSprintName && !sprintList.some(s => s.name === i._activeSprintName) ? [i._activeSprintName] : []),
       piSprint:    (() => {
         let pn = piSprint?.name || i._piSprintName || '';
         if (!pn && sprintRaw) {
@@ -1198,7 +1198,8 @@ async function _jiraFetchSprintsAndIssues(scrumBoards, ctx) {
       if (ir.ok) {
         const ib = await ir.json();
         const issues = ib.issues || [];
-        issues.forEach(issue => { issue._boardTeam = teamName; });
+        const _spName = ctx.teamConfigs[teamName].sprintName || '';
+        issues.forEach(issue => { issue._boardTeam = teamName; issue._activeSprintName = _spName; });
         ctx.allIssues.push(...issues);
         if (issues.length) ctx.teamConfigs[teamName].hasIssues = true;
         _log(`Board "${board.name}" → équipe "${teamName}" : ${issues.length} issues`);
