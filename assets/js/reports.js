@@ -1475,12 +1475,12 @@ function _rptFinPIP(el, isSlack) {
     // Objectifs
     t += `📌 *Objectifs du PI (${piLabel})*\n\n`;
     if (committed.length) {
-      t += `🎯 *Objectifs Committed (Prioritaires) :*\n`;
+      t += `🎯 *Objectifs engagés :*\n`;
       committed.forEach(o => { t += `• *${o.title || '(sans titre)'}* → 💰 ${o.bv || '?'}\n`; });
       t += '\n';
     }
     if (stretch.length) {
-      t += `⚠️ *Objectifs Non Commit (à suivre) :*\n`;
+      t += `⚠️ *Objectifs non engagés :*\n`;
       stretch.forEach(o => { t += `• *${o.title || '(sans titre)'}* → 💰 ${o.bv || '?'}\n`; });
       t += '\n';
     }
@@ -1542,12 +1542,12 @@ function _rptFinPIP(el, isSlack) {
 
     h += `<h2>📌 Objectifs du PI (${escapeHtml(piLabel)})</h2>`;
     if (committed.length) {
-      h += '<h3>🎯 Objectifs Committed (Prioritaires)</h3><ul>';
+      h += '<h3>🎯 Objectifs engagés</h3><ul>';
       committed.forEach(o => { h += `<li><strong>${escapeHtml(o.title || '(sans titre)')}</strong> → 💰 ${escapeHtml(String(o.bv || '?'))}</li>`; });
       h += '</ul>';
     }
     if (stretch.length) {
-      h += '<h3>⚠️ Objectifs Non Commit (à suivre)</h3><ul>';
+      h += '<h3>⚠️ Objectifs non engagés</h3><ul>';
       stretch.forEach(o => { h += `<li><strong>${escapeHtml(o.title || '(sans titre)')}</strong> → 💰 ${escapeHtml(String(o.bv || '?'))}</li>`; });
       h += '</ul>';
     }
