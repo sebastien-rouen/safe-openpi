@@ -11,6 +11,7 @@ const _RPT_SECTIONS = [
   { id: 'piprep',  icon: '📋', label: 'Prépa PI' },
   { id: 'mood',    icon: '😊', label: 'Mood / Vélocité' },
   { id: 'sondage', icon: '🎲', label: 'Sondage' },
+  { id: 'finpip',  icon: '✅', label: 'Fin de PIP' },
 ];
 
 // ============================================================
@@ -249,6 +250,7 @@ function renderReport() {
     piprep:  () => _rptPIPrep(el, isSlack),
     mood:    () => _rptMoodVelocity(el, isSlack),
     sondage: () => _rptSondage(el, isSlack),
+    finpip:  () => _rptFinPIP(el, isSlack),
   };
 
   (gen[reportSection] || gen.sprint)();
@@ -1371,6 +1373,232 @@ const _SLACK_EMOJI = {
 
 function _slackToEmoji(text) {
   return text.replace(/:[a-z_+]+:/g, m => _SLACK_EMOJI[m] || m);
+}
+
+// ============================================================
+// Fin de PIP — Résumé complet pour partage équipe
+// ============================================================
+function _rptFinPIP(el, isSlack) {
+  const team = reportTeam;
+  if (!team || team === 'group') { el.textContent = 'Sélectionnez une équipe.'; return; }
+  const teamName = _rptName(team);
+  const piNum = reportPI || (typeof _ppDetectPI === 'function' ? (_ppDetectPI() || '').replace(/^PI/i, '') : '');
+  const piLabel = piNum ? `PI${piNum}` : 'PI courant';
+  const piKey = `PI${piNum}`;
+
+  // Données piprep
+  const _ppFileRef = typeof _ppFile !== 'undefined' ? _ppFile : {};
+  const piData = _ppFileRef[piKey] || {};
+  const objs = piData.objectives || [];
+  const roam = piData.roam || [];
+
+  // Fist of five (vote de confiance)
+  const _moodD = typeof _moodData === 'function' ? _moodData() : {};
+  const confData = _moodD.confidence || {};
+  const confKey = `${team}__${piKey}`;
+  const confVotes = Array.isArray(confData[confKey]) ? confData[confKey] : [];
+  const confAvg = confVotes.length ? (confVotes.reduce((a, v) => a + v, 0) / confVotes.length).toFixed(1) : null;
+  const confEmoji = confAvg >= 4 ? '🟢' : confAvg >= 3 ? '🟡' : '🔴';
+  const confText = confAvg >= 4 ? 'Confiance élevée' : confAvg >= 3 ? 'Confiance modérée' : 'Confiance faible';
+
+  // Objectifs de l'équipe
+  const teamObjs = objs.filter(o => o.team === team);
+  const committed = teamObjs.filter(o => o.type === 'committed');
+  const stretch = teamObjs.filter(o => o.type !== 'committed');
+
+  // Tickets PI par sprint
+  const piTickets = typeof _piAllTickets === 'function' ? _piAllTickets([team], piNum) : [];
+  const piReS = piNum ? new RegExp(`\\b${piNum}\\.(\\d+)`) : null;
+  const velHist = CONFIG.teams[team]?.velocityHistory || [];
+  const sprintsPerPI = CONFIG.sprint?.sprintsPerPI || 5;
+
+  // Construire les sprints (fermés + actif + futurs)
+  const sprintMap = {};
+  // Depuis velocityHistory
+  velHist.forEach(vh => {
+    const m = (vh.name || '').match(piReS);
+    if (!m) return;
+    const idx = parseInt(m[1]);
+    if (!sprintMap[idx]) sprintMap[idx] = { name: vh.name, startDate: vh.startDate, endDate: vh.endDate, velocity: vh.velocity || 0, tickets: [] };
+  });
+  // Depuis sprint actif
+  const tc = CONFIG.teams[team] || {};
+  const activeM = (tc.sprintName || '').match(piReS);
+  if (activeM) {
+    const idx = parseInt(activeM[1]);
+    if (!sprintMap[idx]) sprintMap[idx] = { name: tc.sprintName, startDate: tc.sprintStart, endDate: tc.sprintEnd, velocity: 0, tickets: [] };
+  }
+  // Depuis sprints futurs
+  (tc.futureSprintDates || []).forEach(fsd => {
+    const fm = (fsd.name || '').match(piReS);
+    if (!fm) return;
+    const idx = parseInt(fm[1]);
+    if (!sprintMap[idx]) sprintMap[idx] = { name: fsd.name, startDate: fsd.startDate, endDate: fsd.endDate, velocity: 0, tickets: [] };
+  });
+
+  // Assigner les tickets aux sprints
+  piTickets.forEach(t => {
+    const sm = (t.sprintName || '').match(piReS);
+    if (sm) {
+      const idx = parseInt(sm[1]);
+      if (sprintMap[idx]) sprintMap[idx].tickets.push(t);
+    }
+  });
+
+  const sprintIdxs = Object.keys(sprintMap).map(Number).sort((a, b) => a - b);
+  const velTarget = tc.velocity || CONFIG.sprint.velocityTarget || 0;
+
+  // Risques ROAM (Owned + Accepted)
+  const activeRisks = roam.filter(r => r.cat === 'O' || r.cat === 'A');
+
+  // Feedbacks (mood comments si disponible)
+  const moodVotes = _moodD.votes || {};
+  const moodKey = `${team}__${piKey}`;
+  const moodComments = _moodD.comments?.[moodKey] || [];
+
+  // Formatage dates
+  const _fmtShort = d => {
+    if (!d) return '??';
+    const dt = new Date(typeof d === 'string' && d.length === 10 ? d + 'T00:00:00' : d);
+    return isNaN(dt) ? d : `${String(dt.getDate()).padStart(2, '0')}/${String(dt.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  // Détection sprint de respiration (.5)
+  const _isBreathing = idx => String(idx).endsWith('5') || (sprintMap[idx]?.name || '').match(/\.\d*5\s*$/);
+
+  if (isSlack) {
+    let t = '';
+    t += `✅ *PI Planning - Équipe ${teamName}*\n`;
+    t += confAvg ? `*Vote de confiance : ${confAvg} / 5* → ${confEmoji} *${confText}*\n` : '';
+    t += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+
+    // Objectifs
+    t += `📌 *Objectifs du PI (${piLabel})*\n\n`;
+    if (committed.length) {
+      t += `🎯 *Objectifs Committed (Prioritaires) :*\n`;
+      committed.forEach(o => { t += `• *${o.title || '(sans titre)'}* → 💰 ${o.bv || '?'}\n`; });
+      t += '\n';
+    }
+    if (stretch.length) {
+      t += `⚠️ *Objectifs Non Commit (à suivre) :*\n`;
+      stretch.forEach(o => { t += `• *${o.title || '(sans titre)'}* → 💰 ${o.bv || '?'}\n`; });
+      t += '\n';
+    }
+
+    t += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    t += `🚀 *User Stories par Itération*\n\n`;
+
+    sprintIdxs.forEach(idx => {
+      const sp = sprintMap[idx];
+      const dates = `${_fmtShort(sp.startDate)} → ${_fmtShort(sp.endDate)}`;
+      if (_isBreathing(idx)) {
+        t += `🔹 *Itération ${piNum}.${idx} (${dates})*\n`;
+        t += `• 🍃 Sprint de respiration / innovation\n\n`;
+        t += '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+        return;
+      }
+      const spPts = sp.tickets.reduce((a, tk) => a + (tk.points || 0), 0);
+      t += `🔹 *Itération ${piNum}.${idx} (${dates})* (${spPts} pts de capa sur ${velTarget} estimés)\n`;
+      if (sp.tickets.length) {
+        sp.tickets.forEach(tk => {
+          t += `• 🧩 *[${tk.id}] ${tk.title || ''}* → ${tk.points || 0} pt${(tk.points || 0) > 1 ? 's' : ''}\n`;
+        });
+      } else {
+        t += `• _Aucun ticket planifié_\n`;
+      }
+      t += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    });
+
+    // Risques
+    if (activeRisks.length) {
+      t += `📌 *Risques identifiés :*\n`;
+      const catLabels = { O: '👤 Owned', A: '🤝 Accepted' };
+      activeRisks.forEach(r => { t += `• 🚨 *${r.title || '?'}* → ${catLabels[r.cat] || r.cat}${r.note ? ` - ${r.note}` : ''}\n`; });
+      t += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    }
+
+    // Feedbacks
+    if (moodComments.length) {
+      t += `💬 *Feedbacks de l'équipe :*\n`;
+      moodComments.forEach(c => { t += `• 💬 *"${c}"*\n`; });
+      t += '\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n';
+    }
+
+    // Conclusion
+    const donePts = piTickets.filter(tk => isDone(tk.status)).reduce((a, tk) => a + (tk.points || 0), 0);
+    const totalPts = piTickets.reduce((a, tk) => a + (tk.points || 0), 0);
+    const pctDone = totalPts > 0 ? Math.round(donePts / totalPts * 100) : 0;
+    t += `✅ *Conclusion :*\n`;
+    t += `• ${piTickets.length} tickets planifiés · ${totalPts} pts · ${pctDone}% terminé\n`;
+    t += `• ${committed.length} objectifs committed · ${stretch.length} stretch\n`;
+    if (confAvg) t += `• Vote de confiance : ${confAvg}/5 ${confEmoji}\n`;
+
+    _rptRender(el, t, true);
+  } else {
+    // Format Confluence (HTML)
+    let h = `<h1>✅ PI Planning - Équipe ${escapeHtml(teamName)}</h1>`;
+    if (confAvg) h += `<p><strong>Vote de confiance : ${confAvg} / 5</strong> → ${confEmoji} <strong>${confText}</strong></p>`;
+    h += '<hr>';
+
+    h += `<h2>📌 Objectifs du PI (${escapeHtml(piLabel)})</h2>`;
+    if (committed.length) {
+      h += '<h3>🎯 Objectifs Committed (Prioritaires)</h3><ul>';
+      committed.forEach(o => { h += `<li><strong>${escapeHtml(o.title || '(sans titre)')}</strong> → 💰 ${escapeHtml(String(o.bv || '?'))}</li>`; });
+      h += '</ul>';
+    }
+    if (stretch.length) {
+      h += '<h3>⚠️ Objectifs Non Commit (à suivre)</h3><ul>';
+      stretch.forEach(o => { h += `<li><strong>${escapeHtml(o.title || '(sans titre)')}</strong> → 💰 ${escapeHtml(String(o.bv || '?'))}</li>`; });
+      h += '</ul>';
+    }
+
+    h += '<h2>🚀 User Stories par Itération</h2>';
+    sprintIdxs.forEach(idx => {
+      const sp = sprintMap[idx];
+      const dates = `${_fmtShort(sp.startDate)} → ${_fmtShort(sp.endDate)}`;
+      if (_isBreathing(idx)) {
+        h += `<h3>🔹 Itération ${piNum}.${idx} (${dates})</h3>`;
+        h += '<p>🍃 Sprint de respiration / innovation</p><hr>';
+        return;
+      }
+      const spPts = sp.tickets.reduce((a, tk) => a + (tk.points || 0), 0);
+      h += `<h3>🔹 Itération ${piNum}.${idx} (${dates}) — ${spPts} pts / ${velTarget} estimés</h3>`;
+      if (sp.tickets.length) {
+        h += '<table><thead><tr><th>Ticket</th><th>Titre</th><th>Points</th><th>Statut</th></tr></thead><tbody>';
+        sp.tickets.forEach(tk => {
+          h += `<tr><td>${_jiraBrowse(tk.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${escapeHtml(tk.title || '')}</td><td>${tk.points || 0}</td><td>${statusLabel(tk.status)}</td></tr>`;
+        });
+        h += '</tbody></table>';
+      } else {
+        h += '<p><em>Aucun ticket planifié</em></p>';
+      }
+      h += '<hr>';
+    });
+
+    if (activeRisks.length) {
+      const catLabels = { O: '👤 Owned', A: '🤝 Accepted' };
+      h += '<h2>📌 Risques identifiés</h2><ul>';
+      activeRisks.forEach(r => { h += `<li>🚨 <strong>${escapeHtml(r.title || '?')}</strong> → ${catLabels[r.cat] || r.cat}${r.note ? ` - ${escapeHtml(r.note)}` : ''}</li>`; });
+      h += '</ul>';
+    }
+
+    if (moodComments.length) {
+      h += '<h2>💬 Feedbacks de l\'équipe</h2><ul>';
+      moodComments.forEach(c => { h += `<li>💬 <em>"${escapeHtml(c)}"</em></li>`; });
+      h += '</ul>';
+    }
+
+    const donePts = piTickets.filter(tk => isDone(tk.status)).reduce((a, tk) => a + (tk.points || 0), 0);
+    const totalPts = piTickets.reduce((a, tk) => a + (tk.points || 0), 0);
+    const pctDone = totalPts > 0 ? Math.round(donePts / totalPts * 100) : 0;
+    h += '<h2>✅ Conclusion</h2><ul>';
+    h += `<li>${piTickets.length} tickets planifiés · ${totalPts} pts · ${pctDone}% terminé</li>`;
+    h += `<li>${committed.length} objectifs committed · ${stretch.length} stretch</li>`;
+    if (confAvg) h += `<li>Vote de confiance : ${confAvg}/5 ${confEmoji}</li>`;
+    h += '</ul>';
+
+    _rptRender(el, h, false);
+  }
 }
 
 function _rptSondage(el, isSlack) {
