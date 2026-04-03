@@ -822,12 +822,19 @@ function _extractPISprint(sprintList) {
 }
 
 // Extrait le sprint d'équipe (non-PI) depuis la liste des sprints du ticket
+// Priorité : active > future > closed, puis par ID décroissant (plus récent)
 function _extractTeamSprint(sprintList) {
   const piRe = /^PI\s*#?\s*(\d+)/i;
-  for (let i = sprintList.length - 1; i >= 0; i--) {
-    if (sprintList[i] && sprintList[i].name && !piRe.test(sprintList[i].name)) return sprintList[i];
-  }
-  return null;
+  const teamSprints = sprintList.filter(s => s && s.name && !piRe.test(s.name));
+  if (!teamSprints.length) return null;
+  const stateOrder = { active: 0, future: 1, closed: 2 };
+  teamSprints.sort((a, b) => {
+    const sa = stateOrder[a.state] ?? 3;
+    const sb = stateOrder[b.state] ?? 3;
+    if (sa !== sb) return sa - sb;
+    return (b.id || 0) - (a.id || 0);
+  });
+  return teamSprints[0];
 }
 
 function _transformBacklog(issues, epicMapOverride) {
