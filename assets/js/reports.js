@@ -1580,11 +1580,11 @@ function _rptFinPIP(el, isSlack) {
       const spPts = sp.tickets.reduce((a, tk) => a + (tk.points || 0), 0);
       h += `<h3>🔹 Itération ${piNum}.${idx} (${dates}) — ${spPts} pts / ${velTarget} estimés</h3>`;
       if (sp.tickets.length) {
-        h += '<table><thead><tr><th>Ticket</th><th>Titre</th><th>Points</th><th>Statut</th></tr></thead><tbody>';
+        h += '<ul>';
         sp.tickets.forEach(tk => {
-          h += `<tr><td>${_jiraBrowse(tk.id, {style:'color:#0284C7;font-weight:700'})}</td><td>${escapeHtml(tk.title || '')}</td><td>${tk.points || 0}</td><td>${statusLabel(tk.status)}</td></tr>`;
+          h += `<li>🧩 <strong>${_jiraBrowse(tk.id, {style:'color:#0284C7;font-weight:700'})} ${escapeHtml(tk.title || '')}</strong> → ${tk.points || 0} pt${(tk.points || 0) > 1 ? 's' : ''}</li>`;
         });
-        h += '</tbody></table>';
+        h += '</ul>';
       } else {
         h += '<p><em>Aucun ticket planifié</em></p>';
       }
