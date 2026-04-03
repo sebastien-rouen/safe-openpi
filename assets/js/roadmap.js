@@ -2,6 +2,31 @@
 // ROADMAP - Planification charge / vélocité / règle 80/20
 // ============================================================
 
+// Projection table (était dans releases.js, utilisée par la section Vision)
+function _relProjectionTable(projections, avgVelocity, sprint) {
+  if (!projections.length) return '<div style="padding:16px;color:var(--text-muted);font-size:12px;">Aucune donnée de projection</div>';
+  const durationDays = CONFIG.sprint.durationDays || 14;
+  return `<table class="rel-proj-table">
+    <thead><tr><th>Epic</th><th>Total</th><th>Done</th><th>Restant</th><th>Avancement</th><th>Sprints estimés</th><th>Date estimée</th></tr></thead>
+    <tbody>${projections.map(f => {
+      const remaining = f.totalPts - f.donePts;
+      const epicShare = f.totalPts / Math.max(1, projections.reduce((a, p) => a + p.totalPts, 0));
+      const epicVel = Math.max(1, Math.round(avgVelocity * epicShare));
+      const sprints = remaining > 0 ? Math.ceil(remaining / epicVel) : 0;
+      const estDate = sprint.endDate ? (() => { const d = new Date(sprint.endDate); d.setDate(d.getDate() + sprints * durationDays); return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }); })() : '-';
+      const color = f.pct === 100 ? CLR.darkGrn : f.pct > 70 ? CLR.blue : f.pct > 30 ? CLR.amber : CLR.red;
+      return `<tr class="rel-proj-epic-row">
+        <td><span style="font-weight:700;color:${f.color || CLR.purple};font-size:11px;">${escapeHtml(f.id)}</span> <span style="font-size:11px;color:var(--text);">${escapeHtml((f.title || '').slice(0, 40))}${(f.title || '').length > 40 ? '…' : ''}</span>${f.team ? ` <span style="font-size:10px;color:var(--text-muted);">[${escapeHtml(f.team)}]</span>` : ''} <span style="font-size:10px;color:var(--text-muted);">(${f.total} tickets)</span></td>
+        <td style="text-align:center;font-weight:600;">${f.totalPts}</td>
+        <td style="text-align:center;color:var(--success);font-weight:600;">${f.donePts}</td>
+        <td style="text-align:center;color:${remaining > 0 ? 'var(--warning)' : 'var(--success)'};font-weight:600;">${remaining}</td>
+        <td><div style="display:flex;align-items:center;gap:6px;"><div style="flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden;"><div style="height:100%;width:${f.pct}%;background:${color};border-radius:3px;"></div></div><span style="font-size:11px;font-weight:700;color:${color};min-width:32px;text-align:right;">${f.pct}%</span></div></td>
+        <td style="text-align:center;font-weight:700;">${f.pct === 100 ? '✅' : sprints}</td>
+        <td style="text-align:center;font-size:11px;color:var(--text-muted);">${f.pct === 100 ? 'Terminé' : estDate}</td>
+      </tr>`;
+    }).join('')}</tbody></table>`;
+}
+
 // Breakdown du buffer 20% (% relatifs à la vélocité totale)
 const _BUFFER_CATS = [
   {
