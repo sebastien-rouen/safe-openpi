@@ -1436,12 +1436,28 @@ function _rptFinPIP(el, isSlack) {
     if (!sprintMap[idx]) sprintMap[idx] = { name: fsd.name, startDate: fsd.startDate, endDate: fsd.endDate, velocity: 0, tickets: [] };
   });
 
-  // Assigner les tickets aux sprints
+  // Assigner les tickets aux sprints (créer l'entrée si le sprint n'est pas encore dans la map)
   piTickets.forEach(t => {
-    const sm = (t.sprintName || '').match(piReS);
-    if (sm) {
+    // Chercher dans sprintName ET allSprints
+    const candidates = [t.sprintName, ...(t.allSprints || [])];
+    for (const sn of candidates) {
+      const sm = (sn || '').match(piReS);
+      if (!sm) continue;
       const idx = parseInt(sm[1]);
-      if (sprintMap[idx]) sprintMap[idx].tickets.push(t);
+      if (!sprintMap[idx]) sprintMap[idx] = { name: sn, startDate: null, endDate: null, velocity: 0, tickets: [] };
+      sprintMap[idx].tickets.push(t);
+      return; // un seul sprint par ticket
+    }
+  });
+
+  // Enrichir les dates manquantes depuis futureSprintDates
+  (tc.futureSprintDates || []).forEach(fsd => {
+    const fm = (fsd.name || '').match(piReS);
+    if (!fm) return;
+    const idx = parseInt(fm[1]);
+    if (sprintMap[idx] && !sprintMap[idx].startDate && fsd.startDate) {
+      sprintMap[idx].startDate = fsd.startDate;
+      sprintMap[idx].endDate = fsd.endDate;
     }
   });
 
