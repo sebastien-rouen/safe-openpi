@@ -221,6 +221,18 @@ function _rotWeekInfos(piOffset, weekMode) {
           }
         }
       }
+      // Also use future sprint dates (sprints not yet opened but with dates)
+      (tc.futureSprintDates || []).forEach(fsd => {
+        const fm = (fsd.name || '').match(piRe);
+        if (fm && fm[1] === piNum) {
+          const idx = parseInt(fm[2]) - 1;
+          if (!_piSprintDates[idx]) {
+            const s = _tryDate(fsd.startDate);
+            const e = _tryDate(fsd.endDate);
+            if (s) _piSprintDates[idx] = { start: s, end: e };
+          }
+        }
+      });
     }
   }
 

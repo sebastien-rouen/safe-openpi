@@ -27,6 +27,7 @@ let _ppAbsDayCounts = {};      // piprep-local: member → {weekIdx: days} (for 
 // Detect current PI identifier from sprint names (e.g. "Fuego - Ité. 28.3" → "PI28")
 function _ppDetectPI() {
   const teams = Object.values(CONFIG.teams || {});
+  // 1. Sprint actif d'une équipe
   for (const tc of teams) {
     const name = tc.sprintName || '';
     const m = name.match(/(\d+)\.\d+\s*$/);
@@ -35,6 +36,21 @@ function _ppDetectPI() {
   const label = CONFIG.sprint?.label || '';
   const m2 = label.match(/(\d+)\.\d+/);
   if (m2) return 'PI' + m2[1];
+  // 2. Sprints futurs dont la date de début est aujourd'hui ou passée (PI en cours de démarrage)
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  let bestPI = null;
+  for (const tc of teams) {
+    for (const fsd of (tc.futureSprintDates || [])) {
+      const fm = (fsd.name || '').match(/(\d+)\.\d+/);
+      if (!fm) continue;
+      const start = fsd.startDate ? new Date(fsd.startDate) : null;
+      if (start && start <= today) {
+        const piNum = parseInt(fm[1]);
+        if (!bestPI || piNum > bestPI) bestPI = piNum;
+      }
+    }
+  }
+  if (bestPI) return 'PI' + bestPI;
   return 'PI0';
 }
 

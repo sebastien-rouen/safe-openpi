@@ -12,6 +12,12 @@ Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Planning rotation support dans PI Planning** : section complete affichant le planning de rotation par equipe pour tout le PI, avec surbrillance de la semaine courante. Fonction `_piRenderSupportSchedule()` appelee depuis `renderPI()` (`pi.js`, `index.html`, `views.css`)
 - **Rotation support groupee** : possibilite de creer des rotations fusionnant les membres de plusieurs equipes. Toggle par groupe dans la toolbar Rotation, panels groupes affiches avant les panels individuels. Meme structure (shuffle, lock, copy, add member, weekMode, capacite). Persistance via cle `GROUP_{id}__pi{N}` dans supports.json (`settings.js`, `views.css`)
 
+### Transition de PI
+
+- **Dates des sprints futurs persistees** : `_jiraFetchFutureSprints` stocke `futureSprintDates[]` dans teamConfigs. La rotation et le PI Planning utilisent ces dates meme quand les sprints ne sont pas encore ouverts (`jira.js`)
+- **Detection PI via sprints futurs** : `_ppDetectPI()` detecte le PI courant via les dates de debut des sprints futurs quand aucun sprint actif n'existe (`piprep.js`)
+- **_rotWeekInfos() enrichi** : utilise les dates des sprints futurs pour calculer les semaines du PI avant ouverture officielle (`settings.js`)
+
 ### Refactoring
 
 - **loadJiraData() decoupee en 15 sous-fonctions** : la fonction monolithique (~1150 lignes) est decoupee en sous-fonctions nommees (`_jiraDiscoverSPField`, `_jiraBuildFields`, `_jiraFetchBoards`, `_jiraFetchSprintsAndIssues`, `_jiraFetchVelocityHistory`, `_jiraFetchFutureSprints`, `_jiraFetchPITickets`, `_jiraFetchPIFeatures`, `_jiraResolveEpicTitles`, `_jiraFetchInnoFeatures`, `_jiraFetchAmelTickets`, `_jiraBuildGroups`, `_jiraTransformAndSave`, `_jiraFetchCycleTimes`). L'orchestrateur ne fait plus que ~93 lignes. L'etat mutable est regroupe dans un objet `ctx` passe entre les fonctions. Aucun changement de logique, purement structurel (`jira.js`)

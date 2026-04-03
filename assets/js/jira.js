@@ -1384,6 +1384,14 @@ async function _jiraFetchFutureSprints(ctx) {
       const futureSprints = sb.values || [];
       if (!futureSprints.length) return;
 
+      // Persister les dates des sprints futurs pour la rotation et le PI Planning
+      if (!tc.futureSprintDates) tc.futureSprintDates = [];
+      for (const fs of futureSprints) {
+        if (fs.name && (fs.startDate || fs.endDate)) {
+          tc.futureSprintDates.push({ name: fs.name, startDate: fs.startDate || null, endDate: fs.endDate || null });
+        }
+      }
+
       for (const fs of futureSprints) {
         const jql = `sprint=${fs.id} ORDER BY priority ASC`;
         const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${ctx.fields}`;
