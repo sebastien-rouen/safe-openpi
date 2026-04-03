@@ -128,10 +128,11 @@ function _renderSprintAlerts() {
     });
   }
 
-  // Velocity dropping trend - compare last 3 sprints
+  // Velocity dropping trend - compare last 3 sprints (exclure sprints de respiration x.5)
+  const _isBreathingSprint = vh => /\.\d*5\s*$/.test(vh.name || '');
   const velDropPct = ac.velocityDropPct ?? 15;
   const activeTeams = _moodTeams();
-  const allVH = activeTeams.flatMap(t => CONFIG.teams[t]?.velocityHistory || []);
+  const allVH = activeTeams.flatMap(t => CONFIG.teams[t]?.velocityHistory || []).filter(vh => !_isBreathingSprint(vh));
   if (allVH.length >= 3) {
     // Sum velocities per sprint position across teams
     const recent = allVH.slice(-3).map(v => v.velocity || 0);
@@ -1112,12 +1113,14 @@ function _showVelocityTrendDetail() {
   const teamData = activeTeams.map(t => ({
     name: t,
     color: CONFIG.teams[t]?.color || '#64748B',
-    history: (CONFIG.teams[t]?.velocityHistory || []).map(vh => ({
-      sprint: vh.name || '',
-      velocity: vh.velocity || 0,
-      tickets: vh.tickets || [],
-      startDate: vh.startDate || '',
-    })),
+    history: (CONFIG.teams[t]?.velocityHistory || [])
+      .filter(vh => !/\.\d*5\s*$/.test(vh.name || ''))
+      .map(vh => ({
+        sprint: vh.name || '',
+        velocity: vh.velocity || 0,
+        tickets: vh.tickets || [],
+        startDate: vh.startDate || '',
+      })),
   })).filter(td => td.history.length > 0);
 
   if (!teamData.length) return;
