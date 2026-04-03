@@ -6,7 +6,7 @@
 function _allTeams() {
   const fromTickets = TICKETS.map(t => t.team).filter(Boolean);
   const fromConfig  = Object.keys(typeof CONFIG !== 'undefined' && CONFIG.teams || {})
-                        .filter(t => { const tc = CONFIG.teams[t] || {}; return !tc.inactive && tc.sprintName; });
+                        .filter(t => { const tc = CONFIG.teams[t] || {}; return !tc.inactive && (tc.sprintName || (tc.futureSprintDates && tc.futureSprintDates.length)); });
   const teams = [...new Set([...fromTickets, ...fromConfig])].sort();
   return teams.length ? teams : [];
 }

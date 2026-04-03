@@ -1203,7 +1203,9 @@ async function _jiraFetchSprintsAndIssues(scrumBoards, ctx) {
     }
   }
 
-  if (!ctx.allIssues.length) throw new Error('Aucun ticket trouvé dans les sprints actifs');
+  if (!ctx.allIssues.length && !Object.values(ctx.teamConfigs).some(tc => tc.boardId)) {
+    throw new Error('Aucun board JIRA trouvé avec des sprints');
+  }
 
   // Détection des équipes inactives (dissoutes)
   {
@@ -1376,7 +1378,7 @@ async function _jiraFetchVelocityHistory(spFieldId, ctx) {
  */
 async function _jiraFetchFutureSprints(ctx) {
   await Promise.all(Object.entries(ctx.teamConfigs).map(async ([teamName, tc]) => {
-    if (!tc.boardId || !tc.hasIssues) return;
+    if (!tc.boardId) return;
     try {
       const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=future&maxResults=${CONFIG.sync.maxFutureSprints}`);
       if (!sr.ok) return;
@@ -1861,7 +1863,7 @@ async function _jiraTransformAndSave(ctx, groups, innoFeatureList, ameliorationL
   const cache   = _transform(ctx.allIssues, project, CONFIG.sprint.current, ctx.teamConfigs);
   cache.groups       = groups;
   cache.team_configs = Object.fromEntries(
-    Object.entries(ctx.teamConfigs).filter(([, tc]) => tc.hasIssues)
+    Object.entries(ctx.teamConfigs).filter(([, tc]) => tc.hasIssues || (tc.futureSprintDates && tc.futureSprintDates.length))
   );
   cache.inno_features        = innoFeatureList;
   cache.amelioration_tickets = ameliorationList;
