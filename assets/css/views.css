@@ -21,6 +21,7 @@
 .sprint-alerts { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid rgba(255,255,255,.15); margin-top: 2px; padding-top: 6px; margin-bottom: 12px; }
 .sprint-alerts:empty { display: none; }
 .sprint-alert { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 700; cursor: default; letter-spacing: .2px; }
+.sprint-alert[onclick] { cursor: pointer; }
 .sprint-alert-demo  { background: rgba(249,115,22,.85); color: #fff; border: 1px solid rgba(249,115,22,.9); text-shadow: 0 1px 2px rgba(0,0,0,.2); }
 .sprint-alert-mood  { background: rgba(168,85,247,.85); color: #fff; border: 1px solid rgba(168,85,247,.9); cursor: pointer; text-shadow: 0 1px 2px rgba(0,0,0,.2); }
 .sprint-alert-mood:hover { background: rgba(168,85,247,1); }
