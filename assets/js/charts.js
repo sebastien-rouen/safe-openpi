@@ -34,8 +34,73 @@ function _chartTextColor() {
   return document.documentElement.getAttribute('data-theme') === 'dark' ? '#CBD5E1' : '#666';
 }
 
+// ---- Jours ouvrables : labels "J1 (L)" + plugin fond grisé ----
+const _DAY_SHORT_FR = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
+
+// Retourne un tableau de { label, date, isOff, holiday } pour chaque jour du sprint
+function _sprintDayInfo(days, sprint) {
+  const startStr = sprint?.startDateISO || sprint?.startDate;
+  if (!startStr) {
+    return Array.from({ length: days }, (_, i) => ({ label: `J${i + 1}`, date: null, isOff: false, holiday: null }));
+  }
+  const start = new Date(/^\d{4}-\d{2}-\d{2}$/.test(startStr) ? startStr + 'T00:00:00' : startStr);
+  if (isNaN(start)) return Array.from({ length: days }, (_, i) => ({ label: `J${i + 1}`, date: null, isOff: false, holiday: null }));
+  // Charger les fériés sur la plage
+  const hols = [];
+  if (typeof _frenchHolidays === 'function') {
+    const endYear = new Date(start.getTime() + days * 86400000).getFullYear();
+    hols.push(..._frenchHolidays(start.getFullYear()));
+    if (endYear !== start.getFullYear()) hols.push(..._frenchHolidays(endYear));
+  }
+  const holByDate = new Map(hols.map(h => [h.d.toDateString(), h.name]));
+  return Array.from({ length: days }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const wd = d.getDay();
+    const isWeekend = wd === 0 || wd === 6;
+    const holiday = holByDate.get(d.toDateString()) || null;
+    return {
+      label: `J${i + 1} (${_DAY_SHORT_FR[wd]})`,
+      date: d,
+      isOff: isWeekend || !!holiday,
+      holiday,
+    };
+  });
+}
+
+// Plugin Chart.js : colore le fond des jours non ouvrables
+const _offDaysPlugin = {
+  id: 'offDays',
+  beforeDraw(chart, args, opts) {
+    const info = opts?.info;
+    if (!info || !info.length) return;
+    const { ctx, chartArea, scales: { x } } = chart;
+    if (!chartArea || !x) return;
+    ctx.save();
+    info.forEach((d, i) => {
+      if (!d.isOff) return;
+      const xCenter = x.getPixelForValue(i);
+      const step = info.length > 1 ? (x.getPixelForValue(1) - x.getPixelForValue(0)) : (chartArea.right - chartArea.left);
+      const half = step / 2;
+      const xLeft = xCenter - half;
+      const xRight = xCenter + half;
+      ctx.fillStyle = d.holiday ? 'rgba(245, 158, 11, 0.12)' : 'rgba(148, 163, 184, 0.15)';
+      ctx.fillRect(
+        Math.max(chartArea.left, xLeft),
+        chartArea.top,
+        Math.min(chartArea.right, xRight) - Math.max(chartArea.left, xLeft),
+        chartArea.bottom - chartArea.top
+      );
+    });
+    ctx.restore();
+  },
+};
+
 function initCharts() {
   Chart.defaults.color = _chartTextColor();
+  if (typeof Chart !== 'undefined' && !Chart.registry.plugins.get('offDays')) {
+    Chart.register(_offDaysPlugin);
+  }
   _renderSprintSelector();
   _buildBurndown();
   _buildVelocity();
@@ -142,7 +207,8 @@ window._selectMetricsSprint = function(idx) {
 
 function _buildBurndown() {
   const days   = CONFIG.sprint.durationDays || 14;
-  const labels = Array.from({ length: days }, (_, i) => `J${i + 1}`);
+  const dayInfo = _sprintDayInfo(days, _activeSprintCtx());
+  const labels = dayInfo.map(d => d.label);
 
   let ptsTotal, ptsDone, ticketsTotal, ticketsDone, chartTitle, isHistorical = false;
 
@@ -242,10 +308,19 @@ function _buildBurndown() {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
+        offDays: { info: dayInfo },
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           ..._TOOLTIP,
           callbacks: {
+            title: items => {
+              const idx = items?.[0]?.dataIndex;
+              const d = idx != null ? dayInfo[idx] : null;
+              if (!d) return items?.[0]?.label || '';
+              const datePart = d.date ? ` · ${String(d.date.getDate()).padStart(2, '0')}/${String(d.date.getMonth() + 1).padStart(2, '0')}` : '';
+              const offLabel = d.holiday ? ` · 🎉 ${d.holiday}` : (d.isOff ? ' · weekend' : '');
+              return `${d.label}${datePart}${offLabel}`;
+            },
             label: item => {
               if (item.raw == null) return null;
               if (item.dataset.yAxisID === 'y1') return ` ${item.dataset.label}: ${item.raw} tickets`;
@@ -393,7 +468,8 @@ function _buildBurnup() {
   if (!canvas) return;
 
   const days   = CONFIG.sprint.durationDays || 14;
-  const labels = Array.from({ length: days }, (_, i) => `J${i + 1}`);
+  const dayInfo = _sprintDayInfo(days, _activeSprintCtx());
+  const labels = dayInfo.map(d => d.label);
 
   let ptsScope, ptsDone, isHistorical = false, chartTitle;
 
@@ -454,10 +530,19 @@ function _buildBurnup() {
       responsive: true, maintainAspectRatio: false,
       interaction: { mode: 'index', intersect: false },
       plugins: {
+        offDays: { info: dayInfo },
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           ..._TOOLTIP,
           callbacks: {
+            title: items => {
+              const idx = items?.[0]?.dataIndex;
+              const d = idx != null ? dayInfo[idx] : null;
+              if (!d) return items?.[0]?.label || '';
+              const datePart = d.date ? ` · ${String(d.date.getDate()).padStart(2, '0')}/${String(d.date.getMonth() + 1).padStart(2, '0')}` : '';
+              const offLabel = d.holiday ? ` · 🎉 ${d.holiday}` : (d.isOff ? ' · weekend' : '');
+              return `${d.label}${datePart}${offLabel}`;
+            },
             label: item => {
               if (item.raw == null) return null;
               if (item.dataset.label === 'Scope') return ` Scope: ${item.raw} pts`;
