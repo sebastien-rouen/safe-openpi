@@ -34,6 +34,56 @@ function _chartTextColor() {
   return document.documentElement.getAttribute('data-theme') === 'dark' ? '#CBD5E1' : '#666';
 }
 
+// ---- Mode plein ecran pour un chart ----
+let _fsChart = null;
+window._chartFullscreen = function(canvasId, title) {
+  const src = document.getElementById(canvasId);
+  if (!src) return;
+  // Recuperer l'instance Chart.js liee a ce canvas
+  const srcChart = Chart.getChart(canvasId);
+  if (!srcChart) return;
+
+  // Construire l'overlay
+  const overlay = document.createElement('div');
+  overlay.className = 'chart-fs-overlay';
+  overlay.innerHTML = `
+    <div class="chart-fs-modal" onclick="event.stopPropagation()">
+      <div class="chart-fs-header">
+        <h2>${title || ''}</h2>
+        <button class="chart-fs-close" onclick="_closeChartFullscreen()" title="Fermer (Esc)">✕</button>
+      </div>
+      <div class="chart-fs-body"><canvas id="_fsCanvas"></canvas></div>
+    </div>`;
+  overlay.addEventListener('click', _closeChartFullscreen);
+  document.body.appendChild(overlay);
+  document.body.style.overflow = 'hidden';
+
+  // Cloner la config en deep clone (sans les fonctions car JSON ne les serialise pas)
+  const fsCanvas = document.getElementById('_fsCanvas');
+  const cfg = {
+    type: srcChart.config.type,
+    data: srcChart.config.data,
+    options: { ...srcChart.config.options, responsive: true, maintainAspectRatio: false },
+    plugins: srcChart.config.plugins,
+  };
+  _fsChart = new Chart(fsCanvas.getContext('2d'), cfg);
+
+  // Echap pour fermer
+  document.addEventListener('keydown', _fsKeyHandler);
+};
+
+function _fsKeyHandler(e) {
+  if (e.key === 'Escape') _closeChartFullscreen();
+}
+
+window._closeChartFullscreen = function() {
+  if (_fsChart) { _fsChart.destroy(); _fsChart = null; }
+  const ov = document.querySelector('.chart-fs-overlay');
+  if (ov) ov.remove();
+  document.body.style.overflow = '';
+  document.removeEventListener('keydown', _fsKeyHandler);
+};
+
 // ---- Jours ouvrables : labels "J1 (L)" + plugin fond grisé ----
 const _DAY_SHORT_FR = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 

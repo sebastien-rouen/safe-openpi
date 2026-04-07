@@ -230,9 +230,9 @@ function renderScrum() {
   if (_el('sprint-mark-80')) {
     _el('sprint-mark-80').style.display = bufTotalPts > 0 ? '' : 'none';
   }
-  if (_el('sprint-pct'))      _el('sprint-pct').textContent      = pct + '%';
-  if (_el('pts-done'))        _el('pts-done').textContent        = ptsDone + ' / ' + ptsTotal;
-  if (_el('pts-rem'))         _el('pts-rem').textContent         = ptsRem + ' pts';
+  if (_el('sprint-prog-wrap')) {
+    _el('sprint-prog-wrap').title = `${pct}% · ${ptsDone}/${ptsTotal} pts (${ptsRem} restants)${bufTotalPts > 0 ? ` · 🛡 Buffer ${bufDonePts}/${bufTotalPts} pts` : ''} · WIP ${wipPts} pts`;
+  }
   if (_el('sprint-goal'))     _el('sprint-goal').innerHTML       = s.goal ? `<strong>🎯 Goal</strong>${escapeHtml(s.goal)}` : '';
 
   _renderScrumSupportBanner();
@@ -578,25 +578,30 @@ function _renderScrumQuickFilters() {
     const board = document.getElementById('scrum-board');
     if (board) board.parentNode.insertBefore(el, board);
   }
-  const filters = [
-    { key: 'blocked',    label: '🚫 Bloqués',      danger: true  },
-    { key: 'unassigned', label: '👤 Non assignés',  danger: false },
-    { key: 'critical',   label: '🔴 Critique',      danger: false },
-  ];
-  const dangerCls = (f) => f.danger && _scrumFilter === f.key ? ' danger' : '';
-
   // Build dynamic options from current tickets
   const allT     = getTickets();
   const types    = [...new Set(allT.map(t => t.type).filter(Boolean))].sort();
   const assignees = [...new Set(allT.map(t => t.assignee).filter(Boolean))].sort();
   const epics    = [...new Set(allT.map(t => t.epic).filter(Boolean))].sort();
 
+  // Compteurs dynamiques pour les quick filters
+  const cntBlocked    = allT.filter(t => t.status === 'blocked').length;
+  const cntUnassigned = allT.filter(t => !t.assignee && !isDone(t.status) && t.status !== 'backlog').length;
+  const cntCritical   = allT.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status)).length;
+
+  const filters = [
+    { key: 'blocked',    label: '🚫 Bloqués',      count: cntBlocked,    danger: true  },
+    { key: 'unassigned', label: '👤 Non assignés',  count: cntUnassigned, danger: false },
+    { key: 'critical',   label: '🔴 Critique',      count: cntCritical,   danger: false },
+  ];
+  const dangerCls = (f) => f.danger && _scrumFilter === f.key ? ' danger' : '';
+
   const hasAny = _scrumFilter || _scrumTextFilter || _scrumTypeFilter || _scrumAssignee || _scrumEpicFilter;
 
   el.innerHTML =
     filters.map(f =>
-      `<button class="sqf-btn${_scrumFilter === f.key ? ' active' + dangerCls(f) : ''}"
-        onclick="_setScrumFilter('${f.key}')">${f.label}</button>`
+      `<button class="sqf-btn${_scrumFilter === f.key ? ' active' + dangerCls(f) : ''}${f.count === 0 ? ' sqf-btn-empty' : ''}"
+        onclick="_setScrumFilter('${f.key}')"${f.count === 0 ? ' disabled' : ''}>${f.label}<span class="sqf-count">${f.count}</span></button>`
     ).join('') +
     `<select class="sqf-select${_scrumTypeFilter ? ' active' : ''}" onchange="_setScrumType(this.value)" title="Filtrer par type">
       <option value="">Type</option>${types.map(t => `<option value="${t}"${_scrumTypeFilter === t ? ' selected' : ''}>${typeName(t)}</option>`).join('')}

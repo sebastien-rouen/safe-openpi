@@ -575,10 +575,15 @@ nav { flex: 1; padding: 4px 0; }
 
 /* ===== SCRUM QUICK FILTERS ===== */
 #scrum-quick-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
-.sqf-btn { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.sqf-btn { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text-muted); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; display: inline-flex; align-items: center; gap: 6px; }
 .sqf-btn:hover { background: rgba(2,132,199,.06); border-color: var(--primary); color: var(--primary); }
 .sqf-btn.active { background: var(--primary); color: #fff; border-color: var(--primary); }
 .sqf-btn.active.danger { background: #DC2626; border-color: #DC2626; }
+.sqf-btn-empty { opacity: .4; cursor: not-allowed; }
+.sqf-btn-empty:hover { background: var(--surface); border-color: var(--border); color: var(--text-muted); }
+.sqf-count { display: inline-block; min-width: 18px; text-align: center; padding: 1px 6px; border-radius: 99px; background: rgba(0,0,0,.08); font-size: 10px; font-weight: 700; line-height: 1.4; }
+.sqf-btn.active .sqf-count { background: rgba(255,255,255,.25); color: #fff; }
+[data-theme="dark"] .sqf-count { background: rgba(255,255,255,.1); }
 #sqf-text { padding: 5px 12px; border: 1px solid var(--border); border-radius: 99px; font-size: 12px; width: 180px; background: var(--surface); color: var(--text); }
 .sqf-select { padding: 5px 10px; border: 1px solid var(--border); border-radius: 99px; font-size: 12px; font-weight: 600; color: var(--text-muted); background: var(--surface); cursor: pointer; max-width: 140px; }
 .sqf-select.active { background: var(--primary); color: #fff; border-color: var(--primary); }

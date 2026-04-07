@@ -14,9 +14,9 @@
 .progress-mark-80 { position: absolute; top: -3px; width: 2px; height: 14px; background: rgba(255,255,255,.6); border-radius: 1px; z-index: 2; left: 80%; }
 .progress-mark-80::after { content: '80%'; position: absolute; top: -14px; left: 50%; transform: translateX(-50%); font-size: 9px; color: rgba(255,255,255,.5); white-space: nowrap; font-weight: 600; }
 
-.sprint-goal { width: 100%; font-size: 12px; opacity: .85; border-top: 1px solid rgba(255,255,255,.15); margin-top: 2px; padding-top: 4px; line-height: 1.4; }
+.sprint-goal { width: 100%; font-size: 14px; opacity: .95; border-top: 1px solid rgba(255,255,255,.15); margin-top: 6px; padding-top: 8px; line-height: 1.45; font-weight: 500; }
 .sprint-goal:empty { display: none; }
-.sprint-goal strong { font-weight: 700; opacity: .7; margin-right: 6px; font-size: 10px; text-transform: uppercase; letter-spacing: .3px; }
+.sprint-goal strong { font-weight: 700; opacity: .75; margin-right: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; display: inline-block; vertical-align: middle; }
 
 .sprint-alerts { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; border-top: 1px solid rgba(255,255,255,.15); margin-top: 2px; padding-top: 6px; margin-bottom: 12px; }
 .sprint-alerts:empty { display: none; }
@@ -46,7 +46,17 @@
 .charts-row   { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 20px; }
 .charts-row-2 { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); }
 .chart-card  { background: #fff; border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px; }
-.chart-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); }
+.chart-title { font-size: 13px; font-weight: 700; margin-bottom: 12px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.chart-fs-btn { margin-left: auto; background: transparent; border: 1px solid var(--border); color: var(--text-muted); width: 22px; height: 22px; border-radius: 4px; font-size: 13px; line-height: 1; cursor: pointer; padding: 0; transition: all .15s; }
+.chart-fs-btn:hover { background: var(--bg); color: var(--primary); border-color: var(--primary); }
+.chart-fs-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 24px; }
+.chart-fs-modal { background: var(--surface); border-radius: var(--radius-lg); padding: 20px 24px; width: 100%; max-width: 1200px; height: 80vh; display: flex; flex-direction: column; box-shadow: var(--shadow-lg); }
+.chart-fs-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+.chart-fs-header h2 { font-size: 16px; font-weight: 700; color: var(--text); margin: 0; }
+.chart-fs-close { margin-left: auto; background: transparent; border: none; color: var(--text-muted); font-size: 22px; cursor: pointer; padding: 4px 10px; border-radius: 4px; }
+.chart-fs-close:hover { background: var(--bg); color: var(--text); }
+.chart-fs-body { flex: 1; min-height: 0; position: relative; }
+.chart-fs-body canvas { max-width: 100%; max-height: 100%; }
 .chart-wrap  { position: relative; height: 180px; }
 
 /* ===== STATS ===== */

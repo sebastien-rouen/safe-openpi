@@ -163,20 +163,15 @@
         <div class="si"><small>Sprint</small><strong id="sprint-name">-</strong></div>
         <div class="si"><small>Période</small><strong id="sprint-dates">-</strong></div>
         <div class="si"><small>Points engagés</small><strong id="sprint-velocity">- pts</strong></div>
-        <div class="si" style="flex:1">
-          <small>Avancement</small>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:4px;">
-            <div class="progress-bar" style="flex:1;position:relative;">
-              <div class="progress-fill-wip" id="sprint-prog-wip" style="width:0%;left:0%"></div>
-              <div class="progress-fill" id="sprint-prog" style="width:0%"></div>
-              <div class="progress-fill-buffer" id="sprint-prog-buffer" style="width:0%;left:0%"></div>
-              <div class="progress-mark-80" id="sprint-mark-80" style="display:none" title="Seuil 80% - capacité feature"></div>
-            </div>
-            <strong id="sprint-pct">0%</strong>
+        <div class="si" style="flex:1;min-width:240px">
+          <small>Progression</small>
+          <div class="progress-bar" id="sprint-prog-wrap" title="Survolez pour le détail" style="position:relative;margin-top:6px;">
+            <div class="progress-fill-wip" id="sprint-prog-wip" style="width:0%;left:0%"></div>
+            <div class="progress-fill" id="sprint-prog" style="width:0%"></div>
+            <div class="progress-fill-buffer" id="sprint-prog-buffer" style="width:0%;left:0%"></div>
+            <div class="progress-mark-80" id="sprint-mark-80" style="display:none" title="Seuil 80% - capacité feature"></div>
           </div>
         </div>
-        <div class="si"><small>Points done</small><strong id="pts-done">51 / 84</strong></div>
-        <div class="si"><small>Restants</small><strong id="pts-rem">33 pts</strong></div>
         <div class="sprint-goal" id="sprint-goal"></div>
         <div id="mood-panel"></div>
         <div id="vote-panel"></div>
@@ -195,14 +190,14 @@
       <div class="board" id="scrum-board"></div>
       <div style="margin-top:24px;" class="section-header"><div class="section-title">📈 Métriques Sprint</div></div>
       <div class="charts-row" id="charts-row">
-        <div class="chart-card"><div class="chart-title">📉 Burndown Chart</div><div class="chart-wrap"><canvas id="burndownChart"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">⚡ Vélocité (6 sprints)</div><div class="chart-wrap"><canvas id="velocityChart"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">🍩 Distribution Types</div><div class="chart-wrap"><canvas id="typeChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">📉 Burndown Chart<button class="chart-fs-btn" onclick="_chartFullscreen('burndownChart','📉 Burndown Chart')" title="Plein écran">⛶</button></div><div class="chart-wrap"><canvas id="burndownChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">⚡ Vélocité (6 sprints)<button class="chart-fs-btn" onclick="_chartFullscreen('velocityChart','⚡ Vélocité (6 sprints)')" title="Plein écran">⛶</button></div><div class="chart-wrap"><canvas id="velocityChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">🍩 Distribution Types<button class="chart-fs-btn" onclick="_chartFullscreen('typeChart','🍩 Distribution Types')" title="Plein écran">⛶</button></div><div class="chart-wrap"><canvas id="typeChart"></canvas></div></div>
       </div>
       <div class="charts-row charts-row-2" id="charts-row-2">
-        <div class="chart-card"><div class="chart-title">📈 Burnup Chart</div><div class="chart-wrap"><canvas id="burnupChart"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">📊 CFD - Flux Sprint</div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">✋ Confiance PI (Fist of Five)</div><div class="chart-wrap" style="height:200px"><canvas id="fistChartScrum"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">📈 Burnup Chart<button class="chart-fs-btn" onclick="_chartFullscreen('burnupChart','📈 Burnup Chart')" title="Plein écran">⛶</button></div><div class="chart-wrap"><canvas id="burnupChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">📊 CFD - Flux Sprint<button class="chart-fs-btn" onclick="_chartFullscreen('cmdChart','📊 CFD - Flux Sprint')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">✋ Confiance PI (Fist of Five)<button class="chart-fs-btn" onclick="_chartFullscreen('fistChartScrum','✋ Confiance PI (Fist of Five)')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="fistChartScrum"></canvas></div></div>
       </div>
     </div>
 
