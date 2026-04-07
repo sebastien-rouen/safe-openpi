@@ -363,8 +363,9 @@ function _renderScrumRisks(tickets, blocked) {
 
   el.innerHTML = `<div class="scrum-risks-bar">
     ${items.map(it => {
+      const colorStyle = `--risk-c:${it.color};background:${it.color}14;border-color:${it.color}40;`;
       if (it.tid) {
-        return `<div class="scrum-risk-item" style="--risk-c:${it.color};" onclick="openModal('${it.tid}')" title="Voir le ticket">
+        return `<div class="scrum-risk-item" style="${colorStyle}" onclick="openModal('${it.tid}')" title="Voir le ticket">
           <span class="scrum-risk-icon">${it.icon}</span>
           <span class="scrum-risk-label">${it.label}</span>
           <span class="scrum-risk-sub">${it.sub || ''}</span>
@@ -374,12 +375,12 @@ function _renderScrumRisks(tickets, blocked) {
         const isClickable = !!it.filter;
         const cursor = isClickable ? 'cursor:pointer;' : 'cursor:default;';
         const handler = isClickable ? ` onclick="_showScrumStatDetail('${it.filter}')" title="Voir le détail"` : '';
-        return `<div class="scrum-risk-item" style="--risk-c:${it.color};${cursor}"${handler}>
+        return `<div class="scrum-risk-item" style="${colorStyle}${cursor}"${handler}>
           <span class="scrum-risk-icon">${it.icon}</span>
           <span class="scrum-risk-label">${it.label}</span>
         </div>`;
       }
-      return `<div class="scrum-risk-item" style="--risk-c:${it.color};cursor:default;">
+      return `<div class="scrum-risk-item" style="${colorStyle}cursor:default;">
         <span class="scrum-risk-icon">${it.icon}</span>
         <span class="scrum-risk-label">${it.label}</span>
       </div>`;

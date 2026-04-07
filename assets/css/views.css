@@ -59,7 +59,7 @@
 
 /* ===== SCRUM RISKS BAR ===== */
 .scrum-risks-bar             { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.scrum-risk-item             { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 8px; background: color-mix(in srgb, var(--risk-c) 8%, transparent); border: 1px solid color-mix(in srgb, var(--risk-c) 25%, transparent); font-size: 12px; cursor: pointer; transition: box-shadow .15s; }
+.scrum-risk-item             { display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px; border-radius: 8px; background: rgba(148,163,184,.08); border: 1px solid rgba(148,163,184,.25); font-size: 12px; cursor: pointer; transition: box-shadow .15s; }
 .scrum-risk-item:hover       { box-shadow: 0 2px 8px rgba(0,0,0,.1); }
 .scrum-risk-icon             { font-size: 13px; flex-shrink: 0; }
 .scrum-risk-label            { font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 350px; }
