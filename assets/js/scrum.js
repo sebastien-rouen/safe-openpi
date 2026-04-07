@@ -336,7 +336,7 @@ function _renderScrumRisks(tickets, blocked) {
   // Unassigned active tickets
   const unassigned = tickets.filter(t => !t.assignee && !isDone(t.status) && t.status !== 'backlog');
   if (unassigned.length) {
-    items.push({ icon: '👤', color: '#F59E0B', label: `${unassigned.length} ticket${unassigned.length > 1 ? 's' : ''} non assigné${unassigned.length > 1 ? 's' : ''}`, tickets: unassigned });
+    items.push({ icon: '👤', color: '#F59E0B', label: `${unassigned.length} ticket${unassigned.length > 1 ? 's' : ''} non assigné${unassigned.length > 1 ? 's' : ''}`, tickets: unassigned, filter: 'unassigned' });
   }
 
   // Sprint end approaching
@@ -356,7 +356,7 @@ function _renderScrumRisks(tickets, blocked) {
   // Critical/high not done
   const critical = tickets.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status));
   if (critical.length) {
-    items.push({ icon: '🔴', color: '#F59E0B', label: `${critical.length} ticket${critical.length > 1 ? 's' : ''} critique${critical.length > 1 ? 's' : ''}/haute priorité non terminé${critical.length > 1 ? 's' : ''}`, tickets: critical });
+    items.push({ icon: '🔴', color: '#F59E0B', label: `${critical.length} ticket${critical.length > 1 ? 's' : ''} critique${critical.length > 1 ? 's' : ''}/haute priorité non terminé${critical.length > 1 ? 's' : ''}`, tickets: critical, filter: 'critical' });
   }
 
   if (!items.length) { el.innerHTML = ''; return; }
@@ -371,7 +371,10 @@ function _renderScrumRisks(tickets, blocked) {
         </div>`;
       }
       if (it.tickets) {
-        return `<div class="scrum-risk-item" style="--risk-c:${it.color};cursor:default;">
+        const isClickable = !!it.filter;
+        const cursor = isClickable ? 'cursor:pointer;' : 'cursor:default;';
+        const handler = isClickable ? ` onclick="_showScrumStatDetail('${it.filter}')" title="Voir le détail"` : '';
+        return `<div class="scrum-risk-item" style="--risk-c:${it.color};${cursor}"${handler}>
           <span class="scrum-risk-icon">${it.icon}</span>
           <span class="scrum-risk-label">${it.label}</span>
         </div>`;
@@ -1061,6 +1064,8 @@ function _showScrumStatDetail(filter) {
     inprog:    { icon: '🔵', label: 'Tickets en cours',  list: all.filter(t => t.status === 'inprog' || t.status === 'review') },
     blocked:   { icon: '⚠',  label: 'Tickets bloqués',  list: all.filter(t => t.status === 'blocked') },
     buffer:    { icon: '🛡️', label: 'Tickets buffer',   list: all.filter(t => t.buffer) },
+    unassigned:{ icon: '👤', label: 'Tickets non assignés', list: all.filter(t => !t.assignee && !isDone(t.status) && t.status !== 'backlog') },
+    critical:  { icon: '🔴', label: 'Tickets critiques / haute priorité', list: all.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status)) },
   }[filter];
   if (!cfg || !cfg.list.length) return;
 
