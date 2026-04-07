@@ -271,11 +271,14 @@ function renderScrum() {
     piVelocity = piHistSum + ptsDone; // sprints passés du PI + sprint courant
   }
 
+  // Indicateur "Avancement" : % de points terminés vs total engagé
+  const advPct = ptsTotal > 0 ? Math.round(ptsDone / ptsTotal * 100) : 0;
+  const advColor = advPct >= 70 ? '#10B981' : advPct >= 40 ? '#F59E0B' : '#EF4444';
   const statCards = [
-    { num: ptsDone,                       lbl: 'Points Terminés', color: '#10B981', filter: 'done',    title: 'Tickets terminés' },
-    { num: ptsRem,                        lbl: 'Points Restants', color: '#F59E0B', filter: 'remaining', title: 'Tickets restants' },
     { num: inprog.length + review.length, lbl: 'En Cours',        color: '#3B82F6', filter: 'inprog',  title: 'Tickets en cours' },
     { num: blocked.length,                lbl: 'Bloqués',         color: '#EF4444', filter: 'blocked', title: 'Tickets bloqués' },
+    { num: advPct + '%',                  lbl: 'Avancement',      color: advColor,  filter: null,      title: `${ptsDone}/${ptsTotal} points (${ptsRem} pts restants)` },
+    { num: ptsDone,                       lbl: 'Points Terminés', color: '#10B981', filter: 'done',    title: 'Tickets terminés' },
   ];
   if (piVelocity !== null) {
     statCards.push({ num: piVelocity, lbl: `Vélocité PI${_piNum}`, color: '#7C3AED', filter: null, title: `Vélocité cumulée du PI ${_piNum} (sprints passés + courant)` });
