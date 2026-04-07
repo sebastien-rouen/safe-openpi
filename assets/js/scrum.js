@@ -1124,6 +1124,8 @@ function _showVelocityTrendDetail() {
         sprint: vh.name || '',
         velocity: vh.velocity || 0,
         tickets: vh.tickets || [],
+        bufferPts: (vh.bufferTickets || []).reduce((a, t) => a + (t.points || 0), 0),
+        bufferCount: (vh.bufferTickets || []).length,
         startDate: vh.startDate || '',
       })),
   })).filter(td => td.history.length > 0);
@@ -1134,24 +1136,38 @@ function _showVelocityTrendDetail() {
   const currentTickets = getTickets();
   const currentDone = currentTickets.filter(t => isDone(t.status));
   const currentVel = currentDone.reduce((a, t) => a + (t.points || 0), 0);
-  // SVG sparkline per team
+  // SVG sparkline per team (velocity line + buffer line)
+  const BUFFER_CLR = '#8B5CF6'; // violet
   const sparkHeight = 60, sparkWidth = 220;
-  function _sparkSvg(values, color) {
+  function _sparkSvg(values, color, bufferValues) {
     if (values.length < 2) return '';
-    const max = Math.max(...values, 1);
+    const allVals = [...values, ...(bufferValues || [])];
+    const max = Math.max(...allVals, 1);
     const step = sparkWidth / (values.length - 1);
-    const pts = values.map((v, i) => `${i * step},${sparkHeight - (v / max) * (sparkHeight - 10)}`).join(' ');
-    const dots = values.map((v, i) => `<circle cx="${i * step}" cy="${sparkHeight - (v / max) * (sparkHeight - 10)}" r="3" fill="${color}"/>`).join('');
+    const _pt = (v, i) => `${i * step},${sparkHeight - (v / max) * (sparkHeight - 10)}`;
+    const velPts = values.map(_pt).join(' ');
+    const velDots = values.map((v, i) => `<circle cx="${i * step}" cy="${sparkHeight - (v / max) * (sparkHeight - 10)}" r="3" fill="${color}"/>`).join('');
+    let bufferHtml = '';
+    if (bufferValues && bufferValues.some(v => v > 0)) {
+      const bufPts = bufferValues.map(_pt).join(' ');
+      const bufDots = bufferValues.map((v, i) => `<circle cx="${i * step}" cy="${sparkHeight - (v / max) * (sparkHeight - 10)}" r="2.5" fill="${BUFFER_CLR}"/>`).join('');
+      bufferHtml = `<polyline points="${bufPts}" fill="none" stroke="${BUFFER_CLR}" stroke-width="1.5" stroke-dasharray="3,2" stroke-linejoin="round"/>${bufDots}`;
+    }
     return `<svg width="${sparkWidth}" height="${sparkHeight}" style="overflow:visible;">
-      <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
-      ${dots}
+      <polyline points="${velPts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round"/>
+      ${velDots}
+      ${bufferHtml}
     </svg>`;
   }
 
   // Per-team sections
   const teamSections = teamData.map(td => {
     const velocities = td.history.map(h => h.velocity);
+    const buffers    = td.history.map(h => h.bufferPts || 0);
     velocities.push(currentVel);
+    // Buffer du sprint courant
+    const currentBufferPts = currentTickets.filter(t => t.buffer && isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
+    buffers.push(currentBufferPts);
     const sprintNames = td.history.map(h => {
       const m = (h.sprint || '').match(/(\d{2,3}\.\d+)/);
       return m ? m[1] : h.sprint;
@@ -1171,31 +1187,50 @@ function _showVelocityTrendDetail() {
         ? `<span style="color:${delta >= 0 ? '#22C55E' : '#EF4444'};font-size:11px;">${delta >= 0 ? '+' : ''}${delta}</span>`
         : '';
       const doneCount = (h.tickets || []).length;
+      const bufHtml = h.bufferPts > 0
+        ? `<span style="color:${BUFFER_CLR};font-weight:600;" title="${h.bufferCount} ticket${h.bufferCount > 1 ? 's' : ''} buffer">🛡️ ${h.bufferPts} pts</span>`
+        : '<span style="color:#94A3B8;">—</span>';
       return `<tr>
         <td style="font-size:12px;white-space:nowrap;">${sprintNames[i]}</td>
         <td style="text-align:right;font-weight:600;">${v} pts</td>
         <td style="text-align:right;">${deltaHtml}</td>
+        <td style="text-align:right;font-size:11px;">${bufHtml}</td>
         <td style="text-align:right;font-size:11px;color:#64748B;">${doneCount} ticket${doneCount > 1 ? 's' : ''}</td>
       </tr>`;
     });
     // Current sprint row
-    rows.push(`<tr style="background:#F0F9FF;">
+    const currentBufHtml = currentBufferPts > 0
+      ? `<span style="color:${BUFFER_CLR};font-weight:600;">🛡️ ${currentBufferPts} pts</span>`
+      : '<span style="color:#94A3B8;">—</span>';
+    rows.push(`<tr style="background:var(--info-bg);">
       <td style="font-size:12px;font-weight:600;">Actuel</td>
       <td style="text-align:right;font-weight:600;">${currentVel} pts</td>
       <td style="text-align:right;"><span style="color:${currentVel - (td.history.at(-1)?.velocity || 0) >= 0 ? '#22C55E' : '#EF4444'};font-size:11px;">${currentVel - (td.history.at(-1)?.velocity || 0) >= 0 ? '+' : ''}${currentVel - (td.history.at(-1)?.velocity || 0)}</span></td>
+      <td style="text-align:right;font-size:11px;">${currentBufHtml}</td>
       <td style="text-align:right;font-size:11px;color:#64748B;">${currentDone.filter(t => !activeTeams.length || activeTeams.length <= 1 || t.team === td.name).length} done</td>
     </tr>`);
 
+    // Table header (added buffer column)
+    const headerRow = `<tr style="border-bottom:2px solid var(--border);">
+      <th style="text-align:left;font-size:11px;color:#64748B;padding-bottom:4px;">Sprint</th>
+      <th style="text-align:right;font-size:11px;color:#64748B;padding-bottom:4px;">Vélocité</th>
+      <th style="text-align:right;font-size:11px;color:#64748B;padding-bottom:4px;">Δ</th>
+      <th style="text-align:right;font-size:11px;color:${BUFFER_CLR};padding-bottom:4px;">Buffer</th>
+      <th style="text-align:right;font-size:11px;color:#64748B;padding-bottom:4px;">Tickets</th>
+    </tr>`;
+
     return `<div style="margin-bottom:16px;padding:12px;border:1px solid var(--border);border-radius:8px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;">
         <span style="width:10px;height:10px;border-radius:50%;background:${td.color};display:inline-block;"></span>
         <strong>${td.name}</strong>
         <span style="font-size:12px;color:#64748B;">Moy. ${avg} pts</span>
         <span style="font-size:12px;color:${trendColor};">${trendIcon} ${trend >= 0 ? '+' : ''}${trend} pts</span>
+        <span style="font-size:11px;color:${BUFFER_CLR};margin-left:auto;">— — — 🛡️ Buffer (violet)</span>
       </div>
       <div style="display:flex;gap:16px;align-items:flex-start;">
-        <div>${_sparkSvg(velocities, td.color)}</div>
+        <div>${_sparkSvg(velocities, td.color, buffers)}</div>
         <table style="flex:1;border-collapse:collapse;font-size:13px;">
+          ${headerRow}
           ${rows.join('')}
         </table>
       </div>
