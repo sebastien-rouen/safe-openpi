@@ -312,15 +312,26 @@ function renderAmelioration() {
   if (burnup.length >= 2) {
     const maxTotal = Math.max(...burnup.map(b => b.total), 1);
     const selectedPi = currentPiNum ? parseInt(currentPiNum) : null;
+    const isAllPI = !currentPiNum;
     html += `<div class="amel-burnup">
-      <div class="amel-burnup-title" title="Tickets ayant à la fois un label Adapt/Amélioration ET un label PI{N}">📈 Évolution Adapt PI sur ${burnup.length} PIs <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(swimlane Adapt uniquement)</span></div>
+      <div class="amel-burnup-title" title="Tickets ayant à la fois un label Adapt/Amélioration ET un label PI{N}">
+        📈 Évolution Adapt PI sur ${burnup.length} PIs <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(swimlane Adapt uniquement)</span>
+        ${selectedPi ? `<button class="amel-burnup-clear" onclick="_amelSelectPI('')" title="Afficher tous les PI">✕ PI${selectedPi}</button>` : ''}
+      </div>
       <div class="amel-burnup-chart">
+        <div class="amel-burnup-col amel-burnup-col-all${isAllPI ? ' amel-burnup-col-selected' : ''}" onclick="_amelSelectPI('')" title="Afficher tous les PI (pas de filtre)${isAllPI ? ' · sélectionné' : ''}">
+          <div class="amel-burnup-bar-wrap" style="height:60px;display:flex;align-items:center;justify-content:center;">
+            <span style="font-size:20px;">🌐</span>
+          </div>
+          <div class="amel-burnup-label">Tous${isAllPI ? ' ★' : ''}</div>
+          <div class="amel-burnup-val">les PI</div>
+        </div>
         ${burnup.map(b => {
           const totalH = Math.round(b.total / maxTotal * 60);
           const doneH = Math.round(b.done / maxTotal * 60);
           const pct = b.total ? Math.round(b.done / b.total * 100) : 0;
           const isSelected = selectedPi === b.pi;
-          return `<div class="amel-burnup-col${isSelected ? ' amel-burnup-col-selected' : ''}" onclick="_amelSelectPI('${b.pi}')" title="PI${b.pi} : ${b.done}/${b.total} terminés (${pct}%)${isSelected ? ' · sélectionné' : ' · cliquer pour sélectionner'}">
+          return `<div class="amel-burnup-col${isSelected ? ' amel-burnup-col-selected' : ''}" onclick="_amelSelectPI('${isSelected ? '' : b.pi}')" title="PI${b.pi} : ${b.done}/${b.total} terminés (${pct}%)${isSelected ? ' · cliquer pour désélectionner' : ' · cliquer pour sélectionner'}">
             <div class="amel-burnup-bar-wrap" style="height:60px;">
               <div class="amel-burnup-bar-total" style="height:${totalH}px"></div>
               <div class="amel-burnup-bar-done" style="height:${doneH}px"></div>

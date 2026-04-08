@@ -1157,6 +1157,10 @@
 .amel-burnup-col:hover { background: var(--bg); }
 .amel-burnup-col-selected { background: var(--info-bg); box-shadow: 0 0 0 2px var(--primary); }
 .amel-burnup-col-selected .amel-burnup-label { color: var(--primary); font-weight: 800; }
+.amel-burnup-col-all { border-right: 2px dashed var(--border); margin-right: 6px; padding-right: 8px; }
+.amel-burnup-clear { margin-left: 8px; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--primary); background: var(--info-bg); color: var(--primary); font-size: 10px; font-weight: 700; cursor: pointer; vertical-align: middle; transition: all .15s; }
+.amel-burnup-clear:hover { background: var(--primary); color: #fff; }
+.amel-burnup-title { display: flex; align-items: center; }
 .amel-burnup-bar-wrap { position: relative; width: 24px; display: flex; align-items: flex-end; }
 .amel-burnup-bar-total { position: absolute; bottom: 0; width: 100%; background: var(--border); border-radius: 3px 3px 0 0; }
 .amel-burnup-bar-done { position: relative; width: 100%; background: var(--success); border-radius: 3px 3px 0 0; transition: height .3s; }
