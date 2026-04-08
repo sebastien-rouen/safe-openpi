@@ -354,14 +354,52 @@ function _extractDescription(doc) {
       // --- Leaf nodes (no content) ---
 
       if (node.type === 'text') {
-        const linkMark = (node.marks || []).find(m => m.type === 'link' && m.attrs?.href);
+        let text = node.text || '';
+        const marks = node.marks || [];
+        // Appliquer les marks dans l'ordre inverse pour wrapping correct
+        const linkMark = marks.find(m => m.type === 'link' && m.attrs?.href);
+        const isCode = marks.some(m => m.type === 'code');
+        const isStrong = marks.some(m => m.type === 'strong');
+        const isEm = marks.some(m => m.type === 'em');
+        const isStrike = marks.some(m => m.type === 'strike');
+        if (isCode) text = '`' + text + '`';
+        if (isStrong) text = '**' + text + '**';
+        if (isEm) text = '*' + text + '*';
+        if (isStrike) text = '~~' + text + '~~';
         if (linkMark) {
           const href = linkMark.attrs.href;
-          const text = node.text || href;
           lines.push(text === href ? href : `[${text}](${href})`);
         } else {
-          lines.push(node.text || '');
+          lines.push(text);
         }
+        return;
+      }
+
+      // Heading : preserver le niveau via prefixe markdown #
+      if (node.type === 'heading') {
+        const level = Math.max(1, Math.min(6, node.attrs?.level || 2));
+        // Newline avant le heading pour assurer qu'il commence sur une ligne propre
+        if (lines.length && !lines[lines.length - 1].endsWith('\n')) lines.push('\n');
+        lines.push('#'.repeat(level) + ' ');
+        if (node.content) node.content.forEach(walk);
+        lines.push('\n');
+        return;
+      }
+
+      // Code block : preserver avec ```
+      if (node.type === 'codeBlock') {
+        const lang = node.attrs?.language || '';
+        lines.push('\n```' + lang + '\n');
+        if (node.content) node.content.forEach(walk);
+        lines.push('\n```\n');
+        return;
+      }
+
+      // Blockquote : preserver avec >
+      if (node.type === 'blockquote') {
+        lines.push('\n> ');
+        if (node.content) node.content.forEach(walk);
+        lines.push('\n');
         return;
       }
       if (node.type === 'hardBreak') { lines.push('\n'); return; }
@@ -455,8 +493,8 @@ function _extractDescription(doc) {
       if (node.content) node.content.forEach(walk);
 
       // Block-level nodes → trailing newline
-      if (['paragraph','heading',
-           'blockquote','codeBlock',
+      // (heading, codeBlock, blockquote sont traites explicitement plus haut)
+      if (['paragraph',
            'table','tableRow','tableCell','tableHeader',
            'mediaSingle','mediaGroup','panel','expand','layoutSection','layoutColumn'
           ].includes(node.type)) {

@@ -126,9 +126,17 @@ function _formatDescription(text) {
   s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   // Italic
   s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  // Headings (## or #)
-  s = s.replace(/^#{2,}\s+(.+)$/gm, '<div style="font-weight:700;font-size:12px;color:var(--text);margin:8px 0 3px;">$1</div>');
-  s = s.replace(/^#\s+(.+)$/gm,     '<div style="font-weight:700;font-size:13px;color:var(--text);margin:10px 0 3px;border-bottom:1px solid var(--border);padding-bottom:3px;">$1</div>');
+  // Strikethrough
+  s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  // Blockquote (lignes commencant par >)
+  s = s.replace(/^>\s+(.+)$/gm, '<blockquote style="border-left:3px solid var(--border);padding:2px 10px;margin:6px 0;color:var(--text-muted);font-style:italic;">$1</blockquote>');
+  // Headings — niveau 1 a 6 (h1 le plus gros)
+  s = s.replace(/^######\s+(.+)$/gm, '<div style="font-weight:700;font-size:11px;color:var(--text-muted);margin:6px 0 2px;text-transform:uppercase;letter-spacing:.4px;">$1</div>');
+  s = s.replace(/^#####\s+(.+)$/gm,  '<div style="font-weight:700;font-size:11px;color:var(--text);margin:6px 0 2px;">$1</div>');
+  s = s.replace(/^####\s+(.+)$/gm,   '<div style="font-weight:700;font-size:12px;color:var(--text);margin:8px 0 3px;">$1</div>');
+  s = s.replace(/^###\s+(.+)$/gm,    '<div style="font-weight:700;font-size:13px;color:var(--text);margin:10px 0 4px;">$1</div>');
+  s = s.replace(/^##\s+(.+)$/gm,     '<div style="font-weight:700;font-size:14px;color:var(--text);margin:12px 0 4px;">$1</div>');
+  s = s.replace(/^#\s+(.+)$/gm,      '<div style="font-weight:800;font-size:15px;color:var(--text);margin:14px 0 6px;border-bottom:1px solid var(--border);padding-bottom:4px;">$1</div>');
   // Checkboxes (- [x] or - [ ])
   s = s.replace(/^-\s+\[x\]\s+(.+)$/gm, '<li style="list-style:none;"><input type="checkbox" checked disabled style="margin-right:4px;accent-color:#16A34A;"> $1</li>');
   s = s.replace(/^-\s+\[\s?\]\s+(.+)$/gm, '<li style="list-style:none;"><input type="checkbox" disabled style="margin-right:4px;"> $1</li>');
