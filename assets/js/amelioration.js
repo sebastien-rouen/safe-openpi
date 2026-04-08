@@ -2,10 +2,30 @@
 // AMELIORATION CONTINUE - Board rétro / post-mortem / CoP
 // ============================================================
 
+// PI selectionne (null = PI courant detecte automatiquement)
+let _amelPI = null;
+
+// Retourne le numero de PI effectif (selectionne ou courant detecte)
+function _amelGetPI() {
+  if (_amelPI) return String(_amelPI);
+  if (typeof _ppDetectPI === 'function') {
+    const detected = _ppDetectPI();
+    const m = (detected || '').match(/\d+/);
+    if (m) return m[0];
+  }
+  return null;
+}
+
 // Swimlane categorization based on labels/summary
 function _amelCategory(t) {
   const labels = (t.labels || []).map(l => l.toLowerCase());
   const sum    = (t.title || '').toLowerCase();
+
+  // Adapt PI (prioritaire — labels specifiques au PI selectionne)
+  const piNum = _amelGetPI();
+  const adaptLabels = ['adapt', 'amélioration', 'amelioration'];
+  if (piNum) adaptLabels.push(`pi${piNum}`);
+  if (labels.some(l => adaptLabels.includes(l))) return 'adapt';
 
   // Post-Mortem
   if (labels.some(l => l === 'postmortem') || /post-?mortem/i.test(sum)) return 'postmortem';
@@ -17,16 +37,26 @@ function _amelCategory(t) {
   return 'retro';
 }
 
-const _AMEL_SWIMLANES = [
-  { key: 'retro',      label: 'Rétrospective',  icon: '🔄', color: '#2563EB' },
-  { key: 'postmortem', label: 'Post-Mortem',     icon: '🔍', color: '#EF4444' },
-  { key: 'cop',        label: 'CoP Méthodo',     icon: '🤝', color: '#8B5CF6' },
-];
+function _amelSwimlanes() {
+  const piNum = _amelGetPI();
+  const adaptLabel = piNum ? `Adapt PI${piNum}` : 'Adapt';
+  return [
+    { key: 'adapt',      label: adaptLabel,         icon: '🎯', color: '#0891B2' },
+    { key: 'retro',      label: 'Rétrospective',    icon: '🔄', color: '#2563EB' },
+    { key: 'postmortem', label: 'Post-Mortem',       icon: '🔍', color: '#EF4444' },
+    { key: 'cop',        label: 'CoP Méthodo',       icon: '🤝', color: '#8B5CF6' },
+  ];
+}
 
 let _amelLaneCollapsed = {};
 
 function _toggleAmelLane(key) {
   _amelLaneCollapsed[key] = !_amelLaneCollapsed[key];
+  renderAmelioration();
+}
+
+function _amelSelectPI(piNum) {
+  _amelPI = piNum || null;
   renderAmelioration();
 }
 
@@ -83,8 +113,9 @@ function renderAmelioration() {
   const pctDone = total ? Math.round(done / total * 100) : 0;
 
   // Group tickets by swimlane
+  const swimlanes = _amelSwimlanes();
   const byLane = {};
-  _AMEL_SWIMLANES.forEach(s => { byLane[s.key] = []; });
+  swimlanes.forEach(s => { byLane[s.key] = []; });
   tickets.forEach(t => {
     const cat = _amelCategory(t);
     if (byLane[cat]) byLane[cat].push(t);
@@ -96,6 +127,16 @@ function renderAmelioration() {
 
   // Build HTML
   let html = '';
+
+  // PI selector
+  const currentPiNum = _amelGetPI() || '';
+  const piOptions = typeof _piSelectOptions === 'function'
+    ? _piSelectOptions(currentPiNum, { allOption: '(tous les PI)' })
+    : `<option value="">(tous)</option>`;
+  html += `<div class="amel-pi-selector">
+    <label class="amel-pi-label">🎯 PI Adapt :</label>
+    <select class="rm-pi-select" onchange="_amelSelectPI(this.value)">${piOptions}</select>
+  </div>`;
 
   // KPI bar
   html += `<div class="amel-kpi-bar">
@@ -131,7 +172,7 @@ function renderAmelioration() {
   // Board with swimlanes
   html += `<div class="board-main-grid" style="grid-template-columns:${gridCols}">`;
 
-  _AMEL_SWIMLANES.forEach(lane => {
+  swimlanes.forEach(lane => {
     const laneTickets = byLane[lane.key] || [];
     if (!laneTickets.length) return;
 
@@ -187,7 +228,7 @@ function _amelTicketCard(t) {
   const isBlocked   = t.status === 'blocked';
   const statusBadge = isBlocked ? '<span class="sc-flag-badge">⚠ Bloqué</span>' : '';
   const cat         = _amelCategory(t);
-  const lane        = _AMEL_SWIMLANES.find(s => s.key === cat);
+  const lane        = _amelSwimlanes().find(s => s.key === cat);
   const laneBadge   = lane ? `<span class="badge" style="background:${lane.color}22;color:${lane.color};font-size:10px;">${lane.icon}</span>` : '';
 
   return `<div class="ticket-card type-${t.type}${isBlocked ? ' blocked' : ''}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
