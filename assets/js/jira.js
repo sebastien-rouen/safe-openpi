@@ -1798,46 +1798,57 @@ async function _jiraFetchAmelTickets(ctx) {
   const _amelJql = `(labels in (Rétro, ActionRetro, Amélioration, postmortem, retro, retro-tech, RetroFonc, Adapt, CoP-méthodo, cop-dev, Methodo) OR summary ~ Rétro OR summary ~ Retro OR summary ~ postmortem OR summary ~ "post-mortem" OR summary ~ CoP) AND (statusCategory != Done OR resolved >= -15d)${_amelProjFilter} ORDER BY labels DESC, status DESC, Rank ASC`;
   _log(`Amélioration continue : ${_amelJql}`);
   try {
-    const _amelUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_amelJql)}&maxResults=500&fields=${ctx.fields}`;
-    const _amelRes = await _jiraFetch(_amelUrl, { headers: { Accept: 'application/json' } });
-    if (_amelRes.ok) {
-      const _amelIssues = (await _amelRes.json()).issues || [];
-      _log(`Amélioration continue : ${_amelIssues.length} tickets trouvés`);
-      _amelIssues.forEach(i => {
-        const f = i.fields;
-        const sprintRaw  = f[CONFIG.sync.sprintField];
-        const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
-        const piSprint   = _extractPISprint(sprintList);
-        const assignee = f.assignee?.displayName || '';
-        let team = '';
-        if (assignee) {
-          for (const ai of ctx.allIssues) {
-            if (ai.fields?.assignee?.displayName === assignee && ai._boardTeam) {
-              team = ai._boardTeam;
-              break;
-            }
+    // Pagination via nextPageToken (l'API JIRA Cloud limite a 100 par defaut)
+    const _amelIssues = [];
+    let amelToken = null;
+    for (let p = 0; p < 20; p++) {
+      let _amelUrl = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(_amelJql)}&maxResults=100&fields=${ctx.fields}`;
+      if (amelToken) _amelUrl += `&nextPageToken=${encodeURIComponent(amelToken)}`;
+      const _amelRes = await _jiraFetch(_amelUrl, { headers: { Accept: 'application/json' } });
+      if (!_amelRes.ok) {
+        if (p === 0) _warn(`Amélioration continue : HTTP ${_amelRes.status}`);
+        break;
+      }
+      const _amelBody = await _amelRes.json();
+      const page = _amelBody.issues || [];
+      _amelIssues.push(...page);
+      if (_amelBody.isLast !== false || !page.length) break;
+      amelToken = _amelBody.nextPageToken;
+      if (!amelToken) break;
+    }
+    _log(`Amélioration continue : ${_amelIssues.length} tickets trouvés`);
+    _amelIssues.forEach(i => {
+      const f = i.fields;
+      const sprintRaw  = f[CONFIG.sync.sprintField];
+      const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
+      const piSprint   = _extractPISprint(sprintList);
+      const assignee = f.assignee?.displayName || '';
+      let team = '';
+      if (assignee) {
+        for (const ai of ctx.allIssues) {
+          if (ai.fields?.assignee?.displayName === assignee && ai._boardTeam) {
+            team = ai._boardTeam;
+            break;
           }
         }
-        _ameliorationList.push({
-          id:          i.key,
-          title:       f.summary || '',
-          status:      _mapStatus(f.status?.name),
-          _jiraStatus: f.status?.name || '',
-          labels:      (f.labels || []).map(l => l.toLowerCase()),
-          assignee:    assignee,
-          points:      _getPoints(f),
-          team:        team,
-          type:        _mapType(f.issuetype?.name),
-          priority:    _mapPriority(f.priority?.name),
-          piSprint:    piSprint?.name || '',
-          dueDate:     f.duedate || f.customfield_10015 || null,
-          epic:        _getEpicKey(f) || '',
-          description: _extractDescription(f.description),
-        });
+      }
+      _ameliorationList.push({
+        id:          i.key,
+        title:       f.summary || '',
+        status:      _mapStatus(f.status?.name),
+        _jiraStatus: f.status?.name || '',
+        labels:      (f.labels || []).map(l => l.toLowerCase()),
+        assignee:    assignee,
+        points:      _getPoints(f),
+        team:        team,
+        type:        _mapType(f.issuetype?.name),
+        priority:    _mapPriority(f.priority?.name),
+        piSprint:    piSprint?.name || '',
+        dueDate:     f.duedate || f.customfield_10015 || null,
+        epic:        _getEpicKey(f) || '',
+        description: _extractDescription(f.description),
       });
-    } else {
-      _warn(`Amélioration continue : HTTP ${_amelRes.status}`);
-    }
+    });
   } catch (e) {
     _warn('Amélioration continue :', e.message);
   }
