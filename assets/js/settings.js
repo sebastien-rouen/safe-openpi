@@ -1493,18 +1493,15 @@ function renderSettings() {
       ${_sectionHeader('rotation', '🔄', 'Rotation Support', '')}
       ${!_settingsCollapsed['rotation'] ? (() => {
         const wi0 = _rotWeekInfos();
-        const currentPiNum = wi0._piNum || '?';
-        // Selecteur PI base sur _piListAll() (meme source que piprep/roadmap)
-        const allPIs = typeof _piListAll === 'function' ? _piListAll() : [];
-        const piOptions = allPIs.map(p => {
-          const suffix = p.isCurrent ? ' (actuel)' : p.isFuture ? ' (futur)' : '';
-          const selected = p.num === String(currentPiNum) ? ' selected' : '';
-          return `<option value="${p.num}"${selected}>PI${p.num}${suffix}</option>`;
-        }).join('');
+        const currentPiNum = String(wi0._piNum || '');
+        // Selecteur PI : meme source unique que piprep/roadmap (utils.js)
+        const piOptions = typeof _piSelectOptions === 'function'
+          ? _piSelectOptions(currentPiNum)
+          : `<option>PI${currentPiNum}</option>`;
         return `<div class="rot-toolbar">
         <div class="rot-pi-selector">
           <label class="rot-pi-label">PI :</label>
-          <select class="rm-pi-select" onchange="_rotSelectPI(this.value)">${piOptions || `<option>PI${currentPiNum}</option>`}</select>
+          <select class="rm-pi-select" onchange="_rotSelectPI(this.value)">${piOptions}</select>
         </div>
         <div class="rot-group-selector">
           ${GROUPS.filter(g => g.teams.length > 1).map(g => {
