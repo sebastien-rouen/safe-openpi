@@ -109,6 +109,12 @@ function _supSave() {
   _supFile.rotation = _supportRotation;
   _supFile.extraMembers = _rotExtraMembers;
   _supFile.hiddenMembers = _rotHiddenMembers;
+  // Backup local : conserver les 5 derniers etats dans localStorage (rotation backup ring)
+  try {
+    const backups = JSON.parse(localStorage.getItem('supports_backups') || '[]');
+    backups.unshift({ ts: Date.now(), data: _supFile });
+    localStorage.setItem('supports_backups', JSON.stringify(backups.slice(0, 5)));
+  } catch (e) { /* localStorage plein, on ignore */ }
   clearTimeout(_supSaveTimer);
   _supSaveTimer = setTimeout(() => {
     fetch('/data/supports.json', {
@@ -121,6 +127,32 @@ function _supSave() {
     });
   }, 300);
 }
+
+// Restaurer un backup localStorage (utilitaire console : _supRestoreBackup(0))
+window._supRestoreBackup = function(idx = 0) {
+  const backups = JSON.parse(localStorage.getItem('supports_backups') || '[]');
+  if (!backups[idx]) { console.warn('Aucun backup a l\'index', idx, '— max:', backups.length - 1); return; }
+  const b = backups[idx];
+  console.log('Restauration backup du', new Date(b.ts).toLocaleString('fr-FR'));
+  _supFile = b.data;
+  _supportRotation = _supFile.rotation || {};
+  _rotExtraMembers = _supFile.extraMembers || {};
+  _rotHiddenMembers = _supFile.hiddenMembers || {};
+  // Sauvegarder sur disque
+  fetch('/data/supports.json', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(_supFile, null, 2),
+  }).then(() => {
+    if (typeof showToast === 'function') showToast(`✅ Backup #${idx} restauré (${new Date(b.ts).toLocaleString('fr-FR')})`, 'success');
+    if (typeof renderSettings === 'function') renderSettings();
+  });
+};
+window._supListBackups = function() {
+  const backups = JSON.parse(localStorage.getItem('supports_backups') || '[]');
+  console.table(backups.map((b, i) => ({ idx: i, date: new Date(b.ts).toLocaleString('fr-FR'), teams: Object.keys(b.data?.rotation || {}).length })));
+  return backups.length;
+};
 
 async function _supLoad() {
   if (_supLoaded) return;
@@ -419,8 +451,25 @@ function _rotSetMembersPerWeek(team, n) {
 function _rotSetWeekMode(team, mode) {
   const k = _rotTeamKey(team);
   if (!_supportRotation[k]) _supportRotation[k] = { membersPerWeek: 3, weeks: {} };
-  _supportRotation[k].weekMode = mode; // 'monday' | 'friday' | 'wednesday'
-  _supportRotation[k].weeks = {};      // reset assignments — week boundaries changed
+  const cur = _supportRotation[k];
+  // Si meme mode, ne rien faire
+  if ((cur.weekMode || 'friday') === mode) return;
+  // Si des assignations existent, demander confirmation avant de les effacer
+  const hasAssignments = cur.weeks && Object.values(cur.weeks).some(arr => Array.isArray(arr) && arr.length > 0);
+  if (hasAssignments) {
+    const teamName = CONFIG.teams[team]?.name || team;
+    const confirmed = confirm(
+      `⚠ Changer le mode de semaine pour "${teamName}" va EFFACER toutes les assignations actuelles ` +
+      `(les bornes de semaine changent).\n\nContinuer ?`
+    );
+    if (!confirmed) {
+      // Re-render pour remettre l'ancien bouton actif visuellement
+      _rotRefreshTeam(team);
+      return;
+    }
+  }
+  cur.weekMode = mode; // 'monday' | 'friday' | 'wednesday'
+  cur.weeks = {};      // reset assignments — week boundaries changed
   _saveRotation();
   _rotRefreshTeam(team);
 }
