@@ -719,6 +719,24 @@
 .rm-detail-stat-lbl { font-size: 10px; color: var(--text-muted); font-weight: 600; }
 .rm-stats-grid      { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .rm-status-bar      { display: flex; height: 10px; border-radius: 5px; overflow: hidden; margin-bottom: 6px; }
+.rm-vr-epic-desc { background: var(--info-bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.rm-vr-epic-desc:empty { display: none; }
+.rm-vr-epic-desc-empty { color: var(--text-muted); font-size: 12px; font-style: italic; text-align: center; padding: 8px; }
+.rm-vr-epic-desc-header { display: flex; align-items: center; gap: 6px; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.rm-vr-epic-desc-icon { font-size: 13px; }
+.rm-vr-epic-desc-label { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
+.rm-vr-epic-desc-body { font-size: 13px; color: var(--text); line-height: 1.55; word-wrap: break-word; }
+.rm-vr-epic-desc-body p { margin: 0 0 8px; }
+.rm-vr-epic-desc-body p:last-child { margin-bottom: 0; }
+.rm-vr-epic-desc-body ul, .rm-vr-epic-desc-body ol { margin: 4px 0 8px 20px; }
+.rm-vr-epic-desc-body code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; font-family: monospace; }
+.rm-vr-epic-desc-body pre { background: var(--bg); padding: 10px 12px; border-radius: 6px; overflow-x: auto; font-size: 12px; }
+.rm-vr-epic-desc-body a { color: var(--primary); text-decoration: none; }
+.rm-vr-epic-desc-body a:hover { text-decoration: underline; }
+.rm-vr-epic-desc-body h1, .rm-vr-epic-desc-body h2, .rm-vr-epic-desc-body h3 { font-size: 14px; font-weight: 700; margin: 12px 0 6px; color: var(--text); }
+.rm-vr-epic-desc-collapsed { max-height: 110px; overflow: hidden; position: relative; mask-image: linear-gradient(to bottom, black 60%, transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%); }
+.rm-vr-epic-desc-toggle { margin-top: 8px; padding: 4px 12px; background: transparent; border: 1px solid var(--border); border-radius: 6px; color: var(--primary); font-size: 11px; font-weight: 700; cursor: pointer; transition: all .15s; }
+.rm-vr-epic-desc-toggle:hover { background: var(--info-bg); border-color: var(--primary); }
 .rm-status-legend   { display: flex; gap: 12px; font-size: 10px; color: var(--text-muted); }
 .rm-legend-dot      { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 3px; vertical-align: middle; }
 .rm-pi-group-hdr    { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 2px solid var(--border); }

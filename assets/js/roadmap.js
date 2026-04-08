@@ -516,13 +516,54 @@ function _showVrEpicDetail(epicId) {
     </div>`;
   }).join('');
 
+  // Placeholder description : sera rempli async par _fetchIssueDescription
+  const descPlaceholder = `<div id="rm-vr-epic-desc" class="rm-vr-epic-desc" style="margin-bottom:20px;"></div>`;
+
   document.getElementById('modal-title').innerHTML = `${_jiraBrowse(epic.id, { style: 'color:' + color + ';font-weight:700;text-decoration:none;' })} <span style="font-weight:400;color:var(--text-muted);font-size:14px;">- ${escapeHtml((epic.title || '').slice(0, 50))}</span>`;
-  document.getElementById('modal-body').innerHTML = header + stats + statusBar + ticketSections;
+  document.getElementById('modal-body').innerHTML = header + stats + statusBar + descPlaceholder + ticketSections;
+
+  // Fetch description async (utilise _formatDescription du modal pour le rendu markdown JIRA)
+  if (typeof _fetchIssueDescription === 'function') {
+    _fetchIssueDescription(epic.id).then(desc => {
+      const el = document.getElementById('rm-vr-epic-desc');
+      if (!el) return;
+      if (!desc) {
+        el.innerHTML = '<div class="rm-vr-epic-desc-empty">📝 Aucune description JIRA</div>';
+        return;
+      }
+      const formatted = typeof _formatDescription === 'function' ? _formatDescription(desc) : escapeHtml(desc).replace(/\n/g, '<br>');
+      // Estimer si la description est longue (plus de 280 caractères de texte brut)
+      const isLong = desc.length > 280;
+      el.innerHTML = `
+        <div class="rm-vr-epic-desc-header">
+          <span class="rm-vr-epic-desc-icon">📝</span>
+          <span class="rm-vr-epic-desc-label">Description</span>
+        </div>
+        <div class="rm-vr-epic-desc-body${isLong ? ' rm-vr-epic-desc-collapsed' : ''}" id="rm-vr-epic-desc-body">${formatted}</div>
+        ${isLong ? `<button class="rm-vr-epic-desc-toggle" onclick="_toggleEpicDescription()">▼ Voir plus</button>` : ''}
+      `;
+    });
+  }
 
   window._modalTicketList = eTickets.map(t => t.id);
   window._modalCurrentIdx = 0;
   if (typeof _updateModalNavButtons === 'function') _updateModalNavButtons();
   { const _dlg = document.getElementById('modal-overlay'); if (!_dlg.open) _dlg.showModal(); }
+}
+
+// Toggle expand/collapse de la description epic dans la modale
+function _toggleEpicDescription() {
+  const body = document.getElementById('rm-vr-epic-desc-body');
+  const btn = document.querySelector('.rm-vr-epic-desc-toggle');
+  if (!body || !btn) return;
+  const expanded = !body.classList.contains('rm-vr-epic-desc-collapsed');
+  if (expanded) {
+    body.classList.add('rm-vr-epic-desc-collapsed');
+    btn.innerHTML = '▼ Voir plus';
+  } else {
+    body.classList.remove('rm-vr-epic-desc-collapsed');
+    btn.innerHTML = '▲ Voir moins';
+  }
 }
 
 async function renderRoadmap() {

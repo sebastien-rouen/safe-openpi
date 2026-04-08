@@ -514,6 +514,20 @@ function _extractComponents(fields) {
   return fields.components.map(c => c.name).filter(Boolean);
 }
 
+// Fetch description (ADF) for a single issue — called on demand from modal
+window._fetchIssueDescription = async function(issueKey) {
+  if (!CONFIG.jira?.url) return '';
+  try {
+    const r = await _jiraFetch(`${JIRA_PROXY}/api/3/issue/${encodeURIComponent(issueKey)}?fields=description,summary`);
+    if (!r.ok) return '';
+    const data = await r.json();
+    return _extractDescription(data?.fields?.description) || '';
+  } catch (e) {
+    _warn('Description fetch failed for', issueKey, e.message);
+    return '';
+  }
+};
+
 // Fetch remote (web) links for a single issue — called on demand from modal
 window._fetchRemoteLinks = async function(issueKey) {
   if (!CONFIG.jira?.url) return [];
