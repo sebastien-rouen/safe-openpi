@@ -34,6 +34,23 @@ function _chartTextColor() {
   return document.documentElement.getAttribute('data-theme') === 'dark' ? '#CBD5E1' : '#666';
 }
 
+// ---- Helper : mettre a jour le titre d'un chart-card en preservant le bouton plein ecran ----
+function _setChartTitle(titleEl, newText, canvasId, fsTitle) {
+  const btn = titleEl.querySelector('.chart-fs-btn');
+  // Reconstruire le contenu : texte + bouton preserve (ou recree si absent)
+  titleEl.textContent = newText;
+  if (btn) {
+    titleEl.appendChild(btn);
+  } else if (canvasId) {
+    const newBtn = document.createElement('button');
+    newBtn.className = 'chart-fs-btn';
+    newBtn.setAttribute('onclick', `_chartFullscreen('${canvasId}','${(fsTitle || newText).replace(/'/g, "\\'")}')`);
+    newBtn.setAttribute('title', 'Plein écran');
+    newBtn.textContent = '⛶';
+    titleEl.appendChild(newBtn);
+  }
+}
+
 // ---- Mode plein ecran pour un chart ----
 let _fsChart = null;
 window._chartFullscreen = function(canvasId, title) {
@@ -487,7 +504,7 @@ function _buildBurndown() {
   const labels = dayInfo.map(d => d.label);
 
   const titleEl = document.querySelector('#burndownChart')?.closest('.chart-card')?.querySelector('.chart-title');
-  if (titleEl) titleEl.textContent = chartTitle;
+  if (titleEl) _setChartTitle(titleEl, chartTitle, 'burndownChart', '📉 Burndown Chart');
 
   const idealData = Array.from({ length: days }, (_, i) =>
     Math.round(ptsTotal * (1 - i / (days - 1)))
@@ -758,7 +775,7 @@ function _buildBurnup() {
   const labels = dayInfo.map(d => d.label);
 
   const titleEl = canvas.closest('.chart-card')?.querySelector('.chart-title');
-  if (titleEl) titleEl.textContent = chartTitle;
+  if (titleEl) _setChartTitle(titleEl, chartTitle, 'burnupChart', '📈 Burnup Chart');
 
   const scopeData  = Array.from({ length: days }, () => ptsScope);
   const currentDay = isHistorical ? days - 1 : _sprintCurrentDay(days, _activeSprintCtx());
