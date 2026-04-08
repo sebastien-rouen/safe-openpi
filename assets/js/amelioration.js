@@ -102,6 +102,13 @@ function _toggleAmelLane(key) { _amelLaneCollapsed[key] = !_amelLaneCollapsed[ke
 // ----- Filtrage des tickets -----
 function _amelFilterTickets(all) {
   let result = all;
+  // Filtre PI : si un PI est selectionne, ne garder que les tickets ayant le label pi{N}
+  // (cela rend les KPIs et compteurs reactifs au PI selectionne)
+  const piNum = _amelGetPI();
+  if (piNum) {
+    const piLabel = `pi${piNum}`;
+    result = result.filter(t => (t.labels || []).some(l => String(l).toLowerCase() === piLabel));
+  }
   if (_amelFilter === 'blocked')    result = result.filter(t => t.status === 'blocked');
   if (_amelFilter === 'unassigned') result = result.filter(t => !t.assignee && !isDone(t.status));
   if (_amelFilter === 'critical')   result = result.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status));
@@ -157,11 +164,16 @@ function renderAmelioration() {
   // Tickets apres filtres
   const tickets = _amelFilterTickets(allTickets);
 
-  // Compteurs des filtres rapides (calcules sur allTickets pour ne pas s'auto-influencer)
-  const cntBlocked    = allTickets.filter(t => t.status === 'blocked').length;
-  const cntUnassigned = allTickets.filter(t => !t.assignee && !isDone(t.status)).length;
-  const cntCritical   = allTickets.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status)).length;
-  const cntStale      = allTickets.filter(t => { const a = _amelAgeDays(t); return a != null && a >= 60 && !isDone(t.status); }).length;
+  // Pool pour compteurs filtres rapides : applique le filtre PI mais pas les autres filtres
+  // (pour ne pas s'auto-influencer entre filtres rapides, mais rester reactif au PI)
+  const piNumForFilter = _amelGetPI();
+  const ticketsForCounts = piNumForFilter
+    ? allTickets.filter(t => (t.labels || []).some(l => String(l).toLowerCase() === `pi${piNumForFilter}`))
+    : allTickets;
+  const cntBlocked    = ticketsForCounts.filter(t => t.status === 'blocked').length;
+  const cntUnassigned = ticketsForCounts.filter(t => !t.assignee && !isDone(t.status)).length;
+  const cntCritical   = ticketsForCounts.filter(t => (t.priority === 'critical' || t.priority === 'high') && !isDone(t.status)).length;
+  const cntStale      = ticketsForCounts.filter(t => { const a = _amelAgeDays(t); return a != null && a >= 60 && !isDone(t.status); }).length;
 
   // Liste des equipes presentes
   const allTeamsInTickets = [...new Set(allTickets.map(t => t.team).filter(Boolean))].sort();
@@ -209,10 +221,10 @@ function renderAmelioration() {
     else byLane['retro'].push(t);
   });
 
-  // Stats par swimlane (sur allTickets pour le contexte global)
+  // Stats par swimlane (sur ticketsForCounts : filtre PI applique mais pas filtres rapides)
   const laneStats = {};
   swimlanes.forEach(s => {
-    const laneAll = allTickets.filter(t => _amelCategory(t) === s.key);
+    const laneAll = ticketsForCounts.filter(t => _amelCategory(t) === s.key);
     const laneDone = laneAll.filter(t => isDone(t.status));
     const lanePts = laneAll.reduce((a, t) => a + (t.points || 0), 0);
     const laneDonePts = laneDone.reduce((a, t) => a + (t.points || 0), 0);
