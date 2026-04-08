@@ -322,17 +322,20 @@ function renderAmelioration() {
   }
 
   // ===== Sticky column headers =====
-  // Compteurs de colonne :
-  // - Si un PI est selectionne : compte uniquement les tickets de la swimlane Adapt PI{N}
-  // - Sinon : compte tous les tickets visibles toutes swimlanes
-  const colCountSource = currentPiNum ? (byLane.adapt || []) : tickets;
-  const colCountSuffix = currentPiNum ? ` <small style="opacity:.6;font-size:9px;">(Adapt)</small>` : '';
+  // Compteurs de colonne : somme des tickets affiches dans toutes les swimlanes
+  // (tous les tickets visibles dans la colonne du tableau, toutes swimlanes confondues)
+  // Pour la colonne 'done', on utilise isDone() pour matcher tous les statuts termines
+  const _matchCol = (t, col) => {
+    if (col.key === 'done') return isDone(t.status);
+    if (col.key === 'inprog') return t.status === 'inprog' || t.status === 'blocked';
+    return t.status === col.key;
+  };
   html += `<div class="amel-board">`;
   html += `<div class="board-sticky-bar" style="grid-template-columns:${gridCols}">${cols.map(col => {
-    const cnt = colCountSource.filter(t => t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')).length;
+    const cnt = tickets.filter(t => _matchCol(t, col)).length;
     const cat = statusCat(col.key);
-    return `<div class="col-header" data-cat="${cat}" title="${currentPiNum ? `Tickets dans la swimlane Adapt PI${currentPiNum}` : 'Tous les tickets visibles'}">
-      <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}${colCountSuffix}</span></div>
+    return `<div class="col-header" data-cat="${cat}" title="Total tickets visibles dans cette colonne (toutes swimlanes)">
+      <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}</span></div>
       <span class="col-count">${cnt}</span>
     </div>`;
   }).join('')}</div>`;
@@ -371,9 +374,7 @@ function renderAmelioration() {
     if (!collapsed) {
       const featIds = new Set([...FEATURES.map(f => f.id), ...EPICS.map(e => e.id)]);
       cols.forEach(col => {
-        const colTickets = laneTickets.filter(t =>
-          t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
-        );
+        const colTickets = laneTickets.filter(t => _matchCol(t, col));
         const ordered = _amelOrderTickets(colTickets, featIds);
         html += `<div class="board-col board-col-lane${!colTickets.length ? ' col-empty-state' : ''}">
           <div class="col-body">${ordered.map(o => _amelTicketCard(o.ticket, o.isChild)).join('') || '<div class="col-empty"></div>'}</div>
