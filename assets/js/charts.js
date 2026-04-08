@@ -68,6 +68,11 @@ window._chartFullscreen = function(canvasId, title) {
   };
   _fsChart = new Chart(fsCanvas.getContext('2d'), cfg);
 
+  // Installer le handler tooltip events (pour burndown/burnup)
+  if (canvasId === 'burndownChart' || canvasId === 'burnupChart') {
+    _installEventsTooltipHandler(_fsChart);
+  }
+
   // Echap pour fermer
   document.addEventListener('keydown', _fsKeyHandler);
 };
