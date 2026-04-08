@@ -360,8 +360,7 @@ window._selectMetricsSprint = function(idx) {
 
 function _buildBurndown() {
   const days   = CONFIG.sprint.durationDays || 14;
-  const dayInfo = _sprintDayInfo(days, _activeSprintCtx());
-  const labels = dayInfo.map(d => d.label);
+  let sprintCtxForDates = _activeSprintCtx();
 
   let ptsTotal, ptsDone, ticketsTotal, ticketsDone, chartTitle, isHistorical = false;
 
@@ -372,10 +371,21 @@ function _buildBurndown() {
     const teamEntries = activeTeams.map(tid => CONFIG.teams[tid]).filter(tc => tc && Array.isArray(tc.velocityHistory));
     ptsDone = 0;
     let sprintName = null;
+    let histStartDate = null;
+    let histEndDate = null;
     teamEntries.forEach(tc => {
       const e = tc.velocityHistory[_metricsSprintIdx];
-      if (e) { ptsDone += e.velocity || 0; if (!sprintName) sprintName = e.name; }
+      if (e) {
+        ptsDone += e.velocity || 0;
+        if (!sprintName) sprintName = e.name;
+        if (!histStartDate && e.startDate) histStartDate = e.startDate;
+        if (!histEndDate && e.endDate) histEndDate = e.endDate;
+      }
     });
+    // Utiliser les dates reelles du sprint historique (pour le plugin events)
+    if (histStartDate) {
+      sprintCtxForDates = { startDateISO: histStartDate, startDate: histStartDate, endDate: histEndDate };
+    }
     ptsTotal     = ptsDone;
     ticketsTotal = 0;
     ticketsDone  = 0;
@@ -389,6 +399,10 @@ function _buildBurndown() {
     ticketsDone  = tickets.filter(t => isDone(t.status)).length;
     chartTitle   = '📉 Burndown Chart';
   }
+
+  // dayInfo calcule apres le bloc historique pour utiliser les bonnes dates
+  const dayInfo = _sprintDayInfo(days, sprintCtxForDates);
+  const labels = dayInfo.map(d => d.label);
 
   const titleEl = document.querySelector('#burndownChart')?.closest('.chart-card')?.querySelector('.chart-title');
   if (titleEl) titleEl.textContent = chartTitle;
@@ -622,8 +636,7 @@ function _buildBurnup() {
   if (!canvas) return;
 
   const days   = CONFIG.sprint.durationDays || 14;
-  const dayInfo = _sprintDayInfo(days, _activeSprintCtx());
-  const labels = dayInfo.map(d => d.label);
+  let sprintCtxForDates = _activeSprintCtx();
 
   let ptsScope, ptsDone, isHistorical = false, chartTitle;
 
@@ -633,10 +646,20 @@ function _buildBurnup() {
     const teamEntries = activeTeams.map(tid => CONFIG.teams[tid]).filter(tc => tc && Array.isArray(tc.velocityHistory));
     ptsDone = 0;
     let sprintName = null;
+    let histStartDate = null;
+    let histEndDate = null;
     teamEntries.forEach(tc => {
       const e = tc.velocityHistory[_metricsSprintIdx];
-      if (e) { ptsDone += e.velocity || 0; if (!sprintName) sprintName = e.name; }
+      if (e) {
+        ptsDone += e.velocity || 0;
+        if (!sprintName) sprintName = e.name;
+        if (!histStartDate && e.startDate) histStartDate = e.startDate;
+        if (!histEndDate && e.endDate) histEndDate = e.endDate;
+      }
     });
+    if (histStartDate) {
+      sprintCtxForDates = { startDateISO: histStartDate, startDate: histStartDate, endDate: histEndDate };
+    }
     ptsScope   = ptsDone;
     chartTitle = `📈 Burnup Chart · ${ptsDone} pts réalisés`;
   } else {
@@ -646,6 +669,10 @@ function _buildBurnup() {
     ptsDone    = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
     chartTitle = '📈 Burnup Chart';
   }
+
+  // dayInfo calcule apres le bloc historique pour utiliser les bonnes dates
+  const dayInfo = _sprintDayInfo(days, sprintCtxForDates);
+  const labels = dayInfo.map(d => d.label);
 
   const titleEl = canvas.closest('.chart-card')?.querySelector('.chart-title');
   if (titleEl) titleEl.textContent = chartTitle;
