@@ -172,6 +172,8 @@
 .swimlane-icon { font-size: 10px; }
 .swimlane-title { font-size: 13px; font-weight: 700; color: var(--text); }
 .swimlane-hint { font-size: 10px; color: var(--text-muted); margin-left: auto; font-style: italic; }
+.swimlane-info { font-size: 11px; opacity: .6; cursor: help; margin-left: 6px; }
+.swimlane-info:hover { opacity: 1; }
 
 /* Swimlane columns — inside main grid, subtle tinted background */
 .board-col-lane { border-radius: 0; border-top: none; min-width: 0; max-width: none; }

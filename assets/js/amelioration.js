@@ -40,11 +40,16 @@ function _amelCategory(t) {
 function _amelSwimlanes() {
   const piNum = _amelGetPI();
   const adaptLabel = piNum ? `Adapt PI${piNum}` : 'Adapt';
+  const adaptTooltip = `Tickets avec label : "Adapt", "Amélioration"${piNum ? `, ou "PI${piNum}"` : ''}`;
   return [
-    { key: 'adapt',      label: adaptLabel,         icon: '🎯', color: '#0891B2' },
-    { key: 'retro',      label: 'Rétrospective',    icon: '🔄', color: '#2563EB' },
-    { key: 'postmortem', label: 'Post-Mortem',       icon: '🔍', color: '#EF4444' },
-    { key: 'cop',        label: 'CoP Méthodo',       icon: '🤝', color: '#8B5CF6' },
+    { key: 'adapt',      label: adaptLabel,         icon: '🎯', color: '#0891B2',
+      tooltip: adaptTooltip },
+    { key: 'retro',      label: 'Rétrospective',    icon: '🔄', color: '#2563EB',
+      tooltip: 'Tickets sans autre catégorie (défaut)' },
+    { key: 'postmortem', label: 'Post-Mortem',       icon: '🔍', color: '#EF4444',
+      tooltip: 'Tickets avec label "postmortem" ou titre contenant "post-mortem"' },
+    { key: 'cop',        label: 'CoP Méthodo',       icon: '🤝', color: '#8B5CF6',
+      tooltip: 'Tickets avec label "cop-méthodo", "cop-dev", "methodo" ou titre contenant "cop"' },
   ];
 }
 
@@ -180,12 +185,14 @@ function renderAmelioration() {
     const arrow = collapsed ? '▶' : '▼';
     const openCnt = laneTickets.filter(t => !isDone(t.status)).length;
 
-    html += `<div class="board-lane-header amel-lane-sticky" onclick="_toggleAmelLane('${lane.key}')" style="grid-column:1/-1;">
+    const laneTip = lane.tooltip ? escapeHtml(lane.tooltip) : '';
+    html += `<div class="board-lane-header amel-lane-sticky" onclick="_toggleAmelLane('${lane.key}')" title="${laneTip}" style="grid-column:1/-1;">
       <span class="swimlane-arrow">${arrow}</span>
       <span class="swimlane-icon" style="color:${lane.color};">●</span>
       <span class="swimlane-title">${lane.icon} ${lane.label}</span>
       <span class="col-count">${laneTickets.length}</span>
       <span class="swimlane-hint">${openCnt} ouvert${openCnt > 1 ? 's' : ''}</span>
+      ${lane.tooltip ? `<span class="swimlane-info" title="${laneTip}">ℹ️</span>` : ''}
     </div>`;
 
     if (!collapsed) {
