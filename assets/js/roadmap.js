@@ -1117,19 +1117,17 @@ function _toggleCapTickets(mode) {
   };
 
   // Group tickets by sprint
+  // Important : ne PAS utiliser teamSprintName/configLabel comme fallback,
+  // sinon tous les tickets sans sprint propre se retrouvent dans le sprint actif
+  // de l'equipe (ce qui gonfle artificiellement le compteur).
   const _sprintKey = (t) => {
-    // Also check CONFIG sprint label and team sprint names for the PI pattern
-    const teamSprintName = t.team ? (CONFIG.teams[t.team]?.sprintName || '') : '';
-    const configLabel = CONFIG.sprint?.label || '';
-    const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || '', teamSprintName, configLabel];
+    const sources = [t.sprintName, ...(t.allSprints || []), t.piSprint || ''];
     for (const s of sources) {
       if (!s) continue;
       const m = s.match(/(\d{2,3}\.\d+)/);
       if (m) return m[1];
     }
-    // Fallback: use sprint name or CONFIG label
     if (t.sprintName) return t.sprintName;
-    if (t.sprint) return configLabel || 'Sprint actif';
     return 'Non planifié';
   };
   const bySprint = {};
