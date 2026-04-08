@@ -118,14 +118,30 @@ function _sprintDayInfo(days, sprint) {
   });
 }
 
+// Tooltip HTML partage pour les events de tous les charts
+function _getEventsTooltipEl() {
+  let el = document.getElementById('chart-events-tooltip');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'chart-events-tooltip';
+    el.className = 'chart-events-tooltip';
+    el.style.display = 'none';
+    document.body.appendChild(el);
+  }
+  return el;
+}
+
 // Plugin Chart.js : dessine les faits marquants (events) comme markers verticaux
+// + gere tooltips HTML au survol via hitboxes
 // opts.info = [{ label, date, isOff, holiday }] pour chaque jour du chart
-// opts.events = array de { type, startDate, endDate, title, ... }
+// opts.events = array de { type, startDate, endDate, title, description, ... }
 const _eventsPlugin = {
   id: 'sprintEvents',
   afterDatasetsDraw(chart, args, opts) {
     const info = opts?.info;
     const events = opts?.events;
+    // Reset hitboxes a chaque render
+    chart.$eventHitboxes = [];
     if (!info || !info.length || !events || !events.length) return;
     const { ctx, chartArea, scales: { x } } = chart;
     if (!chartArea || !x) return;
@@ -141,25 +157,22 @@ const _eventsPlugin = {
     const typeIcons = {
       incident: '💥', freeze: '🧊', milestone: '🚩', period: '📅', other: 'ℹ️',
     };
+    const typeLabels = {
+      incident: 'Incident', freeze: 'Gel', milestone: 'Jalon', period: 'Période', other: 'Info',
+    };
 
     // Bornes du sprint (iso dates)
     const sprintFirstDay = info[0]?.date ? info[0].date.toISOString().slice(0, 10) : null;
     const sprintLastDay  = info[info.length - 1]?.date ? info[info.length - 1].date.toISOString().slice(0, 10) : null;
 
-    // Pour chaque event : verifier qu'il chevauche bien le sprint, puis trouver les indices
     events.forEach(ev => {
       const evStart = String(ev.startDate || ev.date || '').slice(0, 10);
       const evEnd   = String(ev.endDate   || ev.date || evStart).slice(0, 10);
       if (!evStart || !sprintFirstDay || !sprintLastDay) return;
-
-      // Filtre : l'event doit chevaucher le sprint
-      // (evStart <= sprintLastDay) ET (evEnd >= sprintFirstDay)
       if (evStart > sprintLastDay || evEnd < sprintFirstDay) return;
 
-      // Premier jour du sprint dont la date >= evStart (clampe a 0)
       let firstIdx = info.findIndex(d => d.date && d.date.toISOString().slice(0, 10) >= evStart);
       if (firstIdx === -1) firstIdx = 0;
-      // Dernier jour du sprint dont la date <= evEnd
       let lastIdx = firstIdx;
       for (let i = firstIdx; i < info.length; i++) {
         const iso = info[i].date ? info[i].date.toISOString().slice(0, 10) : '';
@@ -173,7 +186,7 @@ const _eventsPlugin = {
       const xEnd   = x.getPixelForValue(lastIdx);
 
       ctx.save();
-      // Zone : bande verticale translucide (pour les periodes)
+      // Zone periodique
       if (firstIdx !== lastIdx) {
         const step = info.length > 1 ? (x.getPixelForValue(1) - x.getPixelForValue(0)) : 0;
         const left = xStart - step / 2;
@@ -187,7 +200,7 @@ const _eventsPlugin = {
         );
       }
 
-      // Ligne verticale sur le jour de debut
+      // Ligne verticale
       ctx.strokeStyle = color;
       ctx.lineWidth = 2;
       ctx.setLineDash([4, 3]);
@@ -197,26 +210,90 @@ const _eventsPlugin = {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Marker emoji en haut de la ligne
+      // Badge emoji
       ctx.font = '14px sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
-      // Fond blanc pour visibilite
-      const textMetrics = ctx.measureText(icon);
-      const bgW = Math.max(22, textMetrics.width + 8);
+      const bgW = 22;
+      const bgH = 20;
+      const bgX = xStart - bgW / 2;
+      const bgY = chartArea.top + 2;
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = color;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.roundRect(xStart - bgW / 2, chartArea.top + 2, bgW, 20, 4);
+      ctx.roundRect(bgX, bgY, bgW, bgH, 4);
       ctx.fill();
       ctx.stroke();
       ctx.fillStyle = '#000';
-      ctx.fillText(icon, xStart, chartArea.top + 4);
+      ctx.fillText(icon, xStart, bgY + 2);
       ctx.restore();
+
+      // Enregistrer la hitbox (badge + ligne verticale sur toute la hauteur)
+      chart.$eventHitboxes.push({
+        x: bgX, y: bgY, w: bgW, h: bgH,
+        lineX: xStart, lineYTop: chartArea.top, lineYBottom: chartArea.bottom,
+        event: ev, color, icon, typeLabel: typeLabels[ev.type] || 'Event',
+      });
     });
   },
 };
+
+// Installer le handler mousemove sur le canvas pour detecter le survol des hitboxes
+function _installEventsTooltipHandler(chart) {
+  if (chart._eventsTooltipInstalled) return;
+  chart._eventsTooltipInstalled = true;
+  const canvas = chart.canvas;
+  const tip = _getEventsTooltipEl();
+
+  const onMove = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const hitboxes = chart.$eventHitboxes || [];
+    // 1. Check badge hover (prioritaire)
+    let found = hitboxes.find(h => mx >= h.x && mx <= h.x + h.w && my >= h.y && my <= h.y + h.h);
+    // 2. Check ligne verticale (tolerance 4px)
+    if (!found) {
+      found = hitboxes.find(h => Math.abs(mx - h.lineX) <= 4 && my >= h.lineYTop && my <= h.lineYBottom);
+    }
+    if (!found) {
+      tip.style.display = 'none';
+      canvas.style.cursor = '';
+      return;
+    }
+    const ev = found.event;
+    const fmt = d => { if (!d) return ''; const dt = new Date(d + 'T00:00:00'); return isNaN(dt) ? d : dt.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }); };
+    const dateHtml = ev.startDate && ev.endDate && ev.startDate !== ev.endDate
+      ? `${fmt(ev.startDate)} → ${fmt(ev.endDate)}`
+      : fmt(ev.startDate || ev.date);
+    const teamsLabel = ev.teams && ev.teams.length ? ev.teams.join(', ') : 'Toutes les équipes';
+    const _esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    tip.innerHTML = `
+      <div class="cet-hdr" style="border-left:3px solid ${found.color}">
+        <span class="cet-icon">${found.icon}</span>
+        <span class="cet-type" style="color:${found.color}">${found.typeLabel}</span>
+        <span class="cet-date">${_esc(dateHtml)}</span>
+      </div>
+      <div class="cet-title">${_esc(ev.title || '(sans titre)')}</div>
+      ${ev.description ? `<div class="cet-desc">${_esc(ev.description)}</div>` : ''}
+      <div class="cet-teams">🏷️ ${_esc(teamsLabel)}</div>
+    `;
+    tip.style.display = 'block';
+    // Position a droite du curseur, retombe a gauche si deborde
+    const tipRect = tip.getBoundingClientRect();
+    let left = e.clientX + 14;
+    let top  = e.clientY + 14;
+    if (left + tipRect.width + 8 > window.innerWidth) left = e.clientX - tipRect.width - 14;
+    if (top + tipRect.height + 8 > window.innerHeight) top = e.clientY - tipRect.height - 14;
+    tip.style.left = Math.max(8, left) + 'px';
+    tip.style.top  = Math.max(8, top) + 'px';
+    canvas.style.cursor = 'help';
+  };
+  const onLeave = () => { tip.style.display = 'none'; canvas.style.cursor = ''; };
+  canvas.addEventListener('mousemove', onMove);
+  canvas.addEventListener('mouseleave', onLeave);
+}
 
 // Plugin Chart.js : colore le fond des jours non ouvrables
 const _offDaysPlugin = {
@@ -528,6 +605,7 @@ function _buildBurndown() {
       },
     },
   });
+  _installEventsTooltipHandler(_burndownChart);
 }
 
 // ---- Velocity (toujours 6 colonnes : 5 historiques + sprint actuel) ----
@@ -748,6 +826,7 @@ function _buildBurnup() {
       },
     },
   });
+  _installEventsTooltipHandler(_burnupChart);
 }
 
 // ---- CFD Scrum - Flux Cumulatif Sprint (simulation) -----------
