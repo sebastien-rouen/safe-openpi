@@ -391,7 +391,7 @@ function _showVrEpicDetail(epicId) {
   if (!epic) return;
 
   const eTickets = allPool.filter(t => t.epic === epicId && (!epic.team || activeTeams.includes(t.team)));
-  if (!eTickets.length) return;
+  // NE PAS sortir si pas de tickets : on affiche quand meme l'epic + sa description
 
   const totalPts = eTickets.reduce((a, t) => a + (t.points || 0), 0);
   const donePts = eTickets.filter(t => isDone(t.status)).reduce((a, t) => a + (t.points || 0), 0);
@@ -487,7 +487,14 @@ function _showVrEpicDetail(epicId) {
 
   // Ticket list grouped by PI
   const piKeys = Object.keys(piGroups).sort();
-  const ticketSections = piKeys.map(piLabel => {
+  const emptyTicketsHtml = !eTickets.length
+    ? `<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px;background:var(--info-bg);border-radius:var(--radius);margin-bottom:20px;">
+        <div style="font-size:24px;margin-bottom:6px;">📭</div>
+        <div>Aucun ticket rattaché à cet epic</div>
+        <div style="font-size:11px;margin-top:4px;opacity:.7;">Cet epic n'a pas encore de stories ou tâches associées dans JIRA</div>
+      </div>`
+    : '';
+  const ticketSections = emptyTicketsHtml || piKeys.map(piLabel => {
     const tickets = piGroups[piLabel].sort((a, b) => {
       const statusOrder = { blocked: 0, inprog: 1, review: 1, todo: 2, backlog: 3, done: 4 };
       return (statusOrder[a.status] ?? 2) - (statusOrder[b.status] ?? 2) || (b.points || 0) - (a.points || 0);
