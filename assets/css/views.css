@@ -1124,12 +1124,65 @@
 .pi-empty-desc     { font-size: 11px; color: var(--text-muted); line-height: 1.5; max-width: 380px; margin: 0 auto; }
 
 /* ===== AMÉLIORATION CONTINUE ===== */
+/* Top bar : selecteur PI + tri + masquer terminés */
+.amel-topbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; padding: 10px 14px; background: var(--info-bg); border: 1px solid var(--border); border-radius: var(--radius); }
+.amel-pi-selector, .amel-groupby { display: flex; align-items: center; gap: 8px; }
+.amel-pi-label { font-size: 12px; font-weight: 700; color: var(--text); }
+.amel-pi-selector .rm-pi-select, .amel-groupby .rm-pi-select { min-width: 150px; }
+.amel-hide-done { margin-left: auto; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; transition: all .15s; }
+.amel-hide-done:hover { border-color: var(--primary); color: var(--primary); }
+.amel-hide-done.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+
+/* Filtres rapides */
+.amel-quick-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; align-items: center; }
+.amel-quick-filters .sqf-input { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; min-width: 200px; }
+.amel-quick-filters .sqf-select { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--border); background: var(--surface); color: var(--text); font-size: 12px; font-weight: 600; cursor: pointer; }
+.amel-quick-filters .sqf-select.active { border-color: var(--primary); color: var(--primary); }
+
+/* KPI par swimlane */
+.amel-swimlane-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin-bottom: 16px; }
+.amel-sl-kpi { display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.amel-sl-kpi-icon { font-size: 14px; flex-shrink: 0; }
+.amel-sl-kpi-name { font-size: 12px; font-weight: 700; color: var(--text); flex-shrink: 0; }
+.amel-sl-kpi-val { font-size: 11px; color: var(--text-muted); font-weight: 600; flex-shrink: 0; }
+.amel-sl-kpi-bar { flex: 1; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; min-width: 30px; }
+.amel-sl-kpi-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.amel-sl-kpi-pct { font-size: 11px; font-weight: 700; min-width: 32px; text-align: right; }
+
+/* PI Burnup mini chart */
+.amel-burnup { padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); margin-bottom: 16px; }
+.amel-burnup-title { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 10px; }
+.amel-burnup-chart { display: flex; gap: 12px; align-items: flex-end; padding: 0 4px; }
+.amel-burnup-col { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; min-width: 40px; }
+.amel-burnup-bar-wrap { position: relative; width: 24px; display: flex; align-items: flex-end; }
+.amel-burnup-bar-total { position: absolute; bottom: 0; width: 100%; background: var(--border); border-radius: 3px 3px 0 0; }
+.amel-burnup-bar-done { position: relative; width: 100%; background: var(--success); border-radius: 3px 3px 0 0; transition: height .3s; }
+.amel-burnup-label { font-size: 10px; color: var(--text-muted); font-weight: 700; }
+.amel-burnup-val { font-size: 9px; color: var(--text-muted); }
+
+/* Swimlane header avec mini progress */
+.amel-lane-progress { flex: 0 0 80px; height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-left: 12px; }
+.amel-lane-progress-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+.amel-lane-pct { font-size: 11px; font-weight: 700; min-width: 36px; text-align: right; }
+.amel-lane-jira { margin-left: 8px; font-size: 14px; text-decoration: none; opacity: .65; transition: opacity .15s; }
+.amel-lane-jira:hover { opacity: 1; }
+
+/* Hierarchie parent/enfant */
 .amel-child-card { margin-left: 18px; position: relative; border-left: 3px solid var(--primary); }
 .amel-child-card::before { content: ''; position: absolute; left: -12px; top: 50%; width: 9px; height: 1px; background: var(--border); }
 .amel-child-arrow { color: var(--text-muted); font-size: 11px; margin-right: 4px; }
-.amel-pi-selector { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; padding: 8px 14px; background: var(--info-bg); border: 1px solid var(--border); border-radius: var(--radius); }
-.amel-pi-label { font-size: 12px; font-weight: 700; color: var(--text); }
-.amel-pi-selector .rm-pi-select { min-width: 160px; }
+
+/* Carte ticket : badges et indicateurs */
+.amel-card-right { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.amel-age { display: inline-block; font-size: 9px; padding: 1px 5px; border-radius: 4px; font-weight: 700; }
+.amel-age-fresh { background: rgba(16,163,74,.12); color: var(--success); }
+.amel-age-warm  { background: rgba(245,158,11,.12); color: var(--warning); }
+.amel-age-stale { background: rgba(220,38,38,.15); color: var(--danger); }
+.amel-source { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 4px; font-size: 10px; cursor: help; }
+.amel-due { display: inline-flex; align-items: center; gap: 3px; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; white-space: nowrap; }
+.amel-due-ok      { background: var(--info-bg); color: var(--text-muted); }
+.amel-due-soon    { background: var(--warning-bg); color: var(--warning-fg); }
+.amel-due-overdue { background: var(--danger-bg); color: var(--danger-fg); }
 .amel-kpi-bar      { display: flex; gap: 0; margin-bottom: 20px; border-radius: 12px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); border: 1px solid var(--border); }
 .amel-kpi          { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 14px 12px; background: var(--surface); border-right: 1px solid var(--border); position: relative; min-width: 0; }
 .amel-kpi:last-child { border-right: none; }
