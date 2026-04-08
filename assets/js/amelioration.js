@@ -2,18 +2,28 @@
 // AMELIORATION CONTINUE - Board rétro / post-mortem / CoP
 // ============================================================
 
-// PI selectionne (null = PI courant detecte automatiquement)
-let _amelPI = null;
+// PI selectionne :
+// - undefined = pas encore initialise → fallback sur PI detecte
+// - '' (string vide) = explicitement "tous les PI" (pas de filtre PI)
+// - '29', '28'… = PI choisi
+let _amelPI;
 
-// Retourne le numero de PI effectif (selectionne ou courant detecte)
+// Retourne le numero de PI effectif (string vide = pas de filtre)
 function _amelGetPI() {
+  if (_amelPI === '') return null; // explicitement "tous"
   if (_amelPI) return String(_amelPI);
+  // Premiere fois : auto-detect
   if (typeof _ppDetectPI === 'function') {
     const detected = _ppDetectPI();
     const m = (detected || '').match(/\d+/);
     if (m) return m[0];
   }
   return null;
+}
+
+function _amelSelectPI(piNum) {
+  _amelPI = piNum; // peut etre '' (tous), '29', etc.
+  renderAmelioration();
 }
 
 // Swimlane categorization based on labels/summary
@@ -62,11 +72,6 @@ let _amelLaneCollapsed = {};
 
 function _toggleAmelLane(key) {
   _amelLaneCollapsed[key] = !_amelLaneCollapsed[key];
-  renderAmelioration();
-}
-
-function _amelSelectPI(piNum) {
-  _amelPI = piNum || null;
   renderAmelioration();
 }
 
@@ -201,12 +206,28 @@ function renderAmelioration() {
     </div>`;
 
     if (!collapsed) {
+      // Index des features/epics presentes dans cette swimlane (pour grouper enfants sous parent)
+      const featIds = new Set([...FEATURES.map(f => f.id), ...EPICS.map(e => e.id)]);
+      const ticketIdsInLane = new Set(laneTickets.map(t => t.id));
       cols.forEach(col => {
         const colTickets = laneTickets.filter(t =>
           t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')
         );
+        // Tri hierarchique : parents (features/epics dans cette colonne) en premier,
+        // chaque parent suivi de ses enfants. Les orphelins en dernier.
+        const parents = colTickets.filter(t => featIds.has(t.id));
+        const parentIds = new Set(parents.map(p => p.id));
+        const orphans = colTickets.filter(t => !parentIds.has(t.id) && (!t.epic || !parentIds.has(t.epic)));
+        const ordered = [];
+        parents.forEach(p => {
+          ordered.push({ ticket: p, isChild: false });
+          colTickets
+            .filter(c => c.epic === p.id && !parentIds.has(c.id))
+            .forEach(c => ordered.push({ ticket: c, isChild: true, parentId: p.id }));
+        });
+        orphans.forEach(o => ordered.push({ ticket: o, isChild: false }));
         html += `<div class="board-col board-col-lane${!colTickets.length ? ' col-empty-state' : ''}">
-          <div class="col-body">${colTickets.map(t => _amelTicketCard(t)).join('') || '<div class="col-empty"></div>'}</div>
+          <div class="col-body">${ordered.map(o => _amelTicketCard(o.ticket, o.isChild)).join('') || '<div class="col-empty"></div>'}</div>
         </div>`;
       });
     }
@@ -234,7 +255,7 @@ function renderAmelioration() {
   }
 }
 
-function _amelTicketCard(t) {
+function _amelTicketCard(t, isChild = false) {
   const epic        = EPICS.find(e => e.id === t.epic);
   const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
   const isBlocked   = t.status === 'blocked';
@@ -242,10 +263,11 @@ function _amelTicketCard(t) {
   const cat         = _amelCategory(t);
   const lane        = _amelSwimlanes().find(s => s.key === cat);
   const laneBadge   = lane ? `<span class="badge" style="background:${lane.color}22;color:${lane.color};font-size:10px;">${lane.icon}</span>` : '';
+  const childCls    = isChild ? ' amel-child-card' : '';
 
-  return `<div class="ticket-card type-${t.type}${isBlocked ? ' blocked' : ''}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
+  return `<div class="ticket-card type-${t.type}${isBlocked ? ' blocked' : ''}${childCls}" onclick="openModal('${t.id}')" data-ticket-id="${t.id}">
     <div class="ticket-top">
-      <span class="ticket-prio-key">${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
+      <span class="ticket-prio-key">${isChild ? '<span class="amel-child-arrow">↳</span>' : ''}${priorityIcon(t.priority)}<span class="ticket-key">${_jiraBrowse(t.id)}</span></span>
       ${ptsBadge(t.points, {size:'small'})}
     </div>
     <div class="ticket-title">${escapeHtml(t.title)}</div>
