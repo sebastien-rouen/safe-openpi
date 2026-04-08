@@ -347,8 +347,14 @@
 <!-- SEARCH OVERLAY (Ctrl+K) -->
 <div id="search-overlay" class="search-overlay" role="search" onclick="if(event.target===this)closeSearch()" style="display:none">
   <div class="search-box">
-    <input id="search-input" class="search-input" type="text" placeholder="Rechercher un ticket, epic, section… (Ctrl+K)" oninput="_onSearchInput(this.value)" autocomplete="off">
+    <input id="search-input" class="search-input" type="text" placeholder="Rechercher… (essayez @nom · team:fuego · status:blocked · pi29 · type:bug)" oninput="_onSearchInput(this.value)" autocomplete="off">
     <div id="search-results" class="search-results" role="listbox" aria-live="polite"></div>
+    <div id="search-footer" class="search-footer">
+      <span id="search-count" class="search-count"></span>
+      <span class="search-hints">
+        <kbd>↑↓</kbd> naviguer · <kbd>Enter</kbd> ouvrir · <kbd>Ctrl+Enter</kbd> JIRA · <kbd>Esc</kbd> fermer
+      </span>
+    </div>
   </div>
 </div>
 

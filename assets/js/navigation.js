@@ -314,11 +314,27 @@ document.addEventListener('keydown', e => {
   if (_srOverlay && _srOverlay.style.display !== 'none') {
     const items = _srOverlay.querySelectorAll('.search-result-item');
     if (items.length) {
-      const active = _srOverlay.querySelector('.search-result-item.sr-active');
+      const active = _srOverlay.querySelector('.search-result-item.sr-active') || items[0];
       let idx = active ? [...items].indexOf(active) : -1;
       if (e.key === 'ArrowDown') { e.preventDefault(); idx = Math.min(idx + 1, items.length - 1); }
       else if (e.key === 'ArrowUp') { e.preventDefault(); idx = Math.max(idx - 1, 0); }
-      else if (e.key === 'Enter' && active) { e.preventDefault(); active.click(); return; }
+      else if (e.key === 'Enter' && active) {
+        e.preventDefault();
+        // Ctrl/Cmd+Enter : ouvrir dans JIRA externe
+        if (e.ctrlKey || e.metaKey) {
+          const id = active.dataset.resultId;
+          const group = active.dataset.resultGroup;
+          if ((group === 'ticket' || group === 'epic' || group === 'feature') && id) {
+            const jiraBase = (CONFIG.jira?.url || '').replace(/\/$/, '');
+            if (jiraBase && !jiraBase.includes('votre-jira')) {
+              window.open(`${jiraBase}/browse/${id}`, '_blank', 'noopener');
+              return;
+            }
+          }
+        }
+        active.click();
+        return;
+      }
       else return;
       items.forEach(i => i.classList.remove('sr-active'));
       if (items[idx]) { items[idx].classList.add('sr-active'); items[idx].scrollIntoView({ block: 'nearest' }); }
@@ -343,8 +359,11 @@ document.addEventListener('keydown', e => {
 
 // ============================================================
 // Recherche globale (Ctrl+K) & page (Ctrl+F)
+// Filtres prefixes : @nom · team:X · status:X · pi29 · type:X
 // ============================================================
 let _searchMode = 'global'; // 'global' | 'page'
+let _searchDebounceTimer = null;
+let _searchHistory = JSON.parse(localStorage.getItem('searchHistory') || '[]');
 
 function openSearch(mode) {
   _searchMode = mode || 'global';
@@ -356,7 +375,7 @@ function openSearch(mode) {
     input.value = '';
     input.placeholder = _searchMode === 'page'
       ? 'Rechercher dans cette page… (Ctrl+F)'
-      : 'Rechercher un ticket, epic, section… (Ctrl+K)';
+      : 'Rechercher… (@nom · team:fuego · status:blocked · pi29 · type:bug)';
     input.focus();
   }
   const el = document.getElementById('search-results');
@@ -364,14 +383,111 @@ function openSearch(mode) {
     if (_searchMode === 'page') {
       _renderSearchResults(_collectSections(true));
     } else {
-      el.innerHTML = '';
+      // Mode global : afficher l'historique recent ou l'aide
+      _renderSearchEmptyState();
     }
   }
+  _updateSearchCount(0, 0);
 }
 
 function closeSearch() {
   const overlay = document.getElementById('search-overlay');
   if (overlay) overlay.style.display = 'none';
+}
+
+function _updateSearchCount(shown, total) {
+  const el = document.getElementById('search-count');
+  if (!el) return;
+  if (total === 0) { el.textContent = ''; return; }
+  el.textContent = shown < total ? `${shown} affichés sur ${total}` : `${total} résultat${total > 1 ? 's' : ''}`;
+}
+
+function _renderSearchEmptyState() {
+  const el = document.getElementById('search-results');
+  if (!el) return;
+  let html = '';
+  if (_searchHistory.length) {
+    html += `<div class="search-result-group">
+      <div class="search-result-group-label">🕘 Recherches récentes</div>
+      ${_searchHistory.slice(0, 5).map(q =>
+        `<div class="search-result-item search-history-item" onclick="document.getElementById('search-input').value='${q.replace(/'/g,"\\'")}';_onSearchInput('${q.replace(/'/g,"\\'")}')">
+          <span class="sri-icon">🔍</span>
+          <span class="sri-title">${escapeHtml(q)}</span>
+        </div>`).join('')}
+    </div>`;
+  }
+  html += `<div class="search-tips">
+    <div class="search-tips-title">💡 Astuces</div>
+    <div class="search-tips-list">
+      <div><kbd>@nom</kbd> Tickets assignés à un membre</div>
+      <div><kbd>team:fuego</kbd> Tickets d'une équipe</div>
+      <div><kbd>status:blocked</kbd> Filtrer par statut</div>
+      <div><kbd>pi29</kbd> Filtrer par PI</div>
+      <div><kbd>type:bug</kbd> Filtrer par type</div>
+      <div><kbd>label:adapt</kbd> Filtrer par label JIRA</div>
+    </div>
+  </div>`;
+  el.innerHTML = html;
+}
+
+function _saveSearchHistory(q) {
+  if (!q || q.length < 3) return;
+  _searchHistory = [q, ..._searchHistory.filter(h => h !== q)].slice(0, 10);
+  try { localStorage.setItem('searchHistory', JSON.stringify(_searchHistory)); } catch (e) {}
+}
+
+// Parse query : extrait les filtres prefixes (@, team:, status:, type:, label:, pi)
+function _parseSearchQuery(q) {
+  const filters = { assignee: null, team: null, status: null, type: null, label: null, pi: null };
+  const tokens = q.split(/\s+/);
+  const remainingTokens = [];
+  tokens.forEach(tok => {
+    if (!tok) return;
+    if (tok.startsWith('@')) { filters.assignee = tok.slice(1).toLowerCase(); return; }
+    const m = tok.match(/^(team|status|type|label|pi):(.+)$/i);
+    if (m) {
+      const key = m[1].toLowerCase();
+      filters[key] = m[2].toLowerCase();
+      return;
+    }
+    const piM = tok.match(/^pi(\d+)$/i);
+    if (piM) { filters.pi = piM[1]; return; }
+    remainingTokens.push(tok);
+  });
+  return { filters, text: remainingTokens.join(' ').toLowerCase() };
+}
+
+// Score de pertinence : exact > debut de mot > inclusion
+function _matchScore(haystack, needle) {
+  if (!needle) return 0.5;
+  const h = (haystack || '').toLowerCase();
+  if (!h) return 0;
+  if (h === needle) return 100;
+  if (h.startsWith(needle)) return 80;
+  // Match au debut d'un mot
+  if (new RegExp(`\\b${needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(h)) return 60;
+  if (h.includes(needle)) return 40;
+  return 0;
+}
+
+// Surligne le terme cherche dans un texte
+function _highlightMatch(text, needle) {
+  if (!text) return '';
+  const escaped = escapeHtml(text);
+  if (!needle) return escaped;
+  const safeNeedle = needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return escaped.replace(new RegExp(`(${safeNeedle})`, 'gi'), '<mark class="sri-highlight">$1</mark>');
+}
+
+// Verifie si un ticket matche les filtres prefixes
+function _matchFilters(t, filters) {
+  if (filters.assignee && !(t.assignee || '').toLowerCase().includes(filters.assignee)) return false;
+  if (filters.team && !(t.team || '').toLowerCase().includes(filters.team)) return false;
+  if (filters.status && t.status !== filters.status) return false;
+  if (filters.type && t.type !== filters.type) return false;
+  if (filters.label && !(t.labels || []).some(l => String(l).toLowerCase().includes(filters.label))) return false;
+  if (filters.pi && !(t.labels || []).some(l => String(l).toLowerCase() === `pi${filters.pi}`)) return false;
+  return true;
 }
 
 // --- Collect navigable sections from the DOM ---
@@ -473,134 +589,304 @@ function _collectSections(currentPageOnly) {
   return results;
 }
 
-// --- Search tickets on current page (id, title, description) ---
-function _searchPageTickets(lq) {
+// --- Search tickets on current page (id, title, description, labels, comments) ---
+function _searchPageTickets(lq, filters) {
+  filters = filters || { assignee: null, team: null, status: null, type: null, label: null, pi: null };
   const tickets = typeof getTickets === 'function' ? getTickets() : (typeof TICKETS !== 'undefined' ? TICKETS : []);
   const results = [];
   tickets.forEach(t => {
-    if (results.length >= 15) return;
-    if (
-      (t.id || '').toLowerCase().includes(lq) ||
-      (t.title || '').toLowerCase().includes(lq) ||
-      (t.description || '').toLowerCase().includes(lq)
-    ) {
-      results.push({
-        group: 'ticket',
-        id: t.id,
-        title: t.title || t.id,
-        meta: t.assignee || '',
-        _pageTicket: true,
-      });
+    if (results.length >= 30) return;
+    if (!_matchFilters(t, filters)) return;
+    if (lq) {
+      const labels = (t.labels || []).map(l => String(l).toLowerCase()).join(' ');
+      const lastC = (t.lastComment?.body || '').toLowerCase();
+      const matches =
+        (t.id || '').toLowerCase().includes(lq) ||
+        (t.title || '').toLowerCase().includes(lq) ||
+        (t.description || '').toLowerCase().includes(lq) ||
+        labels.includes(lq) ||
+        lastC.includes(lq);
+      if (!matches) return;
     }
+    results.push({
+      group: 'ticket',
+      id: t.id,
+      title: t.title || t.id,
+      meta: t.assignee || '',
+      _status: t.status,
+      _statusLabel: typeof statusLabel === 'function' ? statusLabel(t.status) : t.status,
+      _points: t.points,
+      _type: typeof typeName === 'function' ? typeName(t.type) : t.type,
+      _critical: !isDone(t.status) && (t.priority === 'critical' || t.priority === 'high'),
+      _blocked: t.status === 'blocked',
+      _pageTicket: true,
+    });
   });
   return results;
 }
 
-function _renderSearchResults(results) {
+// Icones par groupe de resultat
+const _SRI_ICONS = {
+  ticket:     '🎫',
+  feature:    '📦',
+  epic:       '🏷️',
+  member:     '👤',
+  section:    '📂',
+  objective:  '🎯',
+  risk:       '⚠️',
+};
+
+// Couleurs status pour le badge
+const _SRI_STATUS_COLOR = {
+  todo: '#94A3B8', inprog: '#3B82F6', review: '#06B6D4', test: '#F59E0B',
+  done: '#10B981', blocked: '#EF4444', backlog: '#94A3B8',
+};
+
+function _renderSearchResults(results, totalBeforeLimit, query) {
   const el = document.getElementById('search-results');
   if (!el) return;
   if (!results.length) {
-    el.innerHTML = '<div class="search-empty">Aucune section trouvée</div>';
+    el.innerHTML = `<div class="search-empty">
+      <div style="font-size:24px;margin-bottom:6px;">🔎</div>
+      <div>Aucun résultat pour <strong>"${escapeHtml(query || '')}"</strong></div>
+      <div style="margin-top:8px;font-size:11px;opacity:.7;">Essayez : <kbd>@nom</kbd> · <kbd>team:fuego</kbd> · <kbd>status:blocked</kbd> · <kbd>pi29</kbd></div>
+    </div>`;
+    _updateSearchCount(0, 0);
     return;
   }
+  // Grouper par categorie : critiques en premier, puis par groupe
+  const critRes = results.filter(r => r._critical);
+  const blockedRes = results.filter(r => r._blocked && !r._critical);
+  const others = results.filter(r => !r._critical && !r._blocked);
+
   const groups = {};
-  results.forEach(r => {
+  others.forEach(r => {
     if (!groups[r.group]) groups[r.group] = [];
     groups[r.group].push(r);
   });
-  const groupLabels = { ticket: 'Tickets', epic: 'Epics', member: 'Membres', section: 'Sections' };
-  el.innerHTML = Object.entries(groups).map(([gk, items]) =>
-    `<div class="search-result-group">
-      <div class="search-result-group-label">${groupLabels[gk] || gk}</div>
-      ${items.map(item => {
-        // Escape single quotes in id for onclick
-        const safeId = (item.id || '').replace(/'/g, "\\'");
-        return `<div class="search-result-item" onclick="_searchResultClick('${item.group}','${safeId}')">
-          <span class="sri-key">${item.group === 'section' ? '§' : item.id}</span>
-          <span class="sri-title">${item.title}</span>
-          ${item.meta ? `<span class="sri-badge">${item.meta}</span>` : ''}
-        </div>`;
-      }).join('')}
-    </div>`
-  ).join('');
+  const groupLabels = {
+    ticket: '🎫 Tickets', feature: '📦 Features', epic: '🏷️ Epics',
+    member: '👤 Membres', section: '📂 Sections',
+    objective: '🎯 Objectifs PI', risk: '⚠️ Risques ROAM',
+  };
+  // Ordre des groupes
+  const groupOrder = ['section', 'ticket', 'feature', 'epic', 'objective', 'risk', 'member'];
+
+  let html = '';
+  if (critRes.length) {
+    html += `<div class="search-result-group">
+      <div class="search-result-group-label" style="color:#DC2626">🔴 Critiques (${critRes.length})</div>
+      ${critRes.map(item => _renderSearchItem(item, query)).join('')}
+    </div>`;
+  }
+  if (blockedRes.length) {
+    html += `<div class="search-result-group">
+      <div class="search-result-group-label" style="color:#EA580C">🚧 Bloqués (${blockedRes.length})</div>
+      ${blockedRes.map(item => _renderSearchItem(item, query)).join('')}
+    </div>`;
+  }
+  groupOrder.forEach(gk => {
+    if (!groups[gk]) return;
+    html += `<div class="search-result-group">
+      <div class="search-result-group-label">${groupLabels[gk] || gk} (${groups[gk].length})</div>
+      ${groups[gk].map(item => _renderSearchItem(item, query)).join('')}
+    </div>`;
+  });
+  el.innerHTML = html;
+  _updateSearchCount(results.length, totalBeforeLimit || results.length);
+}
+
+function _renderSearchItem(item, query) {
+  const safeId = (item.id || '').replace(/'/g, "\\'");
+  const icon = _SRI_ICONS[item.group] || '·';
+  const titleHtml = _highlightMatch(item.title || '', query);
+  const idHtml = item.group === 'section' ? '§' : escapeHtml(item.id || '');
+  const statusBadge = item._status
+    ? `<span class="sri-status-badge" style="background:${_SRI_STATUS_COLOR[item._status] || '#94A3B8'}22;color:${_SRI_STATUS_COLOR[item._status] || '#94A3B8'};border:1px solid ${_SRI_STATUS_COLOR[item._status] || '#94A3B8'}40">${escapeHtml(item._statusLabel || item._status)}</span>`
+    : '';
+  const ptsBadge = item._points != null ? `<span class="sri-pts">${item._points} pts</span>` : '';
+  const typeBadge = item._type ? `<span class="sri-type-badge">${escapeHtml(item._type)}</span>` : '';
+  const metaText = item.meta ? `<span class="sri-badge">${escapeHtml(item.meta)}</span>` : '';
+  return `<div class="search-result-item" data-result-id="${safeId}" data-result-group="${item.group}" onclick="_searchResultClick('${item.group}','${safeId}', event)">
+    <span class="sri-icon">${icon}</span>
+    <span class="sri-key">${idHtml}</span>
+    <span class="sri-title">${titleHtml}</span>
+    ${typeBadge}
+    ${ptsBadge}
+    ${statusBadge}
+    ${metaText}
+  </div>`;
 }
 
 window._onSearchInput = function(q) {
+  // Debounce 100ms
+  if (_searchDebounceTimer) clearTimeout(_searchDebounceTimer);
+  _searchDebounceTimer = setTimeout(() => _doSearch(q), 100);
+};
+
+function _doSearch(q) {
   const el = document.getElementById('search-results');
   if (!el) return;
 
   if (_searchMode === 'page') {
     const sections = _collectSections(true);
-    if (!q.trim()) { _renderSearchResults(sections); return; }
-    const lq = q.toLowerCase();
-    const filtered = sections.filter(s => s.title.toLowerCase().includes(lq));
-    // Also search tickets visible on current page
-    const pageTickets = _searchPageTickets(lq);
+    if (!q.trim()) { _renderSearchResults(sections, sections.length, ''); return; }
+    const { filters, text } = _parseSearchQuery(q);
+    const filtered = sections.filter(s => !text || s.title.toLowerCase().includes(text));
+    const pageTickets = _searchPageTickets(text || q.toLowerCase(), filters);
     const all = [...filtered, ...pageTickets];
-    if (!all.length) { el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + escapeHtml(q) + '"</div>'; return; }
-    _renderSearchResults(all);
+    _renderSearchResults(all, all.length, text);
     return;
   }
 
   // Global mode
-  const results = window._globalSearch(q);
-  if (!q.trim()) { el.innerHTML = ''; return; }
-  if (!results.length) {
-    el.innerHTML = '<div class="search-empty">Aucun résultat pour "' + escapeHtml(q) + '"</div>';
-    return;
-  }
-  _renderSearchResults(results);
-};
+  if (!q.trim()) { _renderSearchEmptyState(); _updateSearchCount(0, 0); return; }
+  _saveSearchHistory(q);
+  const { results, total } = window._globalSearch(q);
+  const { text } = _parseSearchQuery(q);
+  _renderSearchResults(results, total, text);
+}
 
 window._globalSearch = function(q) {
-  if (!q || !q.trim()) return [];
-  const lq = q.toLowerCase();
-  const results = [];
+  if (!q || !q.trim()) return { results: [], total: 0 };
+  const { filters, text } = _parseSearchQuery(q);
+  const lq = text;
+  const hasFilters = Object.values(filters).some(v => v !== null);
+  const all = [];
+  const LIMIT = 50;
 
-  // Search sections (across all views + static roadmap sections)
+  // Helper : score d'un ticket
+  const _ticketScore = t => {
+    if (!_matchFilters(t, filters)) return 0;
+    if (!lq && hasFilters) return 50; // filtres seuls : tout passe avec score moyen
+    let s = 0;
+    s = Math.max(s, _matchScore(t.id, lq));
+    s = Math.max(s, _matchScore(t.title, lq));
+    s = Math.max(s, _matchScore(t.assignee, lq) * 0.8);
+    // Bonus labels
+    if ((t.labels || []).some(l => String(l).toLowerCase() === lq)) s = Math.max(s, 90);
+    if ((t.labels || []).some(l => String(l).toLowerCase().includes(lq))) s = Math.max(s, 50);
+    // Bonus commentaires
+    const lastC = t.lastComment?.body || (t.comments && t.comments.length ? t.comments[t.comments.length - 1].body : '');
+    if (lastC && lastC.toLowerCase().includes(lq)) s = Math.max(s, 35);
+    return s;
+  };
+
+  const _addTicket = (t, group) => {
+    const score = _ticketScore(t);
+    if (score < 30) return;
+    all.push({
+      group: group || 'ticket',
+      id: t.id,
+      title: t.title || t.id,
+      meta: t.assignee || '',
+      _status: t.status,
+      _statusLabel: typeof statusLabel === 'function' ? statusLabel(t.status) : t.status,
+      _points: t.points,
+      _type: typeof typeName === 'function' ? typeName(t.type) : t.type,
+      _critical: !isDone(t.status) && (t.priority === 'critical' || t.priority === 'high'),
+      _blocked: t.status === 'blocked',
+      _score: score,
+    });
+  };
+
+  // 1. Sections (toujours score moyen)
   const sections = _collectSections(false);
   sections.forEach(s => {
-    if (results.length >= 20) return;
-    if (s.title.toLowerCase().includes(lq) || (s._keywords && s._keywords.toLowerCase().includes(lq))) {
-      results.push(s);
+    if (hasFilters) return; // les filtres ne s'appliquent pas aux sections
+    if (!lq) return;
+    const score = Math.max(_matchScore(s.title, lq), _matchScore(s._keywords || '', lq) * 0.7);
+    if (score >= 30) all.push({ ...s, _score: score });
+  });
+
+  // 2. Tickets actifs
+  (typeof TICKETS !== 'undefined' ? TICKETS : []).forEach(t => _addTicket(t, 'ticket'));
+
+  // 3. Backlog tickets (PI futurs)
+  (typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : []).forEach(t => _addTicket(t, 'ticket'));
+
+  // 4. Support tickets
+  (typeof SUPPORT_TICKETS !== 'undefined' ? SUPPORT_TICKETS : []).forEach(t => _addTicket(t, 'ticket'));
+
+  // 5. Amelioration tickets
+  (typeof AMELIORATION_TICKETS !== 'undefined' ? AMELIORATION_TICKETS : []).forEach(t => _addTicket(t, 'ticket'));
+
+  // 6. Inno features
+  (typeof INNO_FEATURES !== 'undefined' ? INNO_FEATURES : []).forEach(t => _addTicket(t, 'feature'));
+
+  // 7. Features PI
+  (typeof FEATURES !== 'undefined' ? FEATURES : []).forEach(f => {
+    if (hasFilters && !_matchFilters(f, filters)) return;
+    if (!lq && !hasFilters) return;
+    const score = Math.max(_matchScore(f.id, lq), _matchScore(f.title, lq));
+    if (score >= 30 || (hasFilters && !lq)) {
+      all.push({
+        group: 'feature', id: f.id, title: f.title || f.id, meta: f.team || '',
+        _status: f.status, _statusLabel: typeof statusLabel === 'function' ? statusLabel(f.status) : f.status,
+        _score: score || 50,
+      });
     }
   });
 
-  // Search TICKETS
-  (typeof TICKETS !== 'undefined' ? TICKETS : []).forEach(t => {
-    if (results.length >= 20) return;
-    if (
-      (t.id    || '').toLowerCase().includes(lq) ||
-      (t.title || '').toLowerCase().includes(lq) ||
-      (t.assignee || '').toLowerCase().includes(lq)
-    ) {
-      results.push({ group: 'ticket', id: t.id, title: t.title || t.id, meta: t.assignee || '' });
-    }
-  });
-
-  // Search EPICS
+  // 8. Epics
   (typeof EPICS !== 'undefined' ? EPICS : []).forEach(e => {
-    if (results.length >= 20) return;
-    if (
-      (e.id    || '').toLowerCase().includes(lq) ||
-      (e.title || '').toLowerCase().includes(lq)
-    ) {
-      results.push({ group: 'epic', id: e.id, title: e.title || e.id, meta: e.team || '' });
+    if (hasFilters && filters.team && (e.team || '').toLowerCase() !== filters.team) return;
+    if (!lq && !hasFilters) return;
+    const score = Math.max(_matchScore(e.id, lq), _matchScore(e.title, lq));
+    if (score >= 30 || (hasFilters && !lq)) {
+      all.push({ group: 'epic', id: e.id, title: e.title || e.id, meta: e.team || '', _score: score || 50 });
     }
   });
 
-  // Search MEMBERS
-  const _m = typeof MEMBERS !== 'undefined' ? MEMBERS : {};
-  const memberList = Array.isArray(_m) ? _m : [...new Set(Object.values(_m).flat())];
-  memberList.forEach(m => {
-    if (results.length >= 20) return;
-    const name = typeof m === 'string' ? m : (m.name || m.id || '');
-    if (name.toLowerCase().includes(lq)) {
-      results.push({ group: 'member', id: name, title: name, meta: '' });
-    }
-  });
+  // 9. Members
+  if (!hasFilters || filters.assignee) {
+    const _m = typeof MEMBERS !== 'undefined' ? MEMBERS : {};
+    const memberList = Array.isArray(_m) ? _m : [...new Set(Object.values(_m).flat())];
+    memberList.forEach(m => {
+      const name = typeof m === 'string' ? m : (m.name || m.id || '');
+      const needle = filters.assignee || lq;
+      if (!needle) return;
+      const score = _matchScore(name, needle);
+      if (score >= 30) all.push({ group: 'member', id: name, title: name, meta: '', _score: score });
+    });
+  }
 
-  return results.slice(0, 20);
+  // 10. Objectifs PI (depuis _ppFile)
+  if (typeof _ppFile !== 'undefined' && _ppFile) {
+    Object.entries(_ppFile).forEach(([piKey, piData]) => {
+      if (!piData || typeof piData !== 'object') return;
+      const objs = piData.objectives || [];
+      objs.forEach(o => {
+        if (filters.team && (o.team || '').toLowerCase() !== filters.team) return;
+        if (!lq && !hasFilters) return;
+        const score = _matchScore(o.title, lq);
+        if (score >= 30 || (hasFilters && !lq)) {
+          all.push({
+            group: 'objective', id: piKey + ':' + (o.title || '').slice(0, 30),
+            title: o.title || '(sans titre)', meta: `${piKey} · ${o.team || ''}`,
+            _score: score || 50,
+          });
+        }
+      });
+      // 11. Risques ROAM
+      const roam = piData.roam || [];
+      roam.forEach(r => {
+        if (!lq && !hasFilters) return;
+        const score = Math.max(_matchScore(r.title, lq), _matchScore(r.note || '', lq) * 0.7);
+        if (score >= 30) {
+          all.push({
+            group: 'risk', id: piKey + ':' + (r.title || '').slice(0, 30),
+            title: r.title || '(sans titre)', meta: `${piKey} · ${r.cat || ''}`,
+            _score: score,
+          });
+        }
+      });
+    });
+  }
+
+  // Tri par score decroissant, puis par groupe
+  all.sort((a, b) => (b._score || 0) - (a._score || 0));
+  return { results: all.slice(0, LIMIT), total: all.length };
 };
 
 // --- Highlight a section element ---
@@ -610,8 +896,35 @@ function _highlightSection(el) {
   setTimeout(() => el.classList.remove('search-highlight'), 2200);
 }
 
-window._searchResultClick = function(group, id) {
+window._searchResultClick = function(group, id, event) {
+  // Ctrl/Cmd+Click : ouvrir dans JIRA externe
+  if (event && (event.ctrlKey || event.metaKey)) {
+    if ((group === 'ticket' || group === 'epic' || group === 'feature') && id) {
+      const jiraBase = (CONFIG.jira?.url || '').replace(/\/$/, '');
+      if (jiraBase && !jiraBase.includes('votre-jira')) {
+        window.open(`${jiraBase}/browse/${id}`, '_blank', 'noopener');
+        return;
+      }
+    }
+  }
   closeSearch();
+  if (group === 'feature') {
+    // Feature : ouvrir comme un ticket dans la modale
+    const visibleTickets = (typeof getTickets === 'function' ? getTickets() : TICKETS);
+    window._modalTicketList = visibleTickets.map(t => t.id);
+    openModal(id);
+    return;
+  }
+  if (group === 'objective') {
+    showView('roadmap');
+    setTimeout(() => { if (typeof _rmScrollTo === 'function') _rmScrollTo('capacite'); }, 150);
+    return;
+  }
+  if (group === 'risk') {
+    showView('roadmap');
+    setTimeout(() => { if (typeof _rmScrollTo === 'function') _rmScrollTo('risques'); }, 150);
+    return;
+  }
   if (group === 'section') {
     // Static roadmap section (sr-static-*) → navigate to roadmap + scroll to section
     if (id.startsWith('sr-static-')) {
