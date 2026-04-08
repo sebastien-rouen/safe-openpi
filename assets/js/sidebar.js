@@ -111,7 +111,7 @@ function _attachSidebarHoverTip(source, tip) {
     clearTimeout(_timer);
     const rect = source.getBoundingClientRect();
     tip.style.display = 'block';
-    const tipW = 400;
+    const tipW = 500;
     if (rect.right + tipW + 16 < window.innerWidth) {
       tip.style.left = (rect.right + 8) + 'px';
     } else {

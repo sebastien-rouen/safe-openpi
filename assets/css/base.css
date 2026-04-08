@@ -298,11 +298,11 @@ nav { flex: 1; padding: 4px 0; }
 .sb-buf-team-stats { font-size: 11px; color: #94A3B8; }
 .sb-buf-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .sb-buf-ticket { display: flex; gap: 6px; align-items: center; padding: 3px 0; font-size: 11px; border-bottom: 1px solid rgba(255,255,255,.04); cursor: pointer; }
-.sb-buf-ticket-id { font-weight: 700; color: #7DD3FC; min-width: 75px; cursor: pointer; }
-.sb-buf-ticket-type { padding: 1px 5px; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; }
-.sb-buf-ticket-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #E2E8F0; }
-.sb-buf-ticket-assignee { font-size: 11px; color: #94A3B8; }
-.sb-buf-ticket-pts { font-weight: 700; min-width: 35px; text-align: right; }
+.sb-buf-ticket-id { font-weight: 700; color: #7DD3FC; min-width: 70px; cursor: pointer; flex-shrink: 0; }
+.sb-buf-ticket-type { padding: 1px 5px; border-radius: 3px; font-size: 11px; font-weight: 600; white-space: nowrap; flex-shrink: 0; }
+.sb-buf-ticket-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #E2E8F0; }
+.sb-buf-ticket-assignee { font-size: 10px; color: #94A3B8; flex-shrink: 0; max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sb-buf-ticket-pts { font-weight: 700; min-width: 38px; text-align: right; flex-shrink: 0; color: #FCD34D; }
 
 /* Objectives */
 .sb-obj-row { display: flex; align-items: center; gap: 5px; font-size: 11px; padding: 2px 0; }
@@ -315,7 +315,7 @@ nav { flex: 1; padding: 4px 0; }
 .sb-obj-done { color: #34D399; }
 .sb-obj-atrisk { color: #F87171; }
 
-.sb-buffer-tip { display: none; position: fixed; min-width: 380px; max-width: 460px; max-height: 50vh; overflow-y: auto; background: #1E293B; border: 1px solid #334155; border-radius: 10px; padding: 12px 14px; z-index: 1000; box-shadow: 0 12px 32px rgba(0,0,0,.5); }
+.sb-buffer-tip { display: none; position: fixed; min-width: 480px; max-width: 580px; max-height: 60vh; overflow-y: auto; background: #1E293B; border: 1px solid #334155; border-radius: 10px; padding: 12px 14px; z-index: 1000; box-shadow: 0 12px 32px rgba(0,0,0,.5); }
 .sb-buffer-tip::before { content: ''; position: absolute; left: -6px; top: 16px; width: 10px; height: 10px; background: #1E293B; border-left: 1px solid #334155; border-bottom: 1px solid #334155; transform: rotate(45deg); }
 #sb-buffer-card { position: relative; cursor: pointer; }
 #sb-buffer-card:hover .sb-buffer-tip { display: block; }
