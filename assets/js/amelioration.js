@@ -119,17 +119,12 @@ function _amelFilterTickets(all) {
   return result;
 }
 
-// ----- PI Burn-up : tickets termines par PI sur les derniers PIs -----
+// ----- PI Burn-up : tickets de la swimlane Adapt par PI -----
+// Aligne sur la logique de _amelCategory : (Adapt OR Amélioration) ET label PIxx
 function _amelPIBurnup(allTickets) {
-  // Collecte les PIs depuis velocityHistory et label PIxx des tickets
+  const baseAdapt = ['adapt', 'amélioration', 'amelioration'];
+  // Collecte les PIs depuis les labels PIxx des tickets
   const piSet = new Set();
-  Object.values(CONFIG.teams || {}).forEach(tc => {
-    (tc.velocityHistory || []).forEach(h => {
-      const m = (h.name || '').match(/(\d{2,3})\.\d+/);
-      if (m) piSet.add(parseInt(m[1]));
-    });
-  });
-  // Aussi depuis les labels PIxx des tickets
   allTickets.forEach(t => {
     (t.labels || []).forEach(l => {
       const m = String(l).toLowerCase().match(/^pi(\d{2,3})$/);
@@ -138,7 +133,10 @@ function _amelPIBurnup(allTickets) {
   });
   const pis = [...piSet].sort((a, b) => a - b).slice(-8);
   return pis.map(pi => {
-    const piTix = allTickets.filter(t => (t.labels || []).some(l => String(l).toLowerCase() === `pi${pi}`));
+    const piTix = allTickets.filter(t => {
+      const labels = (t.labels || []).map(l => String(l).toLowerCase());
+      return labels.includes(`pi${pi}`) && labels.some(l => baseAdapt.includes(l));
+    });
     const done  = piTix.filter(t => isDone(t.status)).length;
     const total = piTix.length;
     return { pi, done, total };
@@ -303,7 +301,7 @@ function renderAmelioration() {
     const maxTotal = Math.max(...burnup.map(b => b.total), 1);
     const selectedPi = currentPiNum ? parseInt(currentPiNum) : null;
     html += `<div class="amel-burnup">
-      <div class="amel-burnup-title">📈 Évolution Amélioration sur ${burnup.length} PIs</div>
+      <div class="amel-burnup-title" title="Tickets ayant à la fois un label Adapt/Amélioration ET un label PI{N}">📈 Évolution Adapt PI sur ${burnup.length} PIs <span style="font-weight:400;color:var(--text-muted);font-size:11px;">(swimlane Adapt uniquement)</span></div>
       <div class="amel-burnup-chart">
         ${burnup.map(b => {
           const totalH = Math.round(b.total / maxTotal * 60);
