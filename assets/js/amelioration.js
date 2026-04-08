@@ -322,12 +322,17 @@ function renderAmelioration() {
   }
 
   // ===== Sticky column headers =====
+  // Compteurs de colonne :
+  // - Si un PI est selectionne : compte uniquement les tickets de la swimlane Adapt PI{N}
+  // - Sinon : compte tous les tickets visibles toutes swimlanes
+  const colCountSource = currentPiNum ? (byLane.adapt || []) : tickets;
+  const colCountSuffix = currentPiNum ? ` <small style="opacity:.6;font-size:9px;">(Adapt)</small>` : '';
   html += `<div class="amel-board">`;
   html += `<div class="board-sticky-bar" style="grid-template-columns:${gridCols}">${cols.map(col => {
-    const cnt = tickets.filter(t => t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')).length;
+    const cnt = colCountSource.filter(t => t.status === col.key || (col.key === 'inprog' && t.status === 'blocked')).length;
     const cat = statusCat(col.key);
-    return `<div class="col-header" data-cat="${cat}">
-      <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}</span></div>
+    return `<div class="col-header" data-cat="${cat}" title="${currentPiNum ? `Tickets dans la swimlane Adapt PI${currentPiNum}` : 'Tous les tickets visibles'}">
+      <div class="col-title"><span class="pi-status-dot" style="background:${col.color};"></span><span class="col-label">${col.label}${colCountSuffix}</span></div>
       <span class="col-count">${cnt}</span>
     </div>`;
   }).join('')}</div>`;
