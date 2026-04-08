@@ -118,6 +118,97 @@ function _sprintDayInfo(days, sprint) {
   });
 }
 
+// Plugin Chart.js : dessine les faits marquants (events) comme markers verticaux
+// opts.info = [{ label, date, isOff, holiday }] pour chaque jour du chart
+// opts.events = array de { type, startDate, endDate, title, ... }
+const _eventsPlugin = {
+  id: 'sprintEvents',
+  afterDatasetsDraw(chart, args, opts) {
+    const info = opts?.info;
+    const events = opts?.events;
+    if (!info || !info.length || !events || !events.length) return;
+    const { ctx, chartArea, scales: { x } } = chart;
+    if (!chartArea || !x) return;
+
+    // Map des couleurs par type
+    const typeColors = {
+      incident:  '#DC2626',
+      freeze:    '#3B82F6',
+      milestone: '#8B5CF6',
+      period:    '#F59E0B',
+      other:     '#64748B',
+    };
+    const typeIcons = {
+      incident: '💥', freeze: '🧊', milestone: '🚩', period: '📅', other: 'ℹ️',
+    };
+
+    // Pour chaque event : trouver les indices de jour dans le sprint courant
+    events.forEach(ev => {
+      const evStart = String(ev.startDate || ev.date || '').slice(0, 10);
+      const evEnd   = String(ev.endDate   || ev.date || evStart).slice(0, 10);
+      if (!evStart) return;
+
+      // Chercher le 1er jour du sprint qui contient ou suit evStart
+      const firstIdx = info.findIndex(d => d.date && d.date.toISOString().slice(0, 10) >= evStart);
+      if (firstIdx === -1) return;
+      // Dernier jour <= evEnd
+      let lastIdx = firstIdx;
+      for (let i = firstIdx; i < info.length; i++) {
+        if (info[i].date && info[i].date.toISOString().slice(0, 10) <= evEnd) lastIdx = i;
+        else break;
+      }
+
+      const color = typeColors[ev.type] || typeColors.other;
+      const icon = typeIcons[ev.type] || 'ℹ️';
+      const xStart = x.getPixelForValue(firstIdx);
+      const xEnd   = x.getPixelForValue(lastIdx);
+
+      ctx.save();
+      // Zone : bande verticale translucide (pour les periodes)
+      if (firstIdx !== lastIdx) {
+        const step = info.length > 1 ? (x.getPixelForValue(1) - x.getPixelForValue(0)) : 0;
+        const left = xStart - step / 2;
+        const right = xEnd + step / 2;
+        ctx.fillStyle = color + '18';
+        ctx.fillRect(
+          Math.max(chartArea.left, left),
+          chartArea.top,
+          Math.min(chartArea.right, right) - Math.max(chartArea.left, left),
+          chartArea.bottom - chartArea.top
+        );
+      }
+
+      // Ligne verticale sur le jour de debut
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xStart, chartArea.top);
+      ctx.lineTo(xStart, chartArea.bottom);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Marker emoji en haut de la ligne
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      // Fond blanc pour visibilite
+      const textMetrics = ctx.measureText(icon);
+      const bgW = Math.max(22, textMetrics.width + 8);
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.roundRect(xStart - bgW / 2, chartArea.top + 2, bgW, 20, 4);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#000';
+      ctx.fillText(icon, xStart, chartArea.top + 4);
+      ctx.restore();
+    });
+  },
+};
+
 // Plugin Chart.js : colore le fond des jours non ouvrables
 const _offDaysPlugin = {
   id: 'offDays',
@@ -150,6 +241,9 @@ function initCharts() {
   Chart.defaults.color = _chartTextColor();
   if (typeof Chart !== 'undefined' && !Chart.registry.plugins.get('offDays')) {
     Chart.register(_offDaysPlugin);
+  }
+  if (typeof Chart !== 'undefined' && !Chart.registry.plugins.get('sprintEvents')) {
+    Chart.register(_eventsPlugin);
   }
   _renderSprintSelector();
   _buildBurndown();
@@ -359,6 +453,7 @@ function _buildBurndown() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         offDays: { info: dayInfo },
+        sprintEvents: { info: dayInfo, events: typeof _eventsList === 'function' ? _eventsList() : [] },
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           ..._TOOLTIP,
@@ -581,6 +676,7 @@ function _buildBurnup() {
       interaction: { mode: 'index', intersect: false },
       plugins: {
         offDays: { info: dayInfo },
+        sprintEvents: { info: dayInfo, events: typeof _eventsList === 'function' ? _eventsList() : [] },
         legend: { labels: { font: { size: 11 } } },
         tooltip: {
           ..._TOOLTIP,

@@ -292,6 +292,24 @@
 
 /* Teams compact grid */
 .stg-teams-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+/* Faits marquants (events) */
+.stg-event-form { background: var(--info-bg); border: 1px dashed var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 16px; }
+.stg-event-form-title { font-size: 12px; font-weight: 700; color: var(--primary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: .3px; }
+.stg-event-list { display: flex; flex-direction: column; gap: 6px; }
+.stg-event-row { display: flex; align-items: flex-start; gap: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.stg-event-main { flex: 1; min-width: 0; }
+.stg-event-hdr { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 4px; }
+.stg-event-icon { font-size: 14px; }
+.stg-event-type { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .3px; }
+.stg-event-date { font-size: 11px; color: var(--text-muted); font-weight: 600; }
+.stg-event-teams { font-size: 10px; color: var(--text-muted); font-style: italic; margin-left: auto; }
+.stg-event-title { font-size: 13px; font-weight: 700; color: var(--text); }
+.stg-event-desc { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.4; }
+.stg-event-del { background: transparent; border: 1px solid var(--border); border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 12px; transition: all .15s; }
+.stg-event-del:hover { background: var(--danger-bg); border-color: var(--danger); }
+.stg-grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+@media (max-width: 900px) { .stg-grid-4 { grid-template-columns: repeat(2, 1fr); } }
+
 .stg-team-card { background: var(--bg, #F8FAFC); border-radius: 8px; padding: 10px 12px; transition: box-shadow .15s; }
 .stg-team-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.08); }
 .stg-team-card.stg-inactive { opacity: .5; }

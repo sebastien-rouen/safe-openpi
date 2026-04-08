@@ -104,6 +104,72 @@ let _rotAddingGroup = null; // group currently showing add input
 
 // --- supports.json persistence ---
 let _supSaveTimer = null;
+
+// ============================================================
+// Faits Marquants — evenements (incidents, gels, jalons, periodes)
+// Stockes dans _supFile.events
+// ============================================================
+// Types : 'incident' 💥 | 'freeze' 🧊 | 'milestone' 🚩 | 'period' 📅 | 'other' ℹ️
+const _EVENT_TYPES = {
+  incident:  { icon: '💥', label: 'Incident',    color: '#DC2626' },
+  freeze:    { icon: '🧊', label: 'Gel',          color: '#3B82F6' },
+  milestone: { icon: '🚩', label: 'Jalon',        color: '#8B5CF6' },
+  period:    { icon: '📅', label: 'Période',      color: '#F59E0B' },
+  other:     { icon: 'ℹ️', label: 'Info',         color: '#64748B' },
+};
+
+function _eventsList() {
+  return (_supFile?.events || []).slice().sort((a, b) => {
+    const da = a.startDate || a.date || '';
+    const db = b.startDate || b.date || '';
+    return db.localeCompare(da); // plus recent en premier
+  });
+}
+
+function _eventAdd(ev) {
+  if (!_supFile.events) _supFile.events = [];
+  ev.id = ev.id || ('evt-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7));
+  _supFile.events.push(ev);
+  _supSave();
+}
+
+function _eventUpdate(id, patch) {
+  const list = _supFile.events || [];
+  const idx = list.findIndex(e => e.id === id);
+  if (idx >= 0) { Object.assign(list[idx], patch); _supSave(); }
+}
+
+function _eventDelete(id) {
+  if (!confirm('Supprimer ce fait marquant ?')) return;
+  _supFile.events = (_supFile.events || []).filter(e => e.id !== id);
+  _supSave();
+  renderSettings();
+}
+
+// Evenements actifs sur une date donnee (pour plugin chart)
+function _eventsOnDate(dateStr) {
+  const d = String(dateStr || '').slice(0, 10);
+  if (!d) return [];
+  return (_supFile?.events || []).filter(ev => {
+    const start = ev.startDate || ev.date || '';
+    const end = ev.endDate || ev.date || start;
+    return start <= d && d <= end;
+  });
+}
+
+// Evenements dans une plage [start, end]
+function _eventsInRange(startDate, endDate) {
+  const s = String(startDate || '').slice(0, 10);
+  const e = String(endDate || '').slice(0, 10);
+  if (!s || !e) return [];
+  return (_supFile?.events || []).filter(ev => {
+    const evStart = ev.startDate || ev.date || '';
+    const evEnd = ev.endDate || ev.date || evStart;
+    return evStart <= e && evEnd >= s;
+  });
+}
+
+
 function _supSave() {
   // Sync in-memory refs back to file
   _supFile.rotation = _supportRotation;
@@ -1247,6 +1313,7 @@ const _stgTabs = [
   { id: 'groups',    icon: '🗂️', label: 'Groupes' },
   { id: 'notif',     icon: '🔔', label: 'Notifications' },
   { id: 'rotation',  icon: '🔄', label: 'Support' },
+  { id: 'events',    icon: '💥', label: 'Faits marquants' },
   { id: 'absences', icon: '📋', label: 'Absences' },
 ];
 
@@ -1297,6 +1364,96 @@ function _stgInitScrollSpy() {
   content.addEventListener('scroll', handler, { passive: true });
   _stgSpyCleanup = () => content.removeEventListener('scroll', handler);
   handler();
+}
+
+// ============================================================
+// Section 'Faits marquants' dans les parametres
+// ============================================================
+function _eventsSectionHtml() {
+  const events = _eventsList();
+  const fmt = d => { if (!d) return ''; const dt = new Date(d + 'T00:00:00'); return isNaN(dt) ? d : dt.toLocaleDateString('fr-FR', { day:'2-digit', month:'short', year:'numeric' }); };
+  const rows = events.map(ev => {
+    const t = _EVENT_TYPES[ev.type] || _EVENT_TYPES.other;
+    const isPeriod = ev.startDate && ev.endDate && ev.startDate !== ev.endDate;
+    const dateHtml = isPeriod
+      ? `${fmt(ev.startDate)} → ${fmt(ev.endDate)}`
+      : fmt(ev.startDate || ev.date);
+    const teamsLabel = ev.teams && ev.teams.length ? ev.teams.join(', ') : 'Toutes les équipes';
+    return `<div class="stg-event-row" style="border-left:3px solid ${t.color}">
+      <div class="stg-event-main">
+        <div class="stg-event-hdr">
+          <span class="stg-event-icon">${t.icon}</span>
+          <span class="stg-event-type" style="color:${t.color}">${t.label}</span>
+          <span class="stg-event-date">${dateHtml}</span>
+          <span class="stg-event-teams">${escapeHtml(teamsLabel)}</span>
+        </div>
+        <div class="stg-event-title">${escapeHtml(ev.title || '(sans titre)')}</div>
+        ${ev.description ? `<div class="stg-event-desc">${escapeHtml(ev.description)}</div>` : ''}
+      </div>
+      <button class="stg-event-del" onclick="_eventDelete('${ev.id}')" title="Supprimer">🗑️</button>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="settings-section stg-full-width" id="stg-sec-events">
+    ${_sectionHeader('events', '💥', 'Faits marquants', `${events.length} événement${events.length > 1 ? 's' : ''}`)}
+    ${!_settingsCollapsed['events'] ? `<div class="stg-body">
+      <div class="stg-event-form">
+        <div class="stg-event-form-title">➕ Ajouter un fait marquant</div>
+        <div class="stg-grid-4">
+          <div class="form-group">
+            <label>Type</label>
+            <select id="stg-event-type">
+              ${Object.entries(_EVENT_TYPES).map(([k, v]) => `<option value="${k}">${v.icon} ${v.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Date début</label>
+            <input type="date" id="stg-event-start" required>
+          </div>
+          <div class="form-group">
+            <label>Date fin (optionnelle)</label>
+            <input type="date" id="stg-event-end" placeholder="Laisser vide si 1 jour">
+          </div>
+          <div class="form-group">
+            <label>Équipes (vide = toutes)</label>
+            <input type="text" id="stg-event-teams" placeholder="ex: Fuego, Gabbiano">
+          </div>
+        </div>
+        <div class="stg-grid-2" style="margin-top:6px;">
+          <div class="form-group">
+            <label>Titre</label>
+            <input type="text" id="stg-event-title" placeholder="Incident prod, Gel de code, etc." required>
+          </div>
+          <div class="form-group">
+            <label>Description (optionnelle)</label>
+            <input type="text" id="stg-event-desc" placeholder="Contexte, impact...">
+          </div>
+        </div>
+        <button class="btn btn-primary stg-btn-sm" style="margin-top:8px;" onclick="_eventAddFromForm()">💾 Ajouter</button>
+      </div>
+      <div class="stg-event-list">
+        ${events.length ? rows : '<div style="padding:16px;text-align:center;color:var(--text-muted);font-size:12px;">Aucun fait marquant — ajoutez-en pour les visualiser dans les charts Scrum.</div>'}
+      </div>
+    </div>` : ''}
+  </div>`;
+}
+
+function _eventAddFromForm() {
+  const type = document.getElementById('stg-event-type').value;
+  const startDate = document.getElementById('stg-event-start').value;
+  const endDate = document.getElementById('stg-event-end').value || '';
+  const title = document.getElementById('stg-event-title').value.trim();
+  const description = document.getElementById('stg-event-desc').value.trim();
+  const teamsRaw = document.getElementById('stg-event-teams').value.trim();
+  if (!startDate || !title) {
+    if (typeof showToast === 'function') showToast('Date de début et titre requis', 'error');
+    return;
+  }
+  const teams = teamsRaw ? teamsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
+  _eventAdd({ type, startDate, endDate: endDate || startDate, title, description, teams });
+  if (typeof showToast === 'function') showToast(`✅ Fait marquant ajouté : ${title}`, 'success');
+  renderSettings();
 }
 
 function renderSettings() {
@@ -1589,6 +1746,9 @@ function renderSettings() {
       ${_stgLiveTeams(realTeams).map(t => _rotTeamPanel(t)).join('')}
     </div>` : ''}
   </div>
+
+  <!-- Faits marquants (incidents, gels, jalons, périodes) -->
+  ${_eventsSectionHtml()}
 
   <!-- Absences / Congés (rendered by absences.js) -->
   ${_absencesSectionHtml()}`;
