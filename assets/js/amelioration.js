@@ -2,11 +2,9 @@
 // AMELIORATION CONTINUE - Board rétro / post-mortem / CoP / Adapt PI
 // ============================================================
 
-// PI selectionne :
-// - undefined = pas encore initialise → fallback sur PI detecte
-// - '' (string vide) = explicitement "tous les PI" (pas de filtre PI)
-// - '29', '28'… = PI choisi
-let _amelPI;
+// PI selectionne (defaut '' = tous les PI, pas de filtre)
+// Possible values : '' (tous), '29', '28', '30', etc.
+let _amelPI = '';
 
 // Etat des filtres
 let _amelFilter      = '';     // 'blocked' | 'unassigned' | 'critical' | 'stale' | ''
@@ -16,16 +14,9 @@ let _amelGroupBy     = 'parent'; // 'parent' | 'assignee' | 'team' | 'updated' |
 let _amelHideDone    = localStorage.getItem('amel_hide_done') === '1';
 let _amelLaneCollapsed = {};
 
-// Retourne le numero de PI effectif (string vide = pas de filtre)
+// Retourne le numero de PI effectif (null = pas de filtre, defaut)
 function _amelGetPI() {
-  if (_amelPI === '') return null;
-  if (_amelPI) return String(_amelPI);
-  if (typeof _ppDetectPI === 'function') {
-    const detected = _ppDetectPI();
-    const m = (detected || '').match(/\d+/);
-    if (m) return m[0];
-  }
-  return null;
+  return _amelPI ? String(_amelPI) : null;
 }
 
 function _amelSelectPI(piNum)         { _amelPI = piNum; renderAmelioration(); }
