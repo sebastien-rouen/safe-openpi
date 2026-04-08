@@ -1098,6 +1098,28 @@ async function _jiraDiscoverSPField() {
  * @param {string|null} spFieldId - L'ID du champ Story Points découvert
  * @returns {string} La liste des champs séparés par des virgules
  */
+/**
+ * A2. Fetch la liste globale des statuts JIRA pour resoudre id → name
+ * (necessaire car /board/{id}/configuration retourne les statuts avec id uniquement)
+ * @returns {Promise<Object>} Map { id: name }
+ */
+async function _jiraFetchStatusMap() {
+  try {
+    const r = await _jiraFetch(`${JIRA_PROXY}/api/3/status`);
+    if (!r.ok) return {};
+    const data = await r.json();
+    const map = {};
+    if (Array.isArray(data)) {
+      data.forEach(s => { if (s.id && s.name) map[String(s.id)] = s.name; });
+    }
+    _log(`Status map : ${Object.keys(map).length} statuts resolus`);
+    return map;
+  } catch (e) {
+    _warn('Status map fetch failed :', e.message);
+    return {};
+  }
+}
+
 function _jiraBuildFields(spFieldId) {
   return [
     'summary', 'status', 'issuetype', 'priority', 'assignee',
@@ -1243,9 +1265,10 @@ async function _jiraFetchSprintsAndIssues(scrumBoards, ctx) {
       const boardCols = [];
       cols.forEach(col => {
         const internal = _mapColumnToInternal(col.name);
+        // Resoudre id → name via le status map global (JIRA ne retourne que les id ici)
         const statuses = (col.statuses || []).map(st => ({
           id:   st.id,
-          name: st.name || '',
+          name: st.name || ctx.statusMap?.[String(st.id)] || '',
         }));
         boardCols.push({ name: col.name, internal, statuses });
         if (internal) {
@@ -2173,10 +2196,11 @@ async function _jiraFetchCycleTimes(cache) {
 async function loadJiraData(opts = {}) {
   _jiraApiCalls = 0;
 
-  // A+C. Discovery champs + fetch boards (en parallèle)
-  const [spFieldId, boardsResult] = await Promise.all([
+  // A+C+A2. Discovery champs + fetch boards + status map (en parallèle)
+  const [spFieldId, boardsResult, statusMap] = await Promise.all([
     _jiraDiscoverSPField(),
     _jiraFetchBoards(),
+    _jiraFetchStatusMap(),
   ]);
 
   // B. Construire la string de champs API
@@ -2187,6 +2211,7 @@ async function loadJiraData(opts = {}) {
   // Contexte partagé entre sous-fonctions
   const ctx = {
     fields,
+    statusMap,
     allIssues:       [],
     allFutureIssues: [],
     futureSeenKeys:  new Set(),
