@@ -87,6 +87,16 @@ function _refreshCurrentView(opts) {
 
 // ---- Sélection équipe / groupe ----------------
 
+// Refresh la sidebar (buffer/objectives/risks/progress/stats)
+// La vue Scrum le fait dans renderScrum, mais les autres vues non.
+function _refreshSidebar() {
+  if (typeof _renderSidebarProgress === 'function')   _renderSidebarProgress();
+  if (typeof _renderSidebarBuffer === 'function')     _renderSidebarBuffer();
+  if (typeof _renderSidebarObjectives === 'function') _renderSidebarObjectives();
+  if (typeof _renderSidebarRisks === 'function')      _renderSidebarRisks();
+  if (typeof _updateSidebarStats === 'function')      _updateSidebarStats();
+}
+
 function selectTeam(team) {
   currentTeam  = team;
   currentGroup = null;
@@ -96,6 +106,7 @@ function selectTeam(team) {
   updateSidebarGroupLabel();
   if (typeof _updateBlockedBadge === 'function') _updateBlockedBadge();
   _refreshCurrentView({ reportTeam: team !== 'all' ? team : undefined });
+  _refreshSidebar();
   _pushHash();
 }
 
@@ -113,6 +124,7 @@ function selectGroup(gid) {
   updateSidebarGroupLabel();
   if (typeof _updateBlockedBadge === 'function') _updateBlockedBadge();
   _refreshCurrentView({ reportTeam: 'group' });
+  _refreshSidebar();
   _pushHash();
 }
 
