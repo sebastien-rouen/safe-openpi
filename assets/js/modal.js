@@ -437,6 +437,21 @@ function _renderModalContent(t) {
 
   // Async: fetch web links (remote links) from JIRA
   _loadWebLinks(t.id);
+
+  // Async: enrichir les tickets backlog (description, labels, components, links, comments, dueDate)
+  // Si le ticket n'a pas ces champs en cache (cas typique : ticket backlog), les fetch a la demande
+  const _missingDetails = !t.description && !t.labels?.length && !t.components?.length && !t.links?.length;
+  if (_missingDetails && typeof _fetchIssueDetails === 'function') {
+    _fetchIssueDetails(t.id).then(details => {
+      if (!details) return;
+      // Mutate le ticket en place pour les futurs renders
+      Object.assign(t, details);
+      // Re-render la modale avec les nouvelles donnees
+      _renderModalContent(t);
+      // Reload les web links aussi (remplaces par le re-render)
+      _loadWebLinks(t.id);
+    }).catch(() => {});
+  }
 }
 
 // Fetch and render web links in the modal placeholder

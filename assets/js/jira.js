@@ -528,6 +528,32 @@ window._fetchIssueDescription = async function(issueKey) {
   }
 };
 
+// Fetch enrichissement complet pour un ticket (description, labels, components, links, comments, dueDate)
+// Utilise pour les tickets backlog qui ont seulement les champs de base en cache
+window._fetchIssueDetails = async function(issueKey) {
+  if (!CONFIG.jira?.url) return null;
+  try {
+    const fields = 'description,summary,labels,components,duedate,customfield_10015,issuelinks,comment,environment';
+    const r = await _jiraFetch(`${JIRA_PROXY}/api/3/issue/${encodeURIComponent(issueKey)}?fields=${fields}`);
+    if (!r.ok) return null;
+    const data = await r.json();
+    const f = data?.fields || {};
+    return {
+      description: _extractDescription(f.description) || '',
+      labels:      (f.labels || []).map(l => String(l).toLowerCase()),
+      components:  _extractComponents({ components: f.components }),
+      dueDate:     f.duedate || f.customfield_10015 || null,
+      links:       _extractLinks(f.issuelinks),
+      comments:    _extractComments(f.comment),
+      lastComment: _extractLastComment(f.comment),
+      environment: _extractDescription(f.environment) || (typeof f.environment === 'string' ? f.environment : '') || '',
+    };
+  } catch (e) {
+    _warn('Issue details fetch failed for', issueKey, e.message);
+    return null;
+  }
+};
+
 // Fetch remote (web) links for a single issue — called on demand from modal
 window._fetchRemoteLinks = async function(issueKey) {
   if (!CONFIG.jira?.url) return [];
