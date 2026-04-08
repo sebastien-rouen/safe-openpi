@@ -437,6 +437,7 @@ nav { flex: 1; padding: 4px 0; }
 /* --- Modal: time row (cycle/lead + sprint progress) --- */
 .mdl-time-row { display: flex; align-items: center; gap: 8px; }
 .mdl-time-chip { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 12px; white-space: nowrap; flex-shrink: 0; }
+.mdl-sprint-chip-fallback { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px; background: var(--info-bg); color: var(--text-muted); border: 1px dashed var(--border); white-space: nowrap; cursor: help; }
 .mdl-time-cycle { color: #3B82F6; background: #DBEAFE; }
 .mdl-time-lead  { color: #F59E0B; background: #FEF3C7; }
 .mdl-sprint-bar { display: flex; align-items: flex-end; gap: 6px; flex: 1; min-width: 0; margin-left: auto; }

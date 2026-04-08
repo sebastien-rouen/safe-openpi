@@ -214,14 +214,22 @@ function _renderModalContent(t) {
     if (t.leadTimeDays != null)  chips.push(`<span class="mdl-time-chip mdl-time-lead">${t.leadTimeDays}j lead</span>`);
 
     // Sprint progress mini-bar - use team-specific sprint context
+    // Privilegier les ISO dates (parsables), fallback sur les dates texte si valides
     let sprintBarHtml = '';
     const tc = t.team ? CONFIG.teams[t.team] : null;
-    const sStart = tc?.sprintStart || CONFIG.sprint?.startDate;
-    const sEnd   = tc?.sprintEnd   || CONFIG.sprint?.endDate;
+    const sStart = tc?.sprintStartISO || tc?.sprintStart || CONFIG.sprint?.startDateISO || CONFIG.sprint?.startDate;
+    const sEnd   = tc?.sprintEndISO   || tc?.sprintEnd   || CONFIG.sprint?.endDateISO   || CONFIG.sprint?.endDate;
     const sLabel = tc?.sprintName  || CONFIG.sprint?.label || 'Sprint';
-    if (sStart && sEnd) {
-      const s = new Date(sStart.length === 10 ? sStart + 'T00:00:00' : sStart);
-      const e = new Date(sEnd.length === 10   ? sEnd   + 'T00:00:00' : sEnd);
+    const _parseDate = d => {
+      if (!d) return null;
+      const dt = new Date(typeof d === 'string' && /^\d{4}-\d{2}-\d{2}/.test(d) ? d : d);
+      return isNaN(dt.getTime()) ? null : dt;
+    };
+    const _sParsed = _parseDate(sStart);
+    const _eParsed = _parseDate(sEnd);
+    if (_sParsed && _eParsed) {
+      const s = _sParsed;
+      const e = _eParsed;
       const now = new Date();
       const total   = e - s;
       const elapsed = now - s;
@@ -289,6 +297,9 @@ function _renderModalContent(t) {
         </div>
         <span class="mdl-sprint-pct">${remaining > 0 ? 'J-' + remaining : isDone(t.status) ? 'Terminé' : 'Dépassé'}</span>
       </div>`;
+    } else if (sLabel && sLabel !== 'Sprint') {
+      // Pas de dates valides : afficher seulement le nom du sprint en chip discret
+      sprintBarHtml = `<span class="mdl-sprint-chip-fallback" title="Dates de sprint non disponibles">🏃 ${escapeHtml(sLabel)}</span>`;
     }
 
     if (chips.length || sprintBarHtml) {
