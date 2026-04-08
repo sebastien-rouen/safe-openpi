@@ -281,8 +281,8 @@ function renderAmelioration() {
     <div class="amel-kpi amel-kpi-todo"><span class="amel-kpi-val">${todo}</span><span class="amel-kpi-label">À faire</span></div>
     <div class="amel-kpi amel-kpi-wip"><span class="amel-kpi-val">${inprog}</span><span class="amel-kpi-label">En cours</span></div>
     ${blocked ? `<div class="amel-kpi amel-kpi-blocked"><span class="amel-kpi-val">${blocked}</span><span class="amel-kpi-label">Bloqué</span></div>` : ''}
-    <div class="amel-kpi amel-kpi-done"><span class="amel-kpi-val">${done}</span><span class="amel-kpi-label">Terminé</span></div>
-    <div class="amel-kpi amel-kpi-pct"><span class="amel-kpi-val">${pctDone}%</span><span class="amel-kpi-label">Avancement</span></div>
+    <div class="amel-kpi amel-kpi-done${_amelHideDone?' amel-kpi-disabled':''}"${_amelHideDone?' title="Masqué : activez \'Afficher terminés\' pour voir"':''}><span class="amel-kpi-val">${done}</span><span class="amel-kpi-label">Terminé</span></div>
+    <div class="amel-kpi amel-kpi-pct${_amelHideDone?' amel-kpi-disabled':''}"${_amelHideDone?' title="Non significatif : tickets terminés masqués"':''}><span class="amel-kpi-val">${pctDone}%</span><span class="amel-kpi-label">Avancement</span></div>
   </div>`;
 
   // KPI par swimlane
@@ -301,6 +301,7 @@ function renderAmelioration() {
   // ===== PI Burnup chart (mini) =====
   if (burnup.length >= 2) {
     const maxTotal = Math.max(...burnup.map(b => b.total), 1);
+    const selectedPi = currentPiNum ? parseInt(currentPiNum) : null;
     html += `<div class="amel-burnup">
       <div class="amel-burnup-title">📈 Évolution Amélioration sur ${burnup.length} PIs</div>
       <div class="amel-burnup-chart">
@@ -308,12 +309,13 @@ function renderAmelioration() {
           const totalH = Math.round(b.total / maxTotal * 60);
           const doneH = Math.round(b.done / maxTotal * 60);
           const pct = b.total ? Math.round(b.done / b.total * 100) : 0;
-          return `<div class="amel-burnup-col" title="PI${b.pi} : ${b.done}/${b.total} terminés (${pct}%)">
+          const isSelected = selectedPi === b.pi;
+          return `<div class="amel-burnup-col${isSelected ? ' amel-burnup-col-selected' : ''}" onclick="_amelSelectPI('${b.pi}')" title="PI${b.pi} : ${b.done}/${b.total} terminés (${pct}%)${isSelected ? ' · sélectionné' : ' · cliquer pour sélectionner'}">
             <div class="amel-burnup-bar-wrap" style="height:60px;">
               <div class="amel-burnup-bar-total" style="height:${totalH}px"></div>
               <div class="amel-burnup-bar-done" style="height:${doneH}px"></div>
             </div>
-            <div class="amel-burnup-label">PI${b.pi}</div>
+            <div class="amel-burnup-label">PI${b.pi}${isSelected ? ' ★' : ''}</div>
             <div class="amel-burnup-val">${b.done}/${b.total}</div>
           </div>`;
         }).join('')}
