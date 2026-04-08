@@ -69,32 +69,67 @@ function _renderSidebarProgress() {
     ${_statRow('flagged', '🚩 Flaggés', flagged.length, 'red', flagged)}
   `;
 
-  // Attach hover events for stat-row popins
+  // Attach hover events for stat-row popins (avec helper anti-scrollbar)
   sbWrap.querySelectorAll('.sb-stat-hoverable').forEach(row => {
     const tipId = row.dataset.sbTip;
     const tip = document.getElementById('sb-stat-tip-' + tipId);
     if (!tip) return;
-    let timer = null;
-    const show = () => {
-      clearTimeout(timer);
-      // Hide all other stat tips
+    // Hide les autres stat tips au show
+    row.addEventListener('mouseenter', () => {
       sbWrap.querySelectorAll('.sb-stat-tip').forEach(t => { if (t !== tip) t.style.display = 'none'; });
-      const rect = row.getBoundingClientRect();
-      tip.style.display = 'block';
-      const tipW = 400;
-      if (rect.right + tipW + 16 < window.innerWidth) {
-        tip.style.left = (rect.right + 8) + 'px';
-      } else {
-        tip.style.left = Math.max(8, rect.left - tipW - 8) + 'px';
-      }
-      tip.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - tip.offsetHeight - 8)) + 'px';
-    };
-    const hide = () => { timer = setTimeout(() => { tip.style.display = 'none'; }, 120); };
-    row.addEventListener('mouseenter', show);
-    row.addEventListener('mouseleave', hide);
-    tip.addEventListener('mouseenter', () => clearTimeout(timer));
-    tip.addEventListener('mouseleave', hide);
+    });
+    _attachSidebarHoverTip(row, tip);
   });
+}
+
+// ----- Helper : tooltip robuste avec zone 'pont' (gere la scrollbar entre source et tooltip) -----
+let _sbHoverMouse = { x: 0, y: 0 };
+if (!window._sbHoverMouseTracker) {
+  window._sbHoverMouseTracker = true;
+  document.addEventListener('mousemove', e => { _sbHoverMouse = { x: e.clientX, y: e.clientY }; });
+}
+function _attachSidebarHoverTip(source, tip) {
+  if (!source || !tip) return;
+  let _timer = null;
+  const _isOver = (el, m = 8) => {
+    const r = el.getBoundingClientRect();
+    return _sbHoverMouse.x >= r.left - m && _sbHoverMouse.x <= r.right + m
+        && _sbHoverMouse.y >= r.top - m && _sbHoverMouse.y <= r.bottom + m;
+  };
+  const _isInBridge = () => {
+    const cr = source.getBoundingClientRect();
+    const tr = tip.getBoundingClientRect();
+    if (tr.width === 0) return false;
+    const minX = Math.min(cr.right, tr.right);
+    const maxX = Math.max(cr.left, tr.left);
+    const minY = Math.min(cr.top, tr.top);
+    const maxY = Math.max(cr.bottom, tr.bottom);
+    return _sbHoverMouse.x >= minX - 6 && _sbHoverMouse.x <= maxX + 6
+        && _sbHoverMouse.y >= minY && _sbHoverMouse.y <= maxY;
+  };
+  const showTip = () => {
+    clearTimeout(_timer);
+    const rect = source.getBoundingClientRect();
+    tip.style.display = 'block';
+    const tipW = 400;
+    if (rect.right + tipW + 16 < window.innerWidth) {
+      tip.style.left = (rect.right + 8) + 'px';
+    } else {
+      tip.style.left = Math.max(8, rect.left - tipW - 8) + 'px';
+    }
+    tip.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - tip.offsetHeight - 8)) + 'px';
+  };
+  const hideTip = () => {
+    clearTimeout(_timer);
+    _timer = setTimeout(() => {
+      if (_isOver(source) || _isOver(tip) || _isInBridge()) { hideTip(); return; }
+      tip.style.display = 'none';
+    }, 350);
+  };
+  source.addEventListener('mouseenter', showTip);
+  source.addEventListener('mouseleave', hideTip);
+  tip.addEventListener('mouseenter', () => clearTimeout(_timer));
+  tip.addEventListener('mouseleave', hideTip);
 }
 
 // --- Sidebar: Buffer info with hover popin ---
@@ -179,29 +214,10 @@ function _renderSidebarBuffer() {
     <div class="sb-buffer-tip" id="sb-buffer-tip-el">${tipHtml}</div>
   </div>`;
 
-  // Position the tooltip on hover via JS — keep visible when hovering the tip itself
+  // Tooltip robuste avec helper anti-scrollbar
   const card = document.getElementById('sb-buffer-card');
   const tip = document.getElementById('sb-buffer-tip-el');
-  if (card && tip) {
-    let _bufTipTimer = null;
-    const showTip = () => {
-      clearTimeout(_bufTipTimer);
-      const rect = card.getBoundingClientRect();
-      tip.style.display = 'block';
-      const tipW = 400;
-      if (rect.right + tipW + 16 < window.innerWidth) {
-        tip.style.left = (rect.right + 8) + 'px';
-      } else {
-        tip.style.left = Math.max(8, rect.left - tipW - 8) + 'px';
-      }
-      tip.style.top = Math.max(8, Math.min(rect.top, window.innerHeight - tip.offsetHeight - 8)) + 'px';
-    };
-    const hideTip = () => { _bufTipTimer = setTimeout(() => { tip.style.display = 'none'; }, 120); };
-    card.addEventListener('mouseenter', showTip);
-    card.addEventListener('mouseleave', hideTip);
-    tip.addEventListener('mouseenter', () => clearTimeout(_bufTipTimer));
-    tip.addEventListener('mouseleave', hideTip);
-  }
+  _attachSidebarHoverTip(card, tip);
 }
 
 // --- Sidebar: PI Objectives (collapsed) - from piprep data ---
