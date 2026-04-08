@@ -145,6 +145,13 @@ function renderAmelioration() {
   const el = document.getElementById('amelioration-content');
   if (!el) return;
 
+  // Memoriser le focus + position curseur de l'input recherche avant le re-render
+  let _amelFocusRestore = null;
+  const _focused = document.activeElement;
+  if (_focused && _focused.id === 'amel-search-input') {
+    _amelFocusRestore = { selStart: _focused.selectionStart, selEnd: _focused.selectionEnd };
+  }
+
   const allTickets = AMELIORATION_TICKETS;
 
   if (!allTickets.length) {
@@ -272,7 +279,7 @@ function renderAmelioration() {
     ${allTeamsInTickets.length > 1 ? `<select class="sqf-select${_amelTeamFilter?' active':''}" onchange="_amelSetTeamFilter(this.value)" title="Filtrer par équipe">
       <option value="">🏷️ Toutes équipes</option>${teamOptions}
     </select>` : ''}
-    <input class="sqf-input" type="text" placeholder="🔍 Rechercher…" value="${escapeHtml(_amelTextFilter)}" oninput="_amelSetText(this.value)">
+    <input id="amel-search-input" class="sqf-input" type="text" placeholder="🔍 Rechercher…" value="${escapeHtml(_amelTextFilter)}" oninput="_amelSetText(this.value)">
     ${hasFilters ? `<button class="sqf-btn" onclick="_amelClearFilters()">✕ Effacer</button>` : ''}
   </div>`;
 
@@ -401,6 +408,15 @@ function renderAmelioration() {
 
   el.innerHTML = html;
   window._modalTicketList = tickets.map(t => t.id);
+
+  // Restaurer le focus de l'input recherche apres re-render
+  if (_amelFocusRestore) {
+    const newInput = document.getElementById('amel-search-input');
+    if (newInput) {
+      newInput.focus();
+      try { newInput.setSelectionRange(_amelFocusRestore.selStart, _amelFocusRestore.selEnd); } catch (e) {}
+    }
+  }
 
   // Sticky offset
   const stickyBar = el.querySelector('.board-sticky-bar');
