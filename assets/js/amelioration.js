@@ -21,11 +21,14 @@ function _amelCategory(t) {
   const labels = (t.labels || []).map(l => l.toLowerCase());
   const sum    = (t.title || '').toLowerCase();
 
-  // Adapt PI (prioritaire — labels specifiques au PI selectionne)
+  // Adapt PI (prioritaire) :
+  // - Doit avoir un label parmi : "Adapt", "Amélioration"/"Amelioration"
+  // - ET si un PI est selectionne, doit aussi avoir le label "PI{N}"
   const piNum = _amelGetPI();
-  const adaptLabels = ['adapt', 'amélioration', 'amelioration'];
-  if (piNum) adaptLabels.push(`pi${piNum}`);
-  if (labels.some(l => adaptLabels.includes(l))) return 'adapt';
+  const baseAdapt = ['adapt', 'amélioration', 'amelioration'];
+  const hasBaseAdapt = labels.some(l => baseAdapt.includes(l));
+  const hasPiLabel = piNum ? labels.includes(`pi${piNum}`) : true;
+  if (hasBaseAdapt && hasPiLabel) return 'adapt';
 
   // Post-Mortem
   if (labels.some(l => l === 'postmortem') || /post-?mortem/i.test(sum)) return 'postmortem';
@@ -40,7 +43,9 @@ function _amelCategory(t) {
 function _amelSwimlanes() {
   const piNum = _amelGetPI();
   const adaptLabel = piNum ? `Adapt PI${piNum}` : 'Adapt';
-  const adaptTooltip = `Tickets avec label : "Adapt", "Amélioration"${piNum ? `, ou "PI${piNum}"` : ''}`;
+  const adaptTooltip = piNum
+    ? `Tickets avec label "Adapt" OU "Amélioration" ET avec label "PI${piNum}"`
+    : `Tickets avec label "Adapt" ou "Amélioration"`;
   return [
     { key: 'adapt',      label: adaptLabel,         icon: '🎯', color: '#0891B2',
       tooltip: adaptTooltip },
