@@ -358,7 +358,8 @@ function _piAllTickets(teams, piNum) {
 
   // Backlog PI — filtre strict : piSprint doit correspondre exactement au PI demandé
   const blAll = typeof BACKLOG_TICKETS !== 'undefined' ? BACKLOG_TICKETS : [];
-  const piSprintRe = new RegExp(`(^|\\D)${piNum}(\\D|$)`); // match "PI#29", "PI 29", pas "PI#28"
+  // Match "PI#29", "PI 29", "PI29" (mais pas "PI#28", "PI#290", "Sprint 29")
+  const piSprintRe = new RegExp(`PI\\s*#?\\s*${piNum}(\\D|$)`, 'i');
 
   // Construire le set des features/epics appartenant à ce PI
   // Sources : titre contenant "PIxx", ou remontée hiérarchique depuis les tickets avec sprint xx.y
