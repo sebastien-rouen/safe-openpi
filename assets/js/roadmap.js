@@ -1040,12 +1040,21 @@ function _roadmapVelocityCard(vel, cap80, cap20) {
         </div>
         ${(() => {
           const featPts = piTotalPts - bufferPts;
-          const realBufPct = piTotalPts ? Math.round(bufferPts / piTotalPts * 100) : 0;
-          const realFeatPct = 100 - realBufPct;
-          const bufColor = realBufPct > 25 ? '#DC2626' : realBufPct < 15 ? '#D97706' : '#8B5CF6';
+          const rawBufPct = piTotalPts ? Math.round(bufferPts / piTotalPts * 100) : 0;
+          const rawFeatPct = 100 - rawBufPct;
+          const bufColor = rawBufPct > 25 ? '#DC2626' : rawBufPct < 15 ? '#D97706' : '#8B5CF6';
+          // Cas anormal : buffer > 100% du total → afficher uniquement la barre buffer en alerte
+          if (featPts < 0) {
+            return `<div class="rm-bar-split rm-bar-overflow" title="⚠ Buffer dépasse la capacité totale : ${bufferPts} pts buffer / ${piTotalPts} pts engagés">
+              <div class="rm-bar-buf" style="width:100%;background:#DC2626;opacity:.9;cursor:pointer" onclick="_toggleCapTickets('buf')">⚠ ${rawBufPct}% Buffer (${bufferPts} pts) · dépasse capacité</div>
+            </div>`;
+          }
+          // Affichage normal : clamper a [0,100], minimum 3% pour visibilite
+          const featPct = Math.max(0, Math.min(100, rawFeatPct));
+          const bufPct = Math.max(0, Math.min(100, rawBufPct));
           return `<div class="rm-bar-split" title="Répartition réelle : ${featPts} pts features / ${bufferPts} pts buffer">
-            <div class="rm-bar-feat" style="width:${realFeatPct}%;opacity:.85;cursor:pointer" onclick="_toggleCapTickets('feat')">${realFeatPct}% Features · Réel <small>(${featPts} pts)</small></div>
-            <div class="rm-bar-buf"  style="width:${Math.max(realBufPct, 3)}%;background:${bufColor};opacity:.85;cursor:pointer" onclick="_toggleCapTickets('buf')">${realBufPct}% Buffer <small>(${bufferPts} pts)</small></div>
+            <div class="rm-bar-feat" style="width:${featPct}%;opacity:.85;cursor:pointer" onclick="_toggleCapTickets('feat')">${featPct}% Features · Réel <small>(${featPts} pts)</small></div>
+            <div class="rm-bar-buf"  style="width:${Math.max(bufPct, 3)}%;background:${bufColor};opacity:.85;cursor:pointer" onclick="_toggleCapTickets('buf')">${bufPct}% Buffer <small>(${bufferPts} pts)</small></div>
           </div>`;
         })()}
       </div>

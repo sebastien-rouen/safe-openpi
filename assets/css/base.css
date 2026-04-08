@@ -563,10 +563,14 @@ nav { flex: 1; padding: 4px 0; }
 .sri-highlight { background: rgba(245,158,11,.35); color: inherit; padding: 0 1px; border-radius: 2px; font-weight: 700; }
 .search-empty { padding: 24px 16px; text-align: center; font-size: 13px; color: var(--text-muted); }
 .search-empty kbd { font-size: 10px; }
-.search-tips { padding: 16px 20px; border-top: 1px solid var(--border); background: var(--info-bg); }
-.search-tips-title { font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
-.search-tips-list { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; font-size: 11px; color: var(--text); }
-.search-tips-list kbd { display: inline-block; padding: 1px 5px; background: var(--surface); border: 1px solid var(--border); border-radius: 3px; font-family: monospace; font-size: 10px; margin-right: 4px; }
+.search-tips { padding: 12px 20px; border-top: 1px solid rgba(2,132,199,.12); background: rgba(2,132,199,.04); }
+.search-tips-title { font-size: 10px; font-weight: 600; color: rgba(2,132,199,.7); text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; opacity: .85; }
+.search-tips-list { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 16px; font-size: 11px; color: var(--text-muted); }
+.search-tips-list > div { opacity: .8; transition: opacity .15s; }
+.search-tips-list > div:hover { opacity: 1; }
+.search-tips-list kbd { display: inline-block; padding: 1px 5px; background: rgba(2,132,199,.08); border: 1px solid rgba(2,132,199,.2); border-radius: 3px; font-family: monospace; font-size: 10px; margin-right: 4px; color: var(--primary); font-weight: 600; }
+[data-theme="dark"] .search-tips { background: rgba(56,189,248,.06); border-top-color: rgba(56,189,248,.15); }
+[data-theme="dark"] .search-tips-list kbd { background: rgba(56,189,248,.1); border-color: rgba(56,189,248,.25); color: var(--primary); }
 .search-history-item { background: rgba(2,132,199,.04); }
 .search-footer { display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; border-top: 1px solid var(--border); background: var(--info-bg); font-size: 11px; color: var(--text-muted); }
 .search-count { font-weight: 700; }
