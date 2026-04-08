@@ -142,19 +142,28 @@ const _eventsPlugin = {
       incident: '💥', freeze: '🧊', milestone: '🚩', period: '📅', other: 'ℹ️',
     };
 
-    // Pour chaque event : trouver les indices de jour dans le sprint courant
+    // Bornes du sprint (iso dates)
+    const sprintFirstDay = info[0]?.date ? info[0].date.toISOString().slice(0, 10) : null;
+    const sprintLastDay  = info[info.length - 1]?.date ? info[info.length - 1].date.toISOString().slice(0, 10) : null;
+
+    // Pour chaque event : verifier qu'il chevauche bien le sprint, puis trouver les indices
     events.forEach(ev => {
       const evStart = String(ev.startDate || ev.date || '').slice(0, 10);
       const evEnd   = String(ev.endDate   || ev.date || evStart).slice(0, 10);
-      if (!evStart) return;
+      if (!evStart || !sprintFirstDay || !sprintLastDay) return;
 
-      // Chercher le 1er jour du sprint qui contient ou suit evStart
-      const firstIdx = info.findIndex(d => d.date && d.date.toISOString().slice(0, 10) >= evStart);
-      if (firstIdx === -1) return;
-      // Dernier jour <= evEnd
+      // Filtre : l'event doit chevaucher le sprint
+      // (evStart <= sprintLastDay) ET (evEnd >= sprintFirstDay)
+      if (evStart > sprintLastDay || evEnd < sprintFirstDay) return;
+
+      // Premier jour du sprint dont la date >= evStart (clampe a 0)
+      let firstIdx = info.findIndex(d => d.date && d.date.toISOString().slice(0, 10) >= evStart);
+      if (firstIdx === -1) firstIdx = 0;
+      // Dernier jour du sprint dont la date <= evEnd
       let lastIdx = firstIdx;
       for (let i = firstIdx; i < info.length; i++) {
-        if (info[i].date && info[i].date.toISOString().slice(0, 10) <= evEnd) lastIdx = i;
+        const iso = info[i].date ? info[i].date.toISOString().slice(0, 10) : '';
+        if (iso && iso <= evEnd) lastIdx = i;
         else break;
       }
 
