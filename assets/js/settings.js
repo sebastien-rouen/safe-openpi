@@ -97,6 +97,7 @@ let _rotHiddenMembers = {};    // hidden members
 
 // Absences variables & functions → absences.js
 let _rotPIOffset = 0;
+let _rotPINumOverride = null; // null = utiliser offset (comportement historique), sinon numero PI absolu force
 let _rotTeamCollapsed = {};
 let _rotGroupCollapsed = {};
 let _rotAddingGroup = null; // group currently showing add input
@@ -192,7 +193,10 @@ function _rotWeekInfos(piOffset, weekMode) {
     const m2 = (CONFIG.sprint.label || '').match(/(\d{2,3})\.(\d+)/);
     if (m2) { basePiNum = parseInt(m2[1]); currentSprintIdx = parseInt(m2[2]) - 1; }
   }
-  const piNum = basePiNum != null ? String(basePiNum + offset) : null;
+  // _rotPINumOverride prend le dessus sur l'offset quand defini
+  const piNum = _rotPINumOverride != null
+    ? String(_rotPINumOverride)
+    : (basePiNum != null ? String(basePiNum + offset) : null);
 
   // Collect actual sprint dates from velocity history for the target PI
   const _tryDate = s => { if (!s) return null; const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00' : s); return isNaN(d.getTime()) ? null : d; };
@@ -383,7 +387,18 @@ function _rotToggleTeam(team) {
 
 function _rotTogglePI(offset) {
   _rotPIOffset = offset;
+  _rotPINumOverride = null;
   _rotLoadAbsForPI();
+  renderSettings();
+}
+
+// Selectionner un PI par numero absolu (depuis le selecteur)
+function _rotSelectPI(piNum) {
+  const n = parseInt(piNum);
+  if (isNaN(n)) return;
+  _rotPINumOverride = n;
+  _rotPIOffset = 0;
+  if (typeof _rotLoadAbsForPI === 'function') _rotLoadAbsForPI();
   renderSettings();
 }
 
@@ -1477,13 +1492,19 @@ function renderSettings() {
     <div class="rot-sticky-bar">
       ${_sectionHeader('rotation', '🔄', 'Rotation Support', '')}
       ${!_settingsCollapsed['rotation'] ? (() => {
-        const wi0 = _rotWeekInfos(0);
-        const piLabel = wi0._piNum || '?';
-        const nextPiLabel = String((parseInt(piLabel) || 0) + 1);
+        const wi0 = _rotWeekInfos();
+        const currentPiNum = wi0._piNum || '?';
+        // Selecteur PI base sur _piListAll() (meme source que piprep/roadmap)
+        const allPIs = typeof _piListAll === 'function' ? _piListAll() : [];
+        const piOptions = allPIs.map(p => {
+          const suffix = p.isCurrent ? ' (actuel)' : p.isFuture ? ' (futur)' : '';
+          const selected = p.num === String(currentPiNum) ? ' selected' : '';
+          return `<option value="${p.num}"${selected}>PI${p.num}${suffix}</option>`;
+        }).join('');
         return `<div class="rot-toolbar">
-        <div class="rot-pi-toggle">
-          <button class="btn ${_rotPIOffset === 0 ? 'btn-primary' : 'btn-secondary'} stg-btn-sm" onclick="_rotTogglePI(0)">PI ${piLabel}</button>
-          <button class="btn ${_rotPIOffset === 1 ? 'btn-primary' : 'btn-secondary'} stg-btn-sm" onclick="_rotTogglePI(1)">PI ${nextPiLabel}</button>
+        <div class="rot-pi-selector">
+          <label class="rot-pi-label">PI :</label>
+          <select class="rm-pi-select" onchange="_rotSelectPI(this.value)">${piOptions || `<option>PI${currentPiNum}</option>`}</select>
         </div>
         <div class="rot-group-selector">
           ${GROUPS.filter(g => g.teams.length > 1).map(g => {
