@@ -297,10 +297,9 @@ function _renderModalContent(t) {
         </div>
         <span class="mdl-sprint-pct">${remaining > 0 ? 'J-' + remaining : isDone(t.status) ? 'Terminé' : 'Dépassé'}</span>
       </div>`;
-    } else if (sLabel && sLabel !== 'Sprint') {
-      // Pas de dates valides : afficher seulement le nom du sprint en chip discret
-      sprintBarHtml = `<span class="mdl-sprint-chip-fallback" title="Dates de sprint non disponibles">🏃 ${escapeHtml(sLabel)}</span>`;
     }
+    // Pas de fallback chip ici : le sprint est deja affiche par sprintChipsHtml
+    // dans la meta-row precedente (assignee · team · sprint).
 
     if (chips.length || sprintBarHtml) {
       timeRowHtml = `<div class="mdl-time-row">${chips.join('')}${sprintBarHtml}</div>`;
