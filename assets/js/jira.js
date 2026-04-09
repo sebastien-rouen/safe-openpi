@@ -21,9 +21,32 @@ const DATA_PROXY = '/data';
 
 // API call counter (reset at each sync, read by sync.js for toast/meta)
 let _jiraApiCalls = 0;
-function _jiraFetch(url, opts) {
+async function _jiraFetch(url, opts, _retries = 3) {
   _jiraApiCalls++;
-  return fetch(url, opts);
+  for (let attempt = 0; attempt <= _retries; attempt++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000);
+      const r = await fetch(url, { ...opts, signal: controller.signal });
+      clearTimeout(timeout);
+      if (r.status === 429) {
+        const wait = parseInt(r.headers.get('Retry-After') || '5', 10);
+        _warn(`Rate limited (429), attente ${wait}s…`);
+        await new Promise(ok => setTimeout(ok, wait * 1000));
+        continue;
+      }
+      if (r.status >= 500 && attempt < _retries) {
+        _warn(`Erreur ${r.status}, retry ${attempt + 1}/${_retries}…`);
+        await new Promise(ok => setTimeout(ok, 1000 * (attempt + 1)));
+        continue;
+      }
+      return r;
+    } catch (e) {
+      if (attempt === _retries) throw e;
+      _warn(`Fetch failed (${e.message}), retry ${attempt + 1}/${_retries}…`);
+      await new Promise(ok => setTimeout(ok, 1000 * (attempt + 1)));
+    }
+  }
 }
 
 // Log conditionnel — désactivé en production (console.log trop verbeux)
@@ -822,6 +845,27 @@ function _transform(issues, project, sprintId, teamConfigs) {
       description: _extractDescription(f.description),
       updatedAt:   f.updated || null,
       recentChanges: _extractRecentChanges(i),
+      // Cycle/lead time calcules directement depuis le changelog (evite N appels API individuels)
+      ...(() => {
+        const created = f.created ? new Date(f.created) : null;
+        const histories = i.changelog?.histories || [];
+        let firstInProg = null, doneTS = null;
+        histories.forEach(h => {
+          const ts = new Date(h.created);
+          (h.items || []).forEach(item => {
+            if (item.field !== 'status') return;
+            const to = _mapStatus(item.toString || '');
+            if (to === 'inprog' && (!firstInProg || ts < firstInProg)) firstInProg = ts;
+            if (isDone(to)) doneTS = ts;
+          });
+        });
+        const result = {};
+        if (created && doneTS) result.leadTimeDays = Math.round((doneTS - created) / 86400000 * 10) / 10;
+        if (firstInProg && doneTS) result.cycleTimeDays = Math.round((doneTS - firstInProg) / 86400000 * 10) / 10;
+        if (firstInProg) result.startedDate = firstInProg.toISOString().slice(0, 10);
+        if (doneTS) result.resolvedDate = doneTS.toISOString().slice(0, 10);
+        return result;
+      })(),
     };
   });
 
@@ -1072,6 +1116,15 @@ async function loadJiraCache() {
  * @returns {string|null} L'ID du customfield Story Points, ou null
  */
 async function _jiraDiscoverSPField() {
+  // Cache localStorage 7 jours (le champ SP ne change jamais d'ID)
+  const LS_KEY = '_jiraSPFieldId', LS_TS = '_jiraSPFieldTs';
+  const cached = localStorage.getItem(LS_KEY);
+  const cachedTs = parseInt(localStorage.getItem(LS_TS) || '0', 10);
+  if (cached && (Date.now() - cachedTs) < 7 * 86400000) {
+    _pointsFieldKey = cached;
+    _log(`Story Points field (cache) : ${cached}`);
+    return cached;
+  }
   try {
     const fr = await _jiraFetch(`${JIRA_PROXY}/api/3/field`, { headers: { Accept: 'application/json' } });
     if (fr.ok) {
@@ -1080,7 +1133,9 @@ async function _jiraDiscoverSPField() {
         /^story.?points?$/i.test(f.name) || /^story.?points?$/i.test(f.untranslatedName || '')
       );
       if (spField) {
-        _pointsFieldKey = spField.id; // pré-cache pour _getPoints
+        _pointsFieldKey = spField.id;
+        localStorage.setItem(LS_KEY, spField.id);
+        localStorage.setItem(LS_TS, String(Date.now()));
         _log(`Story Points field détecté : ${spField.name} → ${spField.id}`);
         return spField.id;
       } else {
@@ -1104,6 +1159,17 @@ async function _jiraDiscoverSPField() {
  * @returns {Promise<Object>} Map { id: name }
  */
 async function _jiraFetchStatusMap() {
+  // Cache localStorage 24h (les statuts changent rarement)
+  const LS_KEY = '_jiraStatusMap', LS_TS = '_jiraStatusMapTs';
+  try {
+    const cached = localStorage.getItem(LS_KEY);
+    const cachedTs = parseInt(localStorage.getItem(LS_TS) || '0', 10);
+    if (cached && (Date.now() - cachedTs) < 24 * 3600000) {
+      const map = JSON.parse(cached);
+      _log(`Status map (cache 24h) : ${Object.keys(map).length} statuts`);
+      return map;
+    }
+  } catch (e) { /* cache corrompu, refetch */ }
   try {
     const r = await _jiraFetch(`${JIRA_PROXY}/api/3/status`);
     if (!r.ok) return {};
@@ -1113,6 +1179,7 @@ async function _jiraFetchStatusMap() {
       data.forEach(s => { if (s.id && s.name) map[String(s.id)] = s.name; });
     }
     _log(`Status map : ${Object.keys(map).length} statuts resolus`);
+    try { localStorage.setItem(LS_KEY, JSON.stringify(map)); localStorage.setItem(LS_TS, String(Date.now())); } catch (e) {}
     return map;
   } catch (e) {
     _warn('Status map fetch failed :', e.message);
@@ -1200,117 +1267,110 @@ async function _jiraFetchBoards() {
 async function _jiraFetchSprintsAndIssues(scrumBoards, ctx) {
   const _SKIP_BOARD_RE = /\b(PI\s*Board|Board\s*Features?|Cadrage|Post[- ]Mortem|Rétrospective|Retrospective|Program\s*Board)\b/i;
 
-  for (const board of scrumBoards) {
+  // Traitement d'un board (autonome, retourne un objet resultat)
+  async function _processBoard(board) {
     if (_SKIP_BOARD_RE.test(board.name)) {
       _log(`Board ignoré (PI/agrégateur) : "${board.name}"`);
-      ctx.step += 2;
-      continue;
+      return null;
+    }
+    const teamName = _boardTeamName(board.name);
+    const result = { teamName, board, sprint: null, boardCols: null, issues: [], isPI: false };
+
+    // Sprint actif + board config EN PARALLELE
+    const [sprintRes, boardConfig] = await Promise.all([
+      _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/sprint?state=active&maxResults=1`).then(r => r.ok ? r.json() : null).catch(() => null),
+      _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/configuration`, { headers: { Accept: 'application/json' } }).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]);
+
+    const sprint = (sprintRes?.values || [])[0];
+    if (sprint) {
+      if (/^PI\s*#?\d+/i.test(sprint.name)) {
+        _log(`Board "${board.name}" ignoré - sprint PI : "${sprint.name}"`);
+        result.isPI = true; result.sprint = sprint;
+        return result;
+      }
+      result.sprint = sprint;
     }
 
-    const teamName = _boardTeamName(board.name);
+    if (boardConfig?.columnConfig?.columns) {
+      result.boardCols = boardConfig.columnConfig.columns.map(col => {
+        const internal = _mapColumnToInternal(col.name);
+        const statuses = (col.statuses || []).map(st => ({
+          id: st.id, name: st.name || ctx.statusMap?.[String(st.id)] || '',
+        }));
+        return { name: col.name, internal, statuses };
+      });
+    }
 
-    if (!ctx.teamConfigs[teamName]) {
-      ctx.teamConfigs[teamName] = {
-        name:       teamName,
-        color:      _COLOR_PALETTE[Object.keys(ctx.teamConfigs).length % _COLOR_PALETTE.length],
-        boardId:    board.id,
-        projectKey: board.location?.projectKey || '',
+    if (sprint && !result.isPI) {
+      try {
+        const jql = `sprint=${sprint.id} ORDER BY issuetype ASC, updated DESC`;
+        const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${ctx.fields}&expand=changelog`;
+        const ir = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
+        if (ir.ok) {
+          result.issues = (await ir.json()).issues || [];
+          _log(`Board "${board.name}" → "${teamName}" : ${result.issues.length} issues`);
+        } else { _warn(`Issues board ${board.id} : HTTP ${ir.status}`); }
+      } catch (e) { _warn(`Issues board ${board.id} (${board.name}) : ${e.message}`); }
+    } else if (!sprint) {
+      _log(`Board "${board.name}" : pas de sprint actif`);
+    }
+    return result;
+  }
+
+  // Paralleliser par batch de 4 boards (evite saturation rate-limit JIRA Cloud)
+  const BATCH = 4;
+  const allResults = [];
+  for (let i = 0; i < scrumBoards.length; i += BATCH) {
+    const batch = scrumBoards.slice(i, i + BATCH);
+    _syncProgress(ctx.step, ctx.totalSteps, `Boards ${i + 1}–${Math.min(i + BATCH, scrumBoards.length)}…`);
+    const results = await Promise.all(batch.map(_processBoard));
+    allResults.push(...results);
+    ctx.step += batch.length * 2;
+  }
+
+  // Merger les resultats sequentiellement (mutations ctx)
+  allResults.forEach(r => {
+    if (!r) return;
+    const tn = r.teamName;
+    if (!ctx.teamConfigs[tn]) {
+      ctx.teamConfigs[tn] = {
+        name: tn, color: _COLOR_PALETTE[Object.keys(ctx.teamConfigs).length % _COLOR_PALETTE.length],
+        boardId: r.board.id, projectKey: r.board.location?.projectKey || '',
       };
     }
-
-    _syncProgress(++ctx.step, ctx.totalSteps, `Sprint : ${teamName}…`);
-    let sprintId = null;
-
-    const _boardConfigPromise = _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/configuration`, { headers: { Accept: 'application/json' } })
-      .then(r => r.ok ? r.json() : null)
-      .catch(() => null);
-
-    try {
-      const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${board.id}/sprint?state=active&maxResults=1`);
-      if (sr.ok) {
-        const sb     = await sr.json();
-        const sprint = (sb.values || [])[0];
-        if (sprint) {
-          if (/^PI\s*#?\d+/i.test(sprint.name)) {
-            _log(`Board "${board.name}" ignoré - sprint PI : "${sprint.name}" (sprints futurs seront fetchés)`);
-            ctx.piBoardIds.push(board.id);
-            ctx.step++;
-            continue;
-          }
-          sprintId = sprint.id;
-          ctx.teamConfigs[teamName].sprintName    = sprint.name;
-          ctx.teamConfigs[teamName].sprintStart   = _fmtDate(sprint.startDate);
-          ctx.teamConfigs[teamName].sprintEnd     = _fmtDate(sprint.endDate);
-          ctx.teamConfigs[teamName].sprintStartISO = sprint.startDate || '';
-          ctx.teamConfigs[teamName].sprintGoal    = sprint.goal || '';
-          if (!ctx.firstSprint) {
-            ctx.firstSprint = sprint;
-            CONFIG.sprint.current      = sprint.id;
-            CONFIG.sprint.label        = sprint.name;
-            CONFIG.sprint.startDate    = _fmtDate(sprint.startDate);
-            CONFIG.sprint.endDate      = _fmtDate(sprint.endDate);
-            CONFIG.sprint.startDateISO = sprint.startDate || '';
-            CONFIG.sprint.goal      = sprint.goal || '';
-            _log(`Sprint référence : ${sprint.name} (id=${sprint.id})`);
-          }
-        }
-      }
-    } catch (e) {
-      _warn(`Sprint board ${board.id} (${board.name}) : ${e.message}`);
-    }
-
-    const _boardConfig = await _boardConfigPromise;
-    if (_boardConfig?.columnConfig?.columns) {
-      const cols = _boardConfig.columnConfig.columns;
-      const boardCols = [];
-      cols.forEach(col => {
-        const internal = _mapColumnToInternal(col.name);
-        // Resoudre id → name via le status map global (JIRA ne retourne que les id ici)
-        const statuses = (col.statuses || []).map(st => ({
-          id:   st.id,
-          name: st.name || ctx.statusMap?.[String(st.id)] || '',
-        }));
-        boardCols.push({ name: col.name, internal, statuses });
-        if (internal) {
-          statuses.forEach(st => {
-            const stName = (st.name || '').toLowerCase().trim();
-            if (stName && !_boardColumnMap[stName]) {
-              _boardColumnMap[stName] = internal;
-            }
-          });
-        }
+    if (r.isPI) { ctx.piBoardIds.push(r.board.id); return; }
+    if (r.sprint) {
+      Object.assign(ctx.teamConfigs[tn], {
+        sprintName: r.sprint.name, sprintStart: _fmtDate(r.sprint.startDate),
+        sprintEnd: _fmtDate(r.sprint.endDate), sprintStartISO: r.sprint.startDate || '',
+        sprintGoal: r.sprint.goal || '',
       });
-      ctx.allBoardColumns[teamName] = boardCols;
-      const summary = boardCols.map(c => `${c.name}→${c.internal || '?'}(${c.statuses.length})`).join(', ');
-      _log(`Board "${board.name}" colonnes : ${summary}`);
-    }
-
-    if (!sprintId) {
-      ctx.step++;
-      _log(`Board "${board.name}" : pas de sprint actif`);
-      continue;
-    }
-
-    _syncProgress(++ctx.step, ctx.totalSteps, `Issues : ${teamName}…`);
-    try {
-      const jql = `sprint=${sprintId} ORDER BY issuetype ASC, updated DESC`;
-      const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${ctx.fields}&expand=changelog`;
-      const ir  = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
-      if (ir.ok) {
-        const ib = await ir.json();
-        const issues = ib.issues || [];
-        const _spName = ctx.teamConfigs[teamName].sprintName || '';
-        issues.forEach(issue => { issue._boardTeam = teamName; issue._activeSprintName = _spName; });
-        ctx.allIssues.push(...issues);
-        if (issues.length) ctx.teamConfigs[teamName].hasIssues = true;
-        _log(`Board "${board.name}" → équipe "${teamName}" : ${issues.length} issues`);
-      } else {
-        _warn(`Issues board ${board.id} : HTTP ${ir.status}`);
+      if (!ctx.firstSprint) {
+        ctx.firstSprint = r.sprint;
+        CONFIG.sprint.current = r.sprint.id; CONFIG.sprint.label = r.sprint.name;
+        CONFIG.sprint.startDate = _fmtDate(r.sprint.startDate); CONFIG.sprint.endDate = _fmtDate(r.sprint.endDate);
+        CONFIG.sprint.startDateISO = r.sprint.startDate || ''; CONFIG.sprint.goal = r.sprint.goal || '';
+        _log(`Sprint référence : ${r.sprint.name} (id=${r.sprint.id})`);
       }
-    } catch (e) {
-      _warn(`Issues board ${board.id} (${board.name}) : ${e.message}`);
     }
-  }
+    if (r.boardCols) {
+      ctx.allBoardColumns[tn] = r.boardCols;
+      r.boardCols.forEach(col => {
+        if (!col.internal) return;
+        col.statuses.forEach(st => {
+          const stName = (st.name || '').toLowerCase().trim();
+          if (stName && !_boardColumnMap[stName]) _boardColumnMap[stName] = col.internal;
+        });
+      });
+    }
+    if (r.issues.length) {
+      const _spName = ctx.teamConfigs[tn].sprintName || '';
+      r.issues.forEach(issue => { issue._boardTeam = tn; issue._activeSprintName = _spName; });
+      ctx.allIssues.push(...r.issues);
+      ctx.teamConfigs[tn].hasIssues = true;
+    }
+  });
 
   if (!ctx.allIssues.length && !Object.values(ctx.teamConfigs).some(tc => tc.boardId)) {
     throw new Error('Aucun board JIRA trouvé avec des sprints');
@@ -1364,7 +1424,8 @@ async function _jiraFetchVelocityHistory(spFieldId, ctx) {
   await Promise.all(Object.entries(ctx.teamConfigs).map(async ([teamName, tc]) => {
     if (!tc.boardId || !tc.hasIssues) return;
     try {
-      const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=closed&maxResults=${CONFIG.sync.closedSprintsFetch}`);
+      const maxFetch = Math.min(CONFIG.sync.closedSprintsFetch || 50, 50);
+      const sr = await _jiraFetch(`${JIRA_PROXY}/agile/1.0/board/${tc.boardId}/sprint?state=closed&maxResults=${maxFetch}`);
       if (!sr.ok) return;
       const allClosed = (await sr.json()).values || [];
       const teamSprints = allClosed.filter(s => !/^PI\s*#?\d+/i.test(s.name));
@@ -1503,20 +1564,29 @@ async function _jiraFetchFutureSprints(ctx) {
         }
       }
 
-      for (const fs of futureSprints) {
-        const jql = `sprint=${fs.id} ORDER BY priority ASC`;
-        const url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=${CONFIG.sync.maxIssuesPerSprint}&fields=${ctx.fields}`;
-        const ir  = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
-        if (!ir.ok) continue;
-        const issues = (await ir.json()).issues || [];
-        issues.forEach(issue => {
-          if (ctx.futureSeenKeys.has(issue.key)) return;
-          ctx.futureSeenKeys.add(issue.key);
-          issue._boardTeam = teamName;
-          issue._isFuture  = true;
-          ctx.allFutureIssues.push(issue);
-        });
+      const sprintIds = futureSprints.map(fs => fs.id).join(',');
+      const jql = `sprint IN (${sprintIds}) ORDER BY priority ASC`;
+      let allIssues = [];
+      let nextPageToken = null;
+      for (let p = 0; p < 100; p++) {
+        let url = `${JIRA_PROXY}/api/3/search/jql?jql=${encodeURIComponent(jql)}&maxResults=100&fields=${ctx.fields}`;
+        if (nextPageToken) url += `&nextPageToken=${encodeURIComponent(nextPageToken)}`;
+        const ir = await _jiraFetch(url, { headers: { Accept: 'application/json' } });
+        if (!ir.ok) break;
+        const body = await ir.json();
+        const issues = body.issues || [];
+        allIssues = allIssues.concat(issues);
+        if (body.isLast !== false || !issues.length) break;
+        nextPageToken = body.nextPageToken;
+        if (!nextPageToken) break;
       }
+      allIssues.forEach(issue => {
+        if (ctx.futureSeenKeys.has(issue.key)) return;
+        ctx.futureSeenKeys.add(issue.key);
+        issue._boardTeam = teamName;
+        issue._isFuture  = true;
+        ctx.allFutureIssues.push(issue);
+      });
       const count = ctx.allFutureIssues.filter(i => i._boardTeam === teamName).length;
       if (count) _log(`Sprints futurs "${teamName}" : ${count} tickets (${futureSprints.length} sprints)`);
     } catch (e) {
@@ -1659,10 +1729,12 @@ async function _jiraFetchPITickets(ctx) {
  * Mute ctx.allFutureIssues, ctx.futureSeenKeys
  */
 async function _jiraFetchPIFeatures(currentPINum, piFuture, projFilter, piActiveKeys, ctx) {
-  for (let pi = 0; pi <= piFuture; pi++) {
-    const piN = currentPINum + pi;
-    const piSprintName = `PI#${piN}`;
-    try {
+  await Promise.all(Array.from({ length: piFuture + 1 }, (_, idx) => {
+    return (async () => {
+      const pi = idx;
+      const piN = currentPINum + pi;
+      const piSprintName = `PI#${piN}`;
+      try {
       const featJql = `sprint IN ("PI#${piN}","PI #${piN}","PI${piN}")${projFilter} AND issuetype IN (Feature, Fonctionnalité) ORDER BY key ASC`;
       let featIssues = [];
       let featToken = null;
@@ -1677,7 +1749,7 @@ async function _jiraFetchPIFeatures(currentPINum, piFuture, projFilter, piActive
         featToken = featBody.nextPageToken;
         if (!featToken) break;
       }
-      if (!featIssues.length) continue;
+      if (!featIssues.length) return;
       let featAdded = 0;
       featIssues.forEach(issue => {
         let teamField = null;
@@ -1759,10 +1831,11 @@ async function _jiraFetchPIFeatures(currentPINum, piFuture, projFilter, piActive
         }
         if (totalChildAdded) _log(`Enfants Features ${piSprintName} : ${totalChildAdded} ajoutés (${allFeatKeys.length} features)`);
       }
-    } catch (e) {
-      _warn(`Features PI#${piN} : ${e.message}`);
-    }
-  }
+      } catch (e) {
+        _warn(`Features PI#${piN} : ${e.message}`);
+      }
+    })();
+  }));
 }
 
 /**
@@ -1918,21 +1991,18 @@ async function _jiraFetchAmelTickets(ctx) {
       if (!amelToken) break;
     }
     _log(`Amélioration continue : ${_amelIssues.length} tickets trouvés`);
+    const _memberTeamMap = new Map();
+    ctx.allIssues.forEach(i => {
+      const name = i.fields?.assignee?.displayName;
+      if (name && i._boardTeam && !_memberTeamMap.has(name)) _memberTeamMap.set(name, i._boardTeam);
+    });
     _amelIssues.forEach(i => {
       const f = i.fields;
       const sprintRaw  = f[CONFIG.sync.sprintField];
       const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
       const piSprint   = _extractPISprint(sprintList);
       const assignee = f.assignee?.displayName || '';
-      let team = '';
-      if (assignee) {
-        for (const ai of ctx.allIssues) {
-          if (ai.fields?.assignee?.displayName === assignee && ai._boardTeam) {
-            team = ai._boardTeam;
-            break;
-          }
-        }
-      }
+      let team = _memberTeamMap.get(assignee) || '';
       _ameliorationList.push({
         id:          i.key,
         title:       f.summary || '',
@@ -2272,8 +2342,9 @@ async function loadJiraData(opts = {}) {
   // M+N+O. Transform + backlog + deduce teams
   const cache = await _jiraTransformAndSave(ctx, groups, innoFeatureList, ameliorationList, opts);
 
-  // P. Lead/cycle time
-  await _jiraFetchCycleTimes(cache);
+  // P. Lead/cycle time → calcule directement dans _transform (plus de fetch individuel)
+  const withCT = (cache.tickets || []).filter(t => t.cycleTimeDays != null).length;
+  _log(`Cycle/lead time : ${withCT} tickets calculés (via changelog de la phase D)`);
 
   // Q. Sauvegarder en cache + appliquer
   try {
