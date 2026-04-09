@@ -199,10 +199,6 @@ body {
 .last-sync { color: #64748B; font-size: 11px; transition: color .3s; }
 .last-sync.stale { color: #F59E0B; }
 .last-sync.stale::after { content: ' ↻'; opacity: .7; }
-.sync-partial-toggle { display: flex; align-items: center; cursor: pointer; gap: 0; position: relative; }
-.sync-partial-toggle input { display: none; }
-.sync-partial-icon { font-size: 12px; width: 28px; height: 18px; line-height: 18px; text-align: center; border-radius: 9px; background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.1); color: #64748B; transition: all .2s; }
-.sync-partial-toggle input:checked + .sync-partial-icon { background: rgba(250,204,21,.15); border-color: rgba(250,204,21,.4); color: #FACC15; }
 
 /* Barre de progression sync */
 .sync-progress { margin-top: 8px; }

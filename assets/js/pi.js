@@ -1083,8 +1083,8 @@ function _renderPIDepAlerts() {
   const now = new Date(); now.setHours(0, 0, 0, 0);
 
   // Check sprint end as the implicit deadline for deps without explicit targetDate
-  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
-  const sprintEnd = s.endDate ? new Date(s.endDate) : null;
+  const sprintContext = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  const sprintEnd = sprintContext.endDate ? new Date(sprintContext.endDate) : null;
   if (sprintEnd) sprintEnd.setHours(0, 0, 0, 0);
 
   // Filtrer par équipes actives (sélection sidebar)
@@ -1102,7 +1102,7 @@ function _renderPIDepAlerts() {
     const target = d.targetDate ? new Date(d.targetDate) : sprintEnd;
     if (!target) return;
 
-    const daysLeft = Math.round((target - now) / 86400000);
+    const daysLeft = Math.round((target - now) / MS_PER_DAY);
     if (daysLeft <= alertDays && daysLeft >= -7) { // Alert from D-N to D+7 (overdue)
       const fromName = CONFIG.teams[d.fromTeam]?.name || d.fromTeam;
       const toName   = CONFIG.teams[d.toTeam]?.name || d.toTeam;
@@ -1169,25 +1169,25 @@ function _renderPIObjRiskAlerts(stats, tickets, allTeams) {
 
   // 2. Capacity gap - overloaded teams
   allTeams.forEach(team => {
-    const tc = CONFIG.teams[team];
-    if (!tc) return;
-    const vel = tc.velocity || 0;
+    const teamConfig = CONFIG.teams[team];
+    if (!teamConfig) return;
+    const vel = teamConfig.velocity || 0;
     const planned = tickets.filter(t => t.team === team).reduce((a, t) => a + (t.points || 0), 0);
     if (vel > 0 && planned > vel * 1.2) {
       const overPct = Math.round((planned / vel - 1) * 100);
       alerts.push({
         icon: '⚠️',
-        text: `<strong>${tc.name || team}</strong> - surcharge +${overPct}% (${planned} pts planifiés vs ${vel} pts capacité)`,
+        text: `<strong>${teamConfig.name || team}</strong> - surcharge +${overPct}% (${planned} pts planifiés vs ${vel} pts capacité)`,
       });
     }
   });
 
   // 3. Sprint end approaching with low completion
-  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
-  if (s.endDate) {
+  const sprintContext = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  if (sprintContext.endDate) {
     const now = new Date(); now.setHours(0, 0, 0, 0);
-    const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
-    const daysLeft = Math.round((end - now) / 86400000);
+    const end = new Date(sprintContext.endDate); end.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((end - now) / MS_PER_DAY);
     const globalPct = stats.totalTk ? Math.round(stats.doneTk / stats.totalTk * 100) : 0;
     if (daysLeft <= 3 && globalPct < 60) {
       alerts.push({
@@ -1754,13 +1754,12 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     story: '📗', storytech: '📘', bug: '🐛', incident: '🔥', support: '🎫',
     ops: '⚙️', tache: '📝', dette: '🧹', feature: '📦', epic: '🏷️',
   }[t] || '📄');
-  const _escHtml = escapeHtml;
   const _jiraBase = (CONFIG.jira?.url || '').replace(/\/$/, '');
   const _jiraLink = id => {
     if (_jiraBase && !_jiraBase.includes('votre-jira')) {
-      return `<a href="${_jiraBase}/browse/${_escHtml(id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="pj-key-link">${_escHtml(id)}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="pj-ext-icon"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>`;
+      return `<a href="${_jiraBase}/browse/${escapeHtml(id)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="pj-key-link">${escapeHtml(id)}${ICON_EXTERNAL_LINK}</a>`;
     }
-    return _escHtml(id);
+    return escapeHtml(id);
   };
   const _typeLabel = t => typeName(t).toUpperCase();
   const _statusLbl = t => t._jiraStatus || statusLabel(t.status);
@@ -1795,11 +1794,11 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     return `<tr class="pj-ticket-row${t._cadrage ? ' pj-cadrage-row' : ''}${bufClass}${noSprint ? ' pj-no-sprint' : ''}" data-buffer="${isBuf ? '1' : ''}" onclick="openModal('${(t.id || '').replace(/'/g, "\\'")}')">
       <td>${bufBadge}<span class="pj-type" style="background:${typeColor}22;color:${typeColor};border:1px solid ${typeColor}44">${_typeIcon(t.type)} ${_typeLabel(t.type)}</span></td>
       <td class="pj-key">${_jiraLink(t.id)}</td>
-      <td class="pj-summary">${_escHtml(t.title || t.summary || '')}${cadrage}</td>
+      <td class="pj-summary">${escapeHtml(t.title || t.summary || '')}${cadrage}</td>
       <td class="pj-status"><span class="badge badge-${t.status}">${_statusLbl(t)}</span></td>
       <td class="pj-pts">${t.points || '–'}</td>
-      <td class="pj-sprint">${_escHtml(sprintLabel)}</td>
-      <td class="pj-team">${_escHtml(CONFIG.teams[t.team]?.name || t.team || '')}</td>
+      <td class="pj-sprint">${escapeHtml(sprintLabel)}</td>
+      <td class="pj-team">${escapeHtml(CONFIG.teams[t.team]?.name || t.team || '')}</td>
     </tr>`;
   };
 
@@ -1826,7 +1825,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
     // Feature row (skip fake "_no_feature" group)
     if (feat.id !== '_no_feature') {
       rows += `<tr class="pj-feat-row${featIsBuffer ? ' pj-feat-buffer' : ''}">
-        <td colspan="7"><span class="pj-feat-icon">${featIsBuffer ? '🛡️' : '📦'}</span> <strong>${_jiraLink(feat.id)}</strong> — ${_escHtml(feat.title)} <span class="pj-feat-stats">${(() => {
+        <td colspan="7"><span class="pj-feat-icon">${featIsBuffer ? '🛡️' : '📦'}</span> <strong>${_jiraLink(feat.id)}</strong> — ${escapeHtml(feat.title)} <span class="pj-feat-stats">${(() => {
           // Story points de la feature elle-même (depuis backlog)
           const ownPts = tickets.find(tx => tx.id === feat.id)?.points || 0;
           if (featCnt) return `${featCnt} tickets · ${featPts} pts`;
@@ -1846,7 +1845,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
       if (epic._normalTix.length || !epic._bufferTix.length) {
         if (epic.id !== feat.id) {
           rows += `<tr class="pj-epic-row${epicEmpty ? ' pj-empty-row' : ''}">
-            <td colspan="7"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(epic.id)}</strong> — ${_escHtml(epic.title)} <span class="pj-epic-stats">${epicEmpty ? 'Aucun ticket' : `${epic._normalTix.length} tickets · ${epicPts} pts`}</span></td>
+            <td colspan="7"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(epic.id)}</strong> — ${escapeHtml(epic.title)} <span class="pj-epic-stats">${epicEmpty ? 'Aucun ticket' : `${epic._normalTix.length} tickets · ${epicPts} pts`}</span></td>
           </tr>`;
         }
         _sortTix(epic._normalTix).forEach(t => { rows += _ticketRow(t); });
@@ -1883,7 +1882,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
       return e && /buffer/i.test(e.title || '');
     });
     const bufFeat = bufferFeatId ? (features.find(f => f.id === bufferFeatId) || epics.find(e => e.id === bufferFeatId)) : null;
-    const bufFeatHtml = bufFeat ? ` ${_jiraLink(bufFeat.id)} — ${_escHtml(bufFeat.title)}` : '';
+    const bufFeatHtml = bufFeat ? ` ${_jiraLink(bufFeat.id)} — ${escapeHtml(bufFeat.title)}` : '';
     rows += `<tr class="pj-buffer-row">
       <td colspan="7"><span class="pj-feat-icon">🛡️</span> <strong>Buffer</strong>${bufFeatHtml} <span class="pj-feat-stats">${bufferTickets.length} tickets · ${bufPts} pts</span></td>
     </tr>`;
@@ -1903,7 +1902,7 @@ function _piRenderJiraSection(tickets, piNum, activeTeams) {
         const eTitle = _resolveTitle(eid);
         const ePts = tix.reduce((s, t) => s + (t.points || 0), 0);
         rows += `<tr class="pj-epic-row" style="background:rgba(139,92,246,.04)">
-          <td colspan="7"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(eid)}</strong> — ${_escHtml(eTitle)} <span class="pj-epic-stats">${tix.length} tickets · ${ePts} pts</span></td>
+          <td colspan="7"><span class="pj-epic-icon">🏷️</span> <strong>${_jiraLink(eid)}</strong> — ${escapeHtml(eTitle)} <span class="pj-epic-stats">${tix.length} tickets · ${ePts} pts</span></td>
         </tr>`;
       }
       _sortTix(tix).forEach(t => { rows += _ticketRow(t); });
@@ -2113,9 +2112,8 @@ function _piRenderSupportSchedule() {
       const isCurrent = today >= wi._start && today <= wi._end;
       const members = rot.weeks[idx] || [];
       const membersHtml = members.map(m => {
-        const c = (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[m]) || color;
         const firstName = escapeHtml((m || '').split(' ')[0]);
-        return `<div class="pi-sup-member">${avatarBadge(m, c, { w: 18, fs: '8px' })} ${firstName}</div>`;
+        return `<div class="pi-sup-member">${avatarBadge(m, memberColor(m), { w: 18, fs: '8px' })} ${firstName}</div>`;
       }).join('') || '<div class="pi-sup-member" style="color:var(--text-muted);font-style:italic">-</div>';
 
       return `<div class="pi-sup-week${isCurrent ? ' pi-sup-week-current' : ''}">

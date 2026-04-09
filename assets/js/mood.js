@@ -50,8 +50,8 @@ function _ritualsData() { return _moodData().rituals || (_moodData().rituals = {
 // Key for current sprint context (e.g. "Fuego__Ité 28.4")
 function _ritualsKey() {
   const team = currentTeam && currentTeam !== 'all' ? currentTeam : 'all';
-  const s = _activeSprintCtx();
-  return `${team}__${s.label || 'sprint'}`;
+  const sprintContext = _activeSprintCtx();
+  return `${team}__${sprintContext.label || 'sprint'}`;
 }
 
 // ----------- Mood meter (ROTI) panel - like fist of five -----------
@@ -67,8 +67,8 @@ function _moodTeams() {
 }
 
 function _moodKey(teamId) {
-  const s = _activeSprintCtx();
-  return `${teamId}__${s.label || 'sprint'}`;
+  const sprintContext = _activeSprintCtx();
+  return `${teamId}__${sprintContext.label || 'sprint'}`;
 }
 
 window._toggleMoodPanel = function() {
@@ -309,8 +309,8 @@ function _renderMoodPanel() {
 let _votePanelOpen = false;
 
 function _voteKey(teamId) {
-  const s = _activeSprintCtx();
-  return `${teamId}__${s.label || 'sprint'}`;
+  const sprintContext = _activeSprintCtx();
+  return `${teamId}__${sprintContext.label || 'sprint'}`;
 }
 
 function _voteData() {

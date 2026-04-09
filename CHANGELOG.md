@@ -4,6 +4,27 @@ Toutes les modifications notables de ce projet sont documentees dans ce fichier.
 Format base sur [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 Ce projet adhere au [Semantic Versioning](https://semver.org/lang/fr/).
 
+## [Non publie] - 2026-04-09
+
+### Flow Metrics
+
+- **Section Flow Metrics dans la vue Scrum** : nouvelle section "Flow Metrics" avec 3 charts sous les metriques sprint existantes (`index.html`, `charts.js`, `views.css`)
+- **Throughput chart** : bar chart du nombre de tickets termines par jour du sprint, avec trendline moyenne glissante 3 jours et moyenne quotidienne sur jours ouvres. Plugin offDays pour griser les weekends. Tooltips detailles avec date et compteur (`charts.js`)
+- **Cycle Time Scatter Plot** : scatter plot x=date de resolution, y=cycle time en jours. Chaque point colore selon sa position relative aux percentiles (vert <= P50, orange <= P85, rouge > P85). Lignes de reference P50 (mediane) et P85 en overlay. Tooltip avec cle JIRA, titre, points et stats globales (`charts.js`)
+- **WIP Age chart** : bar chart horizontal montrant l'age en jours de chaque ticket en cours (inprog, review, test). Trie par age decroissant, limite a 15 tickets. Ligne de reference P85 du cycle time des tickets termines. Barres colorees rouge/orange/bleu selon le ratio age/P85. Tooltip avec statut, points et alerte si > P85 (`charts.js`)
+- **Fullscreen + grille de tickets** : les 3 charts supportent le plein ecran avec grille de tickets cliquables. Throughput = tickets par jour, CT Scatter = tickets > P85 / <= P85, WIP Age = tickets par statut WIP (`charts.js`)
+
+### Ameliorations
+
+- **Grille tickets plein ecran generalisee** : refactoring de `_fsRenderTicketGrid` en version generique acceptant un tableau de colonnes. Nouveau dispatcher `_fsGridColumns` avec builders specifiques pour chaque chart (burn, velocity, CFD, type, throughput, CT scatter, WIP age). Badge compteur par colonne (`charts.js`, `views.css`)
+- **Bordures Feature/Epic sur les ticket-cards** : les cartes de type Feature ont une bordure doree (#FEF3C7) et les cartes Epic une bordure bleue (#DBEAFE), coherentes avec les couleurs des badges respectifs (`board.css`)
+- **Avatars avec couleurs deterministes** : nouvelle fonction `memberColor(name)` dans utils.js qui genere une couleur stable par hash du nom quand `MEMBER_COLORS` n'a pas d'entree pour ce membre. Utilise dans la rotation support PI (`utils.js`, `pi.js`)
+- **Headers board sticky alignes en bas** : les headers de colonnes avec tickets (>0) sont alignes `end` dans la sticky bar, les vides restent en haut — meilleur repere visuel (`board.css`)
+
+### Suppression
+
+- **Sync partielle retiree** : suppression du toggle eclair (sync incrementale) qui causait des vues vides apres sync partielle. La synchronisation est toujours complete (`index.html`, `base.css`, `sync.js`, `jira.js`)
+
 ## [Non publie] - 2026-04-01
 
 ### Fonctionnalite

@@ -159,9 +159,9 @@ function _renderSidebarBuffer() {
   });
 
   const teamSections = Object.entries(byTeam).map(([team, tks]) => {
-    const tc = CONFIG.teams[team] || {};
-    const color = tc.color || '#94A3B8';
-    const name = tc.name || team;
+    const teamConfig = CONFIG.teams[team] || {};
+    const color = teamConfig.color || '#94A3B8';
+    const name = teamConfig.name || team;
     const rows = tks.map(t => {
       const st = isDone(t.status) ? '✅' : t.status === 'blocked' ? '🚧' : t.status === 'inprog' || t.status === 'review' ? '🔵' : '⬜';
       const typeClr = CONFIG.typeColors?.[t.type] || '#94A3B8';
@@ -241,12 +241,12 @@ function _renderSidebarObjectives() {
 
   const objRows = objs.map(o => {
     const st = ST[o.status] || ST.todo;
-    const tc = CONFIG.teams[o.team]?.color || '#94A3B8';
+    const teamColor = CONFIG.teams[o.team]?.color || '#94A3B8';
     const teamName = CONFIG.teams[o.team]?.name || o.team || '';
     const isStretch = o.type === 'stretch';
     return `<div class="sb-obj-row${o.status === 'done' ? ' sb-obj-row--done' : ''}" title="${(o.title || '(sans titre)').replace(/"/g, '&quot;')} — ${teamName} · BV${o.bv || '?'}">
       <span>${st.icon}</span>
-      <span class="sb-obj-dot" style="background:${tc};" title="${teamName}"></span>
+      <span class="sb-obj-dot" style="background:${teamColor};" title="${teamName}"></span>
       <span class="sb-risk-title${isStretch ? ' sb-obj-row--stretch' : ''}">${escapeHtml(o.title || '(sans titre)')}</span>
       <span class="sb-obj-bv">BV${o.bv || '?'}</span>
     </div>`;
@@ -423,7 +423,7 @@ function _renderSidebarRisks() {
 // Met à jour le bloc contexte sprint/PI dans la sidebar.
 // Appelé depuis renderScrum() ET directement après chargement du cache.
 function _updateSidebarStats() {
-  const s        = _activeSprintCtx();
+  const sprintContext        = _activeSprintCtx();
   const teamCfgS = currentTeam && currentTeam !== 'all' ? CONFIG.teams[currentTeam] : null;
   const url = CONFIG.jira?.url || '';
   const _el = id => document.getElementById(id);
@@ -431,7 +431,7 @@ function _updateSidebarStats() {
   // Nom du sprint + lien board
   const linkEl = _el('sb-sprint-link');
   if (linkEl) {
-    linkEl.textContent = s.label || '-';
+    linkEl.textContent = sprintContext.label || '-';
     // Lien vers le board JIRA de l'équipe courante (si configuré)
     const teamCfg  = teamCfgS;
     const boardId  = teamCfg?.boardId;
@@ -455,7 +455,7 @@ function _updateSidebarStats() {
   // PI détecté depuis le nom du sprint (ex: "PI4 S2", "PI 3 - Sprint 1")
   const piBadge = _el('sb-pi-badge');
   if (piBadge) {
-    const piMatch = (s.label || '').match(/PI\s*(\d+)/i);
+    const piMatch = (sprintContext.label || '').match(/PI\s*(\d+)/i);
     if (piMatch) {
       piBadge.textContent  = `PI ${piMatch[1]}`;
       piBadge.style.display = '';
@@ -467,9 +467,9 @@ function _updateSidebarStats() {
   // Jours restants
   const remEl = _el('sb-remaining');
   if (remEl) {
-    const endStr = s.endDate || '';
+    const endStr = sprintContext.endDate || '';
     const end    = endStr ? new Date(endStr.split('/').reverse().join('-')) : null;
-    const diff   = end ? Math.ceil((end - new Date()) / 86400000) : null;
+    const diff   = end ? Math.ceil((end - new Date()) / MS_PER_DAY) : null;
     if (diff !== null && !isNaN(diff)) {
       if (diff < 0) {
         remEl.textContent = 'Terminé';
@@ -488,16 +488,16 @@ function _updateSidebarStats() {
 
   // Dates sprint - format "06 mar. → 19 mar. 2026"
   const datesEl = _el('sb-sprint-dates');
-  if (datesEl && s.startDate && s.endDate) {
+  if (datesEl && sprintContext.startDate && sprintContext.endDate) {
     const _shortDate = (str) => {
       const d = new Date(str.split('/').reverse().join('-'));
       if (isNaN(d)) return str;
       const months = ['jan.','fév.','mar.','avr.','mai','juin','juil.','août','sep.','oct.','nov.','déc.'];
       return `${String(d.getDate()).padStart(2,'0')} ${months[d.getMonth()]}`;
     };
-    const endD = new Date(s.endDate.split('/').reverse().join('-'));
+    const endD = new Date(sprintContext.endDate.split('/').reverse().join('-'));
     const year = !isNaN(endD) ? ' ' + endD.getFullYear() : '';
-    datesEl.textContent = `${_shortDate(s.startDate)} → ${_shortDate(s.endDate)}${year}`;
+    datesEl.textContent = `${_shortDate(sprintContext.startDate)} → ${_shortDate(sprintContext.endDate)}${year}`;
   } else if (datesEl) {
     datesEl.textContent = '';
   }

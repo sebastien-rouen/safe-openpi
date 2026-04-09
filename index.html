@@ -83,10 +83,6 @@
     </button>
     <div class="sync-meta">
       <span class="last-sync" id="lastSync">Sync: -</span>
-      <label class="sync-partial-toggle" title="Sync rapide : ne recharge que les tickets du sprint actif (vélocité et backlog conservés)">
-        <input type="checkbox" id="sync-incremental" aria-label="Sync rapide (incrémentale)">
-        <span class="sync-partial-icon" aria-hidden="true">⚡</span>
-      </label>
     </div>
     <div class="sync-progress" id="syncProgress" style="display:none">
       <div class="sync-progress-bar"><div class="sync-progress-fill" id="syncProgressFill"></div></div>
@@ -198,6 +194,14 @@
         <div class="chart-card"><div class="chart-title">📈 Burnup Chart<button class="chart-fs-btn" onclick="_chartFullscreen('burnupChart','📈 Burnup Chart')" title="Plein écran">⛶</button></div><div class="chart-wrap"><canvas id="burnupChart"></canvas></div></div>
         <div class="chart-card"><div class="chart-title">📊 CFD - Flux Sprint<button class="chart-fs-btn" onclick="_chartFullscreen('cmdChart','📊 CFD - Flux Sprint')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="cmdChart"></canvas></div></div>
         <div class="chart-card"><div class="chart-title">✋ Confiance PI (Fist of Five)<button class="chart-fs-btn" onclick="_chartFullscreen('fistChartScrum','✋ Confiance PI (Fist of Five)')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="fistChartScrum"></canvas></div></div>
+      </div>
+      <div id="flow-metrics-section">
+        <div style="margin-top:24px;" class="section-header"><div class="section-title">🌊 Flow Metrics</div><span id="flow-metrics-hint" style="display:none;font-size:11px;color:var(--text-muted);font-style:italic;margin-left:12px"></span></div>
+        <div class="charts-row charts-row-2" id="charts-row-flow">
+          <div class="chart-card"><div class="chart-title">📦 Throughput (tickets/jour)<button class="chart-fs-btn" onclick="_chartFullscreen('throughputChart','📦 Throughput (tickets/jour)')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="throughputChart"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">⏱️ Cycle Time Scatter<button class="chart-fs-btn" onclick="_chartFullscreen('ctScatterChart','⏱️ Cycle Time Scatter')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="ctScatterChart"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">🔥 WIP Age<button class="chart-fs-btn" onclick="_chartFullscreen('wipAgeChart','🔥 WIP Age')" title="Plein écran">⛶</button></div><div class="chart-wrap" style="height:200px"><canvas id="wipAgeChart"></canvas></div></div>
+        </div>
       </div>
     </div>
 

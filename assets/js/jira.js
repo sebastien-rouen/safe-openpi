@@ -58,13 +58,8 @@ const _warn = console.warn.bind(console, '[JIRA]');
 function _cacheFile() { return 'jira-data.json'; }
 
 // --- Palette de couleurs auto ---
-const _COLOR_PALETTE = [
-  '#2563EB','#EC4899','#14B8A6','#F59E0B','#06B6D4','#10B981',
-  '#0891B2','#F43F5E','#F97316','#84CC16','#EF4444','#8B5CF6',
-  '#3B82F6','#22C55E','#EAB308','#0EA5E9','#E11D48','#0284C7',
-];
 let _colorCursor = 0;
-function _pickColor() { return _COLOR_PALETTE[_colorCursor++ % _COLOR_PALETTE.length]; }
+function _pickColor() { return _AVATAR_PALETTE[_colorCursor++ % _AVATAR_PALETTE.length]; }
 
 const _GROUP_COLORS = [
   '#0284C7','#059669','#EA580C','#8B5CF6','#EC4899','#14B8A6','#F59E0B','#EF4444',
@@ -860,8 +855,8 @@ function _transform(issues, project, sprintId, teamConfigs) {
           });
         });
         const result = {};
-        if (created && doneTS) result.leadTimeDays = Math.round((doneTS - created) / 86400000 * 10) / 10;
-        if (firstInProg && doneTS) result.cycleTimeDays = Math.round((doneTS - firstInProg) / 86400000 * 10) / 10;
+        if (created && doneTS) result.leadTimeDays = Math.round((doneTS - created) / MS_PER_DAY * 10) / 10;
+        if (firstInProg && doneTS) result.cycleTimeDays = Math.round((doneTS - firstInProg) / MS_PER_DAY * 10) / 10;
         if (firstInProg) result.startedDate = firstInProg.toISOString().slice(0, 10);
         if (doneTS) result.resolvedDate = doneTS.toISOString().slice(0, 10);
         return result;
@@ -870,27 +865,27 @@ function _transform(issues, project, sprintId, teamConfigs) {
   });
 
   const support = supportIssues.map(i => {
-    const f = i.fields;
-    const labels = (f.labels || []).map(l => l.toLowerCase());
+    const fields = i.fields;
+    const labels = (fields.labels || []).map(l => l.toLowerCase());
     return {
       id:          i.key,
-      title:       f.summary,
-      type:        _mapType(f.issuetype?.name) || 'support',
-      priority:    _mapPriority(f.priority?.name),
-      status:      isDone(_mapStatus(f.status?.name)) ? 'done' : 'open',
-      _jiraStatus: f.status?.name || '',
-      _boardStatus: _mapStatus(f.status?.name) || 'todo',
-      assignee:    (f.assignee?.displayName || '').trim() || null,
+      title:       fields.summary,
+      type:        _mapType(fields.issuetype?.name) || 'support',
+      priority:    _mapPriority(fields.priority?.name),
+      status:      isDone(_mapStatus(fields.status?.name)) ? 'done' : 'open',
+      _jiraStatus: fields.status?.name || '',
+      _boardStatus: _mapStatus(fields.status?.name) || 'todo',
+      assignee:    (fields.assignee?.displayName || '').trim() || null,
       team:        i._boardTeam || '',
-      date:        (f.created || '').slice(0, 10),
-      dueDate:     f.duedate || null,
+      date:        (fields.created || '').slice(0, 10),
+      dueDate:     fields.duedate || null,
       labels,
-      components:  _extractComponents(f),
-      environment: _extractDescription(f.environment) || (typeof f.environment === 'string' ? f.environment : '') || '',
-      links:       _extractLinks(f.issuelinks),
-      lastComment: _extractLastComment(f.comment),
-      comments:    _extractComments(f.comment),
-      description: _extractDescription(f.description),
+      components:  _extractComponents(fields),
+      environment: _extractDescription(fields.environment) || (typeof fields.environment === 'string' ? fields.environment : '') || '',
+      links:       _extractLinks(fields.issuelinks),
+      lastComment: _extractLastComment(fields.comment),
+      comments:    _extractComments(fields.comment),
+      description: _extractDescription(fields.description),
     };
   });
 
@@ -1120,7 +1115,7 @@ async function _jiraDiscoverSPField() {
   const LS_KEY = '_jiraSPFieldId', LS_TS = '_jiraSPFieldTs';
   const cached = localStorage.getItem(LS_KEY);
   const cachedTs = parseInt(localStorage.getItem(LS_TS) || '0', 10);
-  if (cached && (Date.now() - cachedTs) < 7 * 86400000) {
+  if (cached && (Date.now() - cachedTs) < 7 * MS_PER_DAY) {
     _pointsFieldKey = cached;
     _log(`Story Points field (cache) : ${cached}`);
     return cached;
@@ -1164,7 +1159,7 @@ async function _jiraFetchStatusMap() {
   try {
     const cached = localStorage.getItem(LS_KEY);
     const cachedTs = parseInt(localStorage.getItem(LS_TS) || '0', 10);
-    if (cached && (Date.now() - cachedTs) < 24 * 3600000) {
+    if (cached && (Date.now() - cachedTs) < MS_PER_DAY) {
       const map = JSON.parse(cached);
       _log(`Status map (cache 24h) : ${Object.keys(map).length} statuts`);
       return map;
@@ -1384,7 +1379,7 @@ async function _jiraFetchSprintsAndIssues(scrumBoards, ctx) {
       Object.entries(ctx.teamConfigs).forEach(([name, tc]) => {
         if (!tc.sprintEnd) return;
         const teamEnd = new Date(tc.sprintEnd);
-        const diffDays = Math.round((refStart - teamEnd) / (1000 * 60 * 60 * 24));
+        const diffDays = Math.round((refStart - teamEnd) / MS_PER_DAY);
         if (diffDays > INACTIVE_THRESHOLD_DAYS) {
           tc.inactive = true;
           tc.hasIssues = false;
@@ -1891,20 +1886,20 @@ async function _jiraFetchInnoFeatures(ctx) {
       _log(`Innovation : ${_innoIssues.length} features trouvées (${_innoKeys.join(', ')})`);
 
       _innoIssues.forEach(i => {
-        const f = i.fields;
-        const sprintRaw  = f[CONFIG.sync.sprintField];
+        const fields = i.fields;
+        const sprintRaw  = fields[CONFIG.sync.sprintField];
         const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
         const piSprint   = _extractPISprint(sprintList);
         _innoFeatureList.push({
           id:          i.key,
-          title:       f.summary || '',
-          status:      _mapStatus(f.status?.name),
-          _jiraStatus: f.status?.name || '',
-          labels:      (f.labels || []).map(l => l.toLowerCase()),
-          assignee:    f.assignee?.displayName || '',
-          points:      _getPoints(f),
+          title:       fields.summary || '',
+          status:      _mapStatus(fields.status?.name),
+          _jiraStatus: fields.status?.name || '',
+          labels:      (fields.labels || []).map(l => l.toLowerCase()),
+          assignee:    fields.assignee?.displayName || '',
+          points:      _getPoints(fields),
           piSprint:    piSprint?.name || '',
-          dueDate:     f.duedate || f.customfield_10015 || null,
+          dueDate:     fields.duedate || fields.customfield_10015 || null,
         });
       });
 
@@ -1997,27 +1992,27 @@ async function _jiraFetchAmelTickets(ctx) {
       if (name && i._boardTeam && !_memberTeamMap.has(name)) _memberTeamMap.set(name, i._boardTeam);
     });
     _amelIssues.forEach(i => {
-      const f = i.fields;
-      const sprintRaw  = f[CONFIG.sync.sprintField];
+      const fields = i.fields;
+      const sprintRaw  = fields[CONFIG.sync.sprintField];
       const sprintList = sprintRaw ? _parseSprintField(sprintRaw) : [];
       const piSprint   = _extractPISprint(sprintList);
-      const assignee = f.assignee?.displayName || '';
+      const assignee = fields.assignee?.displayName || '';
       let team = _memberTeamMap.get(assignee) || '';
       _ameliorationList.push({
         id:          i.key,
-        title:       f.summary || '',
-        status:      _mapStatus(f.status?.name),
-        _jiraStatus: f.status?.name || '',
-        labels:      (f.labels || []).map(l => l.toLowerCase()),
+        title:       fields.summary || '',
+        status:      _mapStatus(fields.status?.name),
+        _jiraStatus: fields.status?.name || '',
+        labels:      (fields.labels || []).map(l => l.toLowerCase()),
         assignee:    assignee,
-        points:      _getPoints(f),
+        points:      _getPoints(fields),
         team:        team,
-        type:        _mapType(f.issuetype?.name),
-        priority:    _mapPriority(f.priority?.name),
+        type:        _mapType(fields.issuetype?.name),
+        priority:    _mapPriority(fields.priority?.name),
         piSprint:    piSprint?.name || '',
-        dueDate:     f.duedate || f.customfield_10015 || null,
-        epic:        _getEpicKey(f) || '',
-        description: _extractDescription(f.description),
+        dueDate:     fields.duedate || fields.customfield_10015 || null,
+        epic:        _getEpicKey(fields) || '',
+        description: _extractDescription(fields.description),
       });
     });
   } catch (e) {
@@ -2126,10 +2121,7 @@ async function _jiraTransformAndSave(ctx, groups, innoFeatureList, ameliorationL
   }
 
   // Tickets futurs / backlog planifié
-  if (opts.incremental) {
-    cache.backlog_tickets = (typeof BACKLOG_TICKETS !== 'undefined' ? [...BACKLOG_TICKETS] : []);
-    _log(`Sync incrémentale - backlog conservé (${cache.backlog_tickets.length})`);
-  } else {
+  {
     const _seenActive = new Set(ctx.allIssues.map(i => i.key));
     const _uniqueFuture = ctx.allFutureIssues.filter(i => {
       if (!_seenActive.has(i.key)) return true;
@@ -2238,10 +2230,10 @@ async function _jiraFetchCycleTimes(cache) {
           });
         });
         if (created && doneDate) {
-          t.leadTimeDays = Math.round((doneDate - created) / (1000 * 60 * 60 * 24) * 10) / 10;
+          t.leadTimeDays = Math.round((doneDate - created) / MS_PER_DAY * 10) / 10;
         }
         if (firstInProg && doneDate) {
-          t.cycleTimeDays = Math.round((doneDate - firstInProg) / (1000 * 60 * 60 * 24) * 10) / 10;
+          t.cycleTimeDays = Math.round((doneDate - firstInProg) / MS_PER_DAY * 10) / 10;
         }
         if (firstInProg) t.startedDate  = firstInProg.toISOString().slice(0, 10);
         if (doneDate)    t.resolvedDate = doneDate.toISOString().slice(0, 10);
@@ -2304,32 +2296,28 @@ async function loadJiraData(opts = {}) {
   let ameliorationList = [];
   let piCtx = { currentPINum: null, piFuture: 0, projFilter: '', piActiveKeys: new Set() };
 
-  if (opts.incremental) {
-    _log('Sync incrémentale - vélocité et backlog ignorés');
-  } else {
-    // E. Velocity history (sprints fermés)
-    await _jiraFetchVelocityHistory(spFieldId, ctx);
+  // E. Velocity history (sprints fermés)
+  await _jiraFetchVelocityHistory(spFieldId, ctx);
 
-    // F. Backlog (sprints futurs)
-    _syncProgress(++ctx.step, ctx.totalSteps, 'Backlog (sprints futurs)…');
-    await _jiraFetchFutureSprints(ctx);
+  // F. Backlog (sprints futurs)
+  _syncProgress(++ctx.step, ctx.totalSteps, 'Backlog (sprints futurs)…');
+  await _jiraFetchFutureSprints(ctx);
 
-    // G. Tickets PI (JQL)
-    _syncProgress(++ctx.step, ctx.totalSteps, 'Tickets PI (JQL)…');
-    piCtx = await _jiraFetchPITickets(ctx);
+  // G. Tickets PI (JQL)
+  _syncProgress(++ctx.step, ctx.totalSteps, 'Tickets PI (JQL)…');
+  piCtx = await _jiraFetchPITickets(ctx);
 
-    // H. Features PI
-    if (piCtx.currentPINum) {
-      _syncProgress(++ctx.step, ctx.totalSteps, 'Features PI…');
-      await _jiraFetchPIFeatures(piCtx.currentPINum, piCtx.piFuture, piCtx.projFilter, piCtx.piActiveKeys, ctx);
-    }
-
-    // J. Innovation features
-    innoFeatureList = await _jiraFetchInnoFeatures(ctx);
-
-    // K. Amélioration continue
-    ameliorationList = await _jiraFetchAmelTickets(ctx);
+  // H. Features PI
+  if (piCtx.currentPINum) {
+    _syncProgress(++ctx.step, ctx.totalSteps, 'Features PI…');
+    await _jiraFetchPIFeatures(piCtx.currentPINum, piCtx.piFuture, piCtx.projFilter, piCtx.piActiveKeys, ctx);
   }
+
+  // J. Innovation features
+  innoFeatureList = await _jiraFetchInnoFeatures(ctx);
+
+  // K. Amélioration continue
+  ameliorationList = await _jiraFetchAmelTickets(ctx);
 
   // I. Résoudre les titres des epics/features stubs
   await _jiraResolveEpicTitles(ctx);

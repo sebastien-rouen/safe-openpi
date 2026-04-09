@@ -39,17 +39,17 @@ function _renderSprintAlerts() {
   const el = document.getElementById('sprint-alerts');
   if (!el) return;
 
-  const s   = _activeSprintCtx();
+  const sprintContext   = _activeSprintCtx();
   const now = new Date(); now.setHours(0, 0, 0, 0);
 
-  if (!s.startDate || !s.endDate) { el.innerHTML = ''; return; }
+  if (!sprintContext.startDate || !sprintContext.endDate) { el.innerHTML = ''; return; }
 
-  const start = new Date(s.startDate.length === 10 ? s.startDate + 'T00:00:00' : s.startDate);
-  const end   = new Date(s.endDate.length === 10   ? s.endDate   + 'T00:00:00' : s.endDate);
+  const start = new Date(sprintContext.startDate.length === 10 ? sprintContext.startDate + 'T00:00:00' : sprintContext.startDate);
+  const end   = new Date(sprintContext.endDate.length === 10   ? sprintContext.endDate   + 'T00:00:00' : sprintContext.endDate);
   start.setHours(0, 0, 0, 0); end.setHours(0, 0, 0, 0);
 
-  const daysFromStart = Math.round((now - start) / 86400000);
-  const daysToEnd     = Math.round((end - now)   / 86400000);
+  const daysFromStart = Math.round((now - start) / MS_PER_DAY);
+  const daysToEnd     = Math.round((end - now)   / MS_PER_DAY);
 
   const alerts = [];
 
@@ -102,7 +102,7 @@ function _renderSprintAlerts() {
     // Count tickets that were added after sprint start (sprint field change to current sprint)
     const addedMidSprint = tickets.filter(t => {
       if (!Array.isArray(t.todayChanges)) return false;
-      return t.todayChanges.some(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(s.label));
+      return t.todayChanges.some(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(sprintContext.label));
     }).length;
     if (addedMidSprint >= scopeThreshold) {
       alerts.push({
@@ -196,12 +196,12 @@ function renderScrum() {
   const pct      = ptsTotal > 0 ? Math.round(ptsDone / ptsTotal * 100) : 0;
 
   // Sprint effectif selon le filtre courant
-  const s    = _activeSprintCtx();
+  const sprintContext    = _activeSprintCtx();
   const _el  = id => document.getElementById(id);
-  const startShort = s.startDate ? s.startDate.replace(/\s+\d{4}$/, '') : '-';
-  const endFull    = s.endDate   || '-';
-  if (_el('sprint-name'))     _el('sprint-name').textContent     = s.label || '-';
-  if (_el('sprint-dates'))    _el('sprint-dates').textContent    = s.startDate ? `${startShort} – ${endFull}` : '-';
+  const startShort = sprintContext.startDate ? sprintContext.startDate.replace(/\s+\d{4}$/, '') : '-';
+  const endFull    = sprintContext.endDate   || '-';
+  if (_el('sprint-name'))     _el('sprint-name').textContent     = sprintContext.label || '-';
+  if (_el('sprint-dates'))    _el('sprint-dates').textContent    = sprintContext.startDate ? `${startShort} – ${endFull}` : '-';
   if (_el('sprint-velocity')) _el('sprint-velocity').textContent = ptsTotal + ' pts';
   // Buffer visualization in progress bar
   const bufTickets   = tickets.filter(t => t.buffer);
@@ -233,7 +233,7 @@ function renderScrum() {
   if (_el('sprint-prog-wrap')) {
     _el('sprint-prog-wrap').title = `${pct}% · ${ptsDone}/${ptsTotal} pts (${ptsRem} restants)${bufTotalPts > 0 ? ` · 🛡 Buffer ${bufDonePts}/${bufTotalPts} pts` : ''} · WIP ${wipPts} pts`;
   }
-  if (_el('sprint-goal'))     _el('sprint-goal').innerHTML       = s.goal ? `<strong>🎯 Goal</strong>${escapeHtml(s.goal)}` : '';
+  if (_el('sprint-goal'))     _el('sprint-goal').innerHTML       = sprintContext.goal ? `<strong>🎯 Goal</strong>${escapeHtml(sprintContext.goal)}` : '';
 
   _renderScrumSupportBanner();
   _renderSprintAlerts();
@@ -249,14 +249,14 @@ function renderScrum() {
   const _ctxLabel = currentTeam && currentTeam !== 'all'
     ? currentTeam
     : currentGroup ? (GROUPS.find(g => g.id === currentGroup)?.name || '') : '';
-  if (_el('topbar-title')) _el('topbar-title').textContent = `📋 Vue Scrum - ${s.label || 'Sprint actif'}${_ctxLabel ? ` · ${_ctxLabel}` : ''}`;
+  if (_el('topbar-title')) _el('topbar-title').textContent = `📋 Vue Scrum - ${sprintContext.label || 'Sprint actif'}${_ctxLabel ? ` · ${_ctxLabel}` : ''}`;
 
   // Stat cards
   const bufferAll  = tickets.filter(t => t.buffer);
   const bufferPtsS = bufferAll.reduce((a, t) => a + (t.points || 0), 0);
   // Vélocité cumulée du PI en cours
   const _piNum = (() => {
-    const m = (s.label || '').match(/(\d+)\.\d+/);
+    const m = (sprintContext.label || '').match(/(\d+)\.\d+/);
     return m ? m[1] : null;
   })();
   let piVelocity = null;
@@ -343,11 +343,11 @@ function _renderScrumRisks(tickets, blocked) {
   }
 
   // Sprint end approaching
-  const s = _activeSprintCtx();
-  if (s.endDate) {
+  const sprintContext = _activeSprintCtx();
+  if (sprintContext.endDate) {
     const now = new Date();
-    const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
-    const daysLeft = Math.round((end - now) / 86400000);
+    const end = new Date(sprintContext.endDate); end.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((end - now) / MS_PER_DAY);
     const notDone = tickets.filter(t => !isDone(t.status)).length;
     const total = tickets.length;
     const pctDone = total ? Math.round((total - notDone) / total * 100) : 0;
@@ -396,15 +396,15 @@ function _renderScrumRisks(tickets, blocked) {
 // - Groupe ou tout → sprint référence global (CONFIG.sprint)
 function _activeSprintCtx() {
   if (currentTeam && currentTeam !== 'all') {
-    const tc = CONFIG.teams[currentTeam];
-    if (tc?.sprintName) {
+    const teamConfig = CONFIG.teams[currentTeam];
+    if (teamConfig?.sprintName) {
       return {
         ...CONFIG.sprint,
-        label:          tc.sprintName,
-        startDate:      tc.sprintStart || CONFIG.sprint.startDate,
-        endDate:        tc.sprintEnd   || CONFIG.sprint.endDate,
-        velocityTarget: tc.velocity    || CONFIG.sprint.velocityTarget,
-        goal:           tc.sprintGoal  || CONFIG.sprint.goal || '',
+        label:          teamConfig.sprintName,
+        startDate:      teamConfig.sprintStart || CONFIG.sprint.startDate,
+        endDate:        teamConfig.sprintEnd   || CONFIG.sprint.endDate,
+        velocityTarget: teamConfig.velocity    || CONFIG.sprint.velocityTarget,
+        goal:           teamConfig.sprintGoal  || CONFIG.sprint.goal || '',
       };
     }
   }
@@ -431,7 +431,7 @@ const _daFieldLabel = (f) => _DA_FIELD_LABELS[f] || f;
 // Returns { today: [...], yesterday: [...] }
 function _buildDailyChanges() {
   const todayStr = new Date().toISOString().slice(0, 10);
-  const yDate    = new Date(Date.now() - 86400000);
+  const yDate    = new Date(Date.now() - MS_PER_DAY);
   const yStr     = yDate.toISOString().slice(0, 10);
   const today = [], yesterday = [];
   TICKETS.forEach(t => {
@@ -536,7 +536,7 @@ function _renderDailyActivity() {
 
   const arrow = _dailyActivityCollapsed ? '▶' : '▼';
   const todayLabel     = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  const yDate          = new Date(Date.now() - 86400000);
+  const yDate          = new Date(Date.now() - MS_PER_DAY);
   const yesterdayLabel = yDate.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const allChanges = [...todayChanges, ...yesterdayChanges];
@@ -914,7 +914,7 @@ function _renderBoardDeadlines(filtered) {
     if (isDone(t.status)) return; // skip done tickets in deadline view
     const dd = _dueDate(t);
     if (!dd || isNaN(dd)) { lanes[5].tickets.push(t); return; }
-    const diff = Math.ceil((dd - now) / 86400000);
+    const diff = Math.ceil((dd - now) / MS_PER_DAY);
     if (diff < 0)                          lanes[0].tickets.push(t);
     else if (diff === 0)                   lanes[1].tickets.push(t);
     else if (dd <= endOfWeek)              lanes[2].tickets.push(t);
@@ -1266,10 +1266,10 @@ function _showVelocityTrendDetail() {
 // ----------- Scope creep detail popin -----------
 function _showScopeCreepDetail() {
   const all = getTickets();
-  const s = CONFIG.sprint || {};
+  const sprintContext = CONFIG.sprint || {};
   const added = all.filter(t => {
     if (!Array.isArray(t.todayChanges)) return false;
-    return t.todayChanges.some(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(s.label));
+    return t.todayChanges.some(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(sprintContext.label));
   });
   if (!added.length) return;
 
@@ -1279,7 +1279,7 @@ function _showScopeCreepDetail() {
     const epic = EPICS.find(e => e.id === t.epic);
     const avatarColor = MEMBER_COLORS[t.assignee] || CLR.slate;
     // Find who added it and when
-    const sprintChange = (t.todayChanges || []).find(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(s.label));
+    const sprintChange = (t.todayChanges || []).find(c => c.field && c.field.toLowerCase() === 'sprint' && c.to && c.to.includes(sprintContext.label));
     const addedBy = sprintChange ? sprintChange.author : '';
     const addedAt = sprintChange ? sprintChange.time : '';
     const timeStr = addedAt ? new Date(addedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '';

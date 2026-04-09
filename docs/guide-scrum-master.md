@@ -32,6 +32,9 @@
 | Burnup | Charts | Le scope augmente-t-il en cours de sprint ? |
 | Velocity | Charts (6 sprints) | Tendance a la baisse = signal d'alerte |
 | CFD | Charts | Accumulation dans une colonne = goulot |
+| Throughput | Flow Metrics | Tickets termines par jour, tendance 3j |
+| Cycle Time | Flow Metrics | Scatter plot : points rouges = tickets > P85 |
+| WIP Age | Flow Metrics | Tickets en cours > P85 du cycle time = risque |
 | Bloques | Sidebar + board | Fond rouge, badge "Bloque" |
 | Flagges | Sidebar + board | Fond pastel rouge, badge "Flagge" |
 

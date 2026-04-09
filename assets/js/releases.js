@@ -13,7 +13,7 @@ function renderReleases() {
   }
 
   const now = new Date();
-  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  const sprintContext = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
   const teams = getActiveTeams();
 
   // ---- Data aggregation ----

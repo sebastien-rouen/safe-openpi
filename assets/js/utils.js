@@ -2,11 +2,16 @@
 // UTILS - Fonctions utilitaires partagées
 // ============================================================
 
+const MS_PER_DAY = 86_400_000;
+
 // Échappe les caractères HTML pour prévenir les injections XSS (données JIRA → innerHTML)
 function escapeHtml(s) {
   if (s == null) return '';
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
+
+// SVG external link icon (réutilisé dans epicTag, _jiraBrowse, pi.js)
+const ICON_EXTERNAL_LINK = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-left:3px;opacity:.6;flex-shrink:0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
 
 // ---- Cache mémo pour fonctions PI coûteuses (invalidé après sync) ----
 const _memoCache = {};
@@ -70,8 +75,7 @@ function epicTag(epic, ticketEpicId, opts = {}) {
   const mw    = opts.maxWidth === 'none' ? '' : `max-width:${opts.maxWidth || 120}px;overflow:hidden;text-overflow:ellipsis;`;
   const inner = `<span class="epic-tag" style="background:${color};${mw}white-space:nowrap;display:inline-block;vertical-align:middle;" title="${tip.replace(/"/g, '&quot;')}">${title}</span>`;
   if (url) {
-    const extIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-left:3px;opacity:.6;flex-shrink:0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
-    return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none;flex-shrink:0;display:inline-flex;align-items:center;">${inner}${extIcon}</a>`;
+    return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="text-decoration:none;flex-shrink:0;display:inline-flex;align-items:center;">${inner}${ICON_EXTERNAL_LINK}</a>`;
   }
   return inner;
 }
@@ -83,8 +87,7 @@ function _jiraBrowse(id, opts = {}) {
   const url   = `${base}/browse/${id}`;
   const label = opts.text || id;
   const style = opts.style || 'color:inherit;text-decoration:none;font-weight:inherit;';
-  const icon  = `<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:middle;margin-left:3px;opacity:.6;flex-shrink:0"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>`;
-  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="${style}" title="Ouvrir dans JIRA">${label}${icon}</a>`;
+  return `<a href="${url}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="${style}" title="Ouvrir dans JIRA">${label}${ICON_EXTERNAL_LINK}</a>`;
 }
 
 // URL brute vers un ticket JIRA (pour les rapports texte/Slack)
@@ -128,6 +131,19 @@ function thresholdColor(val, good, ok) {
 function statusDot(color, size) {
   const px = size === 'sm' ? 6 : size === 'md' ? 8 : 10;
   return `<span style="width:${px}px;height:${px}px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;"></span>`;
+}
+
+// Deterministic color from a name string (hash-based, always the same for a given name)
+const _AVATAR_PALETTE = [
+  '#2563EB','#EC4899','#14B8A6','#F59E0B','#06B6D4','#10B981',
+  '#0891B2','#F43F5E','#F97316','#84CC16','#EF4444','#8B5CF6',
+  '#3B82F6','#22C55E','#EAB308','#0EA5E9','#E11D48','#0284C7',
+];
+function memberColor(name) {
+  if (typeof MEMBER_COLORS !== 'undefined' && MEMBER_COLORS[name]) return MEMBER_COLORS[name];
+  let h = 0;
+  for (let i = 0; i < (name || '').length; i++) h = ((h << 5) - h + name.charCodeAt(i)) | 0;
+  return _AVATAR_PALETTE[((h % _AVATAR_PALETTE.length) + _AVATAR_PALETTE.length) % _AVATAR_PALETTE.length];
 }
 
 // Avatar badge with initials
@@ -220,6 +236,13 @@ function getBoardColumns(tickets) {
   }
 
   return cols.length ? cols : _defaultCols;
+}
+
+// Resolve board column label by internal key, with fallback
+function boardColLabel(key, fallback) {
+  const columns = typeof getBoardColumns === 'function' ? getBoardColumns() : [];
+  const found = columns.find(col => col.key === key);
+  return found ? found.label : fallback;
 }
 
 function showToast(msg, type = 'success') {
@@ -493,14 +516,14 @@ function _piVelocityStats(teams, piNum) {
   let totalAvg = 0;
 
   teamList.forEach(tid => {
-    const cfg = CONFIG.teams[tid] || {};
-    const history = cfg.velocityHistory || [];
+    const teamConfig = CONFIG.teams[tid] || {};
+    const history = teamConfig.velocityHistory || [];
     // Sprints de ce PI
     const piSps = piRe ? history.filter(s => piRe.test(s.name)) : [];
     const delivered = piSps.reduce((s, sp) => s + (sp.velocity || 0), 0);
     // Moyenne empirique sur tout l'historique (non-zéro)
     const histVals = history.filter(s => s.velocity > 0).map(s => s.velocity);
-    const avgVel = histVals.length ? Math.round(histVals.reduce((a, b) => a + b, 0) / histVals.length) : (cfg.velocity || 0);
+    const avgVel = histVals.length ? Math.round(histVals.reduce((a, b) => a + b, 0) / histVals.length) : (teamConfig.velocity || 0);
     const minVel = histVals.length >= 2 ? Math.min(...histVals) : avgVel;
     const maxVel = histVals.length >= 2 ? Math.max(...histVals) : avgVel;
     const teamCap = avgVel * sprintsPerPI;
@@ -511,7 +534,7 @@ function _piVelocityStats(teams, piNum) {
     if (piSps.length > result.sprintsDone) result.sprintsDone = piSps.length;
 
     result.teamDetails.push({
-      team: tid, name: cfg.name || tid, color: cfg.color || '#94A3B8',
+      team: tid, name: teamConfig.name || tid, color: teamConfig.color || '#94A3B8',
       avgVel, minVel, maxVel, delivered, teamCap,
       sprintsDone: piSps.length, histVals
     });
@@ -954,9 +977,9 @@ function _metricsVelocityData(teams) {
   // Aggregate velocity history across teams, sorted chronologically
   const iterMap = new Map(); // iterKey → { label, totalVel, idx }
   teams.forEach(tid => {
-    const tc = CONFIG.teams[tid];
-    if (!tc?.velocityHistory?.length) return;
-    tc.velocityHistory.forEach((entry, i) => {
+    const teamConfig = CONFIG.teams[tid];
+    if (!teamConfig?.velocityHistory?.length) return;
+    teamConfig.velocityHistory.forEach((entry, i) => {
       const key = entry.name || `S-${i}`;
       if (!iterMap.has(key)) {
         iterMap.set(key, { label: key.replace(/sprint\s*/i, 'S'), totalEngaged: 0, totalRealized: 0, startDate: entry.startDate || '' });
@@ -975,8 +998,8 @@ function _metricsVelocityData(teams) {
   const tickets = typeof getTickets === 'function' ? getTickets() : [];
   const ptsTotal = tickets.filter(t => teams.includes(t.team)).reduce((a, t) => a + t.points, 0);
   const ptsDone  = tickets.filter(t => teams.includes(t.team) && isDone(t.status)).reduce((a, t) => a + t.points, 0);
-  const s = typeof _activeSprintCtx === 'function' ? _activeSprintCtx() : CONFIG.sprint;
-  const currentLabel = (s.label || 'Actuel').replace(/sprint\s*/i, 'S');
+  const sprintContext = typeof _activeSprintCtx === 'function' ? _activeSprintCtx() : CONFIG.sprint;
+  const currentLabel = (sprintContext.label || 'Actuel').replace(/sprint\s*/i, 'S');
 
   const labels   = [...sorted.map(e => e.label), currentLabel];
   const engaged  = [...sorted.map(e => e.totalEngaged), ptsTotal];
@@ -1023,11 +1046,11 @@ function _piFistChartData(teams) {
 
   // Per-team fist data
   const datasets = teams.map(tid => {
-    const tc = CONFIG.teams[tid];
+    const teamConfig = CONFIG.teams[tid];
     return {
       tid,
-      name: tc?.name || tid,
-      color: tc?.color || '#94A3B8',
+      name: teamConfig?.name || tid,
+      color: teamConfig?.color || '#94A3B8',
       data: labels.map(sp => {
         const k = `${tid}__${sp}`;
         const v = Array.isArray(fist[k]) ? fist[k] : [];
@@ -1058,8 +1081,8 @@ function _piFistChartData(teams) {
   // Collect sprint dates from velocityHistory + active sprint
   const sprintDates = {};
   teams.forEach(tid => {
-    const tc = CONFIG.teams[tid];
-    (tc?.velocityHistory || []).forEach(vh => {
+    const teamConfig = CONFIG.teams[tid];
+    (teamConfig?.velocityHistory || []).forEach(vh => {
       if (vh.startDate || vh.endDate) sprintDates[vh.name] = { start: vh.startDate || '', end: vh.endDate || '' };
     });
   });

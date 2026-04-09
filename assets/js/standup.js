@@ -63,10 +63,10 @@ function renderStandup() {
   }
 
   // Sprint end approaching
-  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
-  if (s.endDate) {
-    const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
-    const daysLeft = Math.round((end - now) / 86400000);
+  const sprintContext = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  if (sprintContext.endDate) {
+    const end = new Date(sprintContext.endDate); end.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((end - now) / MS_PER_DAY);
     const notDone = tickets.filter(t => !isDone(t.status)).length;
     const total = tickets.length;
     const pctDone = total ? Math.round((total - notDone) / total * 100) : 0;
@@ -83,12 +83,12 @@ function renderStandup() {
 
   // ---- Render ----
   const ticketLine = (t, showStatus) => {
-    const tc = CONFIG.typeColors[t.type] || '#475569';
+    const typeColor = CONFIG.typeColors[t.type] || '#475569';
     const statusColors = { done: '#16A34A', inprog: '#2563EB', review: '#7C3AED', blocked: '#DC2626', todo: '#94A3B8' };
-    const sc = statusColors[t.status] || '#94A3B8';
+    const statusColor = statusColors[t.status] || '#94A3B8';
     const url = typeof _jiraBrowseUrl === 'function' ? _jiraBrowseUrl(t.id) : null;
-    const link = url ? `<a href="${url}" target="_blank" style="font-weight:700;color:${tc};text-decoration:none;font-size:12px;" onclick="event.stopPropagation()">${t.id}</a>` : `<strong style="color:${tc};font-size:12px;">${t.id}</strong>`;
-    const statusBadge = showStatus ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${sc}18;color:${sc};font-weight:600;border:1px solid ${sc}33;">${statusLabel(t.status)}</span>` : '';
+    const link = url ? `<a href="${url}" target="_blank" style="font-weight:700;color:${typeColor};text-decoration:none;font-size:12px;" onclick="event.stopPropagation()">${t.id}</a>` : `<strong style="color:${typeColor};font-size:12px;">${t.id}</strong>`;
+    const statusBadge = showStatus ? `<span style="font-size:10px;padding:1px 6px;border-radius:4px;background:${statusColor}18;color:${statusColor};font-weight:600;border:1px solid ${statusColor}33;">${statusLabel(t.status)}</span>` : '';
     return `<div class="su-ticket" onclick="openModal('${t.id}')" style="cursor:pointer;">
       ${link}
       <span style="font-size:12px;color:var(--text);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.title || '-'}</span>
@@ -109,13 +109,13 @@ function renderStandup() {
     </div>`;
 
   // Sprint context
-  const sprintLabel = s.label || 'Sprint actif';
-  const sprintInfo = s.endDate ? (() => {
-    const end = new Date(s.endDate); end.setHours(0, 0, 0, 0);
-    const daysLeft = Math.round((end - now) / 86400000);
+  const sprintLabel = sprintContext.label || 'Sprint actif';
+  const sprintInfo = sprintContext.endDate ? (() => {
+    const end = new Date(sprintContext.endDate); end.setHours(0, 0, 0, 0);
+    const daysLeft = Math.round((end - now) / MS_PER_DAY);
     const totalDone = tickets.filter(t => isDone(t.status)).length;
     const pct = tickets.length ? Math.round(totalDone / tickets.length * 100) : 0;
-    return `J${daysLeft >= 0 ? '+' : ''}${Math.abs(Math.round((now - new Date(s.startDate)) / 86400000))} · ${daysLeft}j restants · ${pct}% terminé`;
+    return `J${daysLeft >= 0 ? '+' : ''}${Math.abs(Math.round((now - new Date(sprintContext.startDate)) / MS_PER_DAY))} · ${daysLeft}j restants · ${pct}% terminé`;
   })() : '';
 
   el.innerHTML = `

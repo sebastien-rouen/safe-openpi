@@ -1760,8 +1760,8 @@ function renderSettings() {
 // --- Filter out demo-only teams (A, B, C, D) when real JIRA teams exist ---
 function _stgLiveTeams(allTeams) {
   const live = allTeams.filter(t => {
-    const cfg = CONFIG.teams[t] || {};
-    return cfg.boardId || cfg.sprintName || (typeof MEMBERS !== 'undefined' && (MEMBERS[t] || []).length > 0);
+    const teamConfig = CONFIG.teams[t] || {};
+    return teamConfig.boardId || teamConfig.sprintName || (typeof MEMBERS !== 'undefined' && (MEMBERS[t] || []).length > 0);
   });
   return live.length > 0 ? live : allTeams;
 }

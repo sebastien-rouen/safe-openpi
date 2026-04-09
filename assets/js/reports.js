@@ -190,8 +190,8 @@ let _rptPISCache = null;
 
 // Get sprint context for reports (uses selected PI/sprint or defaults)
 function _rptSprintCtx(team) {
-  const tc = CONFIG.teams[team] || {};
-  let label = tc.sprintName || CONFIG.sprint.label || 'Sprint actif';
+  const teamConfig = CONFIG.teams[team] || {};
+  let label = teamConfig.sprintName || CONFIG.sprint.label || 'Sprint actif';
 
   if (reportSprint) {
     // reportSprint is an iteration number like "28.4"
@@ -284,13 +284,13 @@ function _rptTeamTickets(team) {
 
 // Returns sprint data adapted to the selected PI/Sprint (current or historical)
 function _rptSprintData(team) {
-  const tc = CONFIG.teams[team] || {};
-  const velHist = tc.velocityHistory || [];
+  const teamConfig = CONFIG.teams[team] || {};
+  const velHist = teamConfig.velocityHistory || [];
   const sprintCtx = _rptSprintCtx(team);
   const label = sprintCtx.label;
 
   // Check if selected sprint matches the active sprint (compare iteration numbers, not full labels)
-  const activeLabel = tc.sprintName || CONFIG.sprint.label || '';
+  const activeLabel = teamConfig.sprintName || CONFIG.sprint.label || '';
   const activeIterMatch = activeLabel.match(/(\d+\.\d+)/);
   const activeIter = activeIterMatch ? activeIterMatch[1] : '';
   const isActive = !reportSprint || reportSprint === activeIter;
@@ -305,9 +305,9 @@ function _rptSprintData(team) {
     return {
       tickets,
       members: teamMembers,
-      startDate: tc.sprintStart || CONFIG.sprint.startDate || '',
-      endDate: tc.sprintEnd || CONFIG.sprint.endDate || '',
-      velTarget: tc.velocity || CONFIG.sprint.velocityTarget || 0,
+      startDate: teamConfig.sprintStart || CONFIG.sprint.startDate || '',
+      endDate: teamConfig.sprintEnd || CONFIG.sprint.endDate || '',
+      velTarget: teamConfig.velocity || CONFIG.sprint.velocityTarget || 0,
       isHistorical: false,
     };
   }
@@ -331,7 +331,7 @@ function _rptSprintData(team) {
       members: teamMembers.length ? teamMembers : (hist.members || []),
       startDate: _fmtD(hist.startDate),
       endDate: _fmtD(hist.endDate),
-      velTarget: tc.velocity || CONFIG.sprint.velocityTarget || 0,
+      velTarget: teamConfig.velocity || CONFIG.sprint.velocityTarget || 0,
       historicalVelocity: hist.velocity || 0,
       isHistorical: true,
     };
@@ -343,7 +343,7 @@ function _rptSprintData(team) {
     members: teamMembers,
     startDate: '',
     endDate: '',
-    velTarget: tc.velocity || CONFIG.sprint.velocityTarget || 0,
+    velTarget: teamConfig.velocity || CONFIG.sprint.velocityTarget || 0,
     isHistorical: true,
   };
 }
@@ -1422,14 +1422,14 @@ function _rptFinPIP(el, isSlack) {
     if (!sprintMap[idx]) sprintMap[idx] = { name: vh.name, startDate: vh.startDate, endDate: vh.endDate, velocity: vh.velocity || 0, tickets: [] };
   });
   // Depuis sprint actif
-  const tc = CONFIG.teams[team] || {};
-  const activeM = (tc.sprintName || '').match(piReS);
+  const teamConfig = CONFIG.teams[team] || {};
+  const activeM = (teamConfig.sprintName || '').match(piReS);
   if (activeM) {
     const idx = parseInt(activeM[1]);
-    if (!sprintMap[idx]) sprintMap[idx] = { name: tc.sprintName, startDate: tc.sprintStart, endDate: tc.sprintEnd, velocity: 0, tickets: [] };
+    if (!sprintMap[idx]) sprintMap[idx] = { name: teamConfig.sprintName, startDate: teamConfig.sprintStart, endDate: teamConfig.sprintEnd, velocity: 0, tickets: [] };
   }
   // Depuis sprints futurs
-  (tc.futureSprintDates || []).forEach(fsd => {
+  (teamConfig.futureSprintDates || []).forEach(fsd => {
     const fm = (fsd.name || '').match(piReS);
     if (!fm) return;
     const idx = parseInt(fm[1]);
@@ -1451,7 +1451,7 @@ function _rptFinPIP(el, isSlack) {
   });
 
   // Enrichir les dates manquantes depuis futureSprintDates
-  (tc.futureSprintDates || []).forEach(fsd => {
+  (teamConfig.futureSprintDates || []).forEach(fsd => {
     const fm = (fsd.name || '').match(piReS);
     if (!fm) return;
     const idx = parseInt(fm[1]);
@@ -1462,7 +1462,7 @@ function _rptFinPIP(el, isSlack) {
   });
 
   const sprintIdxs = Object.keys(sprintMap).map(Number).sort((a, b) => a - b);
-  const velTarget = tc.velocity || CONFIG.sprint.velocityTarget || 0;
+  const velTarget = teamConfig.velocity || CONFIG.sprint.velocityTarget || 0;
 
   // Risques ROAM (Owned + Accepted)
   const activeRisks = roam.filter(r => r.cat === 'O' || r.cat === 'A');

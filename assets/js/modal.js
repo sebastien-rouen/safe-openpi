@@ -234,7 +234,7 @@ function _renderModalContent(t) {
       const total   = e - s;
       const elapsed = now - s;
       const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((elapsed / total) * 100))) : 0;
-      const remaining = Math.max(0, Math.ceil((e - now) / 86400000));
+      const remaining = Math.max(0, Math.ceil((e - now) / MS_PER_DAY));
 
       // Resolve start/end dates - use stored dates or estimate from cycle/lead time
       let _started  = t.startedDate;
@@ -244,7 +244,7 @@ function _renderModalContent(t) {
         const resolvedMs = now.getTime();
         _resolved = new Date(resolvedMs).toISOString().slice(0, 10);
         if (t.cycleTimeDays != null) {
-          _started = new Date(resolvedMs - t.cycleTimeDays * 86400000).toISOString().slice(0, 10);
+          _started = new Date(resolvedMs - t.cycleTimeDays * MS_PER_DAY).toISOString().slice(0, 10);
         }
       }
 
@@ -312,7 +312,7 @@ function _renderModalContent(t) {
     const dd = new Date(t.dueDate.length === 10 ? t.dueDate + 'T00:00:00' : t.dueDate);
     if (!isNaN(dd)) {
       const now  = new Date(); now.setHours(0,0,0,0);
-      const diff = Math.ceil((dd - now) / 86400000);
+      const diff = Math.ceil((dd - now) / MS_PER_DAY);
       const dateStr = dd.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
       const overdue = diff < 0 && !isDone(t.status);
       const soon    = diff >= 0 && diff <= 3 && !isDone(t.status);

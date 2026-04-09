@@ -164,9 +164,9 @@ function _roadmapVisual(_featureData, _sprintPlan, s) {
       currentPI = parseInt(piMatchLabel[1]);
     } else {
       for (const tid of activeTeams) {
-        const tc = CONFIG.teams[tid];
-        if (tc?.sprintName) {
-          const m = tc.sprintName.match(piRegex);
+        const teamConfig = CONFIG.teams[tid];
+        if (teamConfig?.sprintName) {
+          const m = teamConfig.sprintName.match(piRegex);
           if (m) { currentPI = parseInt(m[1]); break; }
         }
       }
@@ -640,7 +640,7 @@ async function renderRoadmap() {
   const avgVelocity = velHistory.length
     ? Math.round(velHistory.reduce((a, v) => a + v.velocity, 0) / velHistory.length)
     : (currentVel || 40);
-  const s = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
+  const sprintContext = (typeof _activeSprintCtx === 'function') ? _activeSprintCtx() : CONFIG.sprint;
   const projections = epicData.map(e => {
     const remaining = e.totalPts - e.donePts;
     const epicShare = e.totalPts / Math.max(1, epicData.reduce((a, x) => a + x.totalPts, 0));
@@ -710,8 +710,8 @@ async function renderRoadmap() {
     ${relKpis}
     ${ppFistSummary}
     <div class="chart-card" style="margin-top:8px;"><div class="chart-title">📈 Évolution Confiance PI</div><div class="chart-wrap" style="height:180px"><canvas id="fistChartRoadmap"></canvas></div></div>
-    ${_roadmapVisual(epicData, sprintPlan, s)}
-    ${epicData.length ? `<div class="rel-projection-table" style="margin-top:16px;">${_relProjectionTable(projections, avgVelocity, s)}</div>` : ''}
+    ${_roadmapVisual(epicData, sprintPlan, sprintContext)}
+    ${epicData.length ? `<div class="rel-projection-table" style="margin-top:16px;">${_relProjectionTable(projections, avgVelocity, sprintContext)}</div>` : ''}
   `;
 
   // 2. PLANIFICATION
@@ -815,9 +815,9 @@ function _roadmapVelocity() {
   const membersByPos = [];
   const velByTeam = [];
   activeTeams.forEach(tid => {
-    const tc = CONFIG.teams[tid];
-    if (!tc || !Array.isArray(tc.velocityHistory) || !tc.velocityHistory.length) return;
-    _sortVH(tc.velocityHistory).slice(-maxLen).forEach((e, i) => {
+    const teamConfig = CONFIG.teams[tid];
+    if (!teamConfig || !Array.isArray(teamConfig.velocityHistory) || !teamConfig.velocityHistory.length) return;
+    _sortVH(teamConfig.velocityHistory).slice(-maxLen).forEach((e, i) => {
       byPos[i] = (byPos[i] || 0) + (e.velocity || 0);
       if (!names[i] && e.name) names[i] = e.name;
       if (!startDates[i] && e.startDate) startDates[i] = e.startDate;
@@ -2047,7 +2047,7 @@ function _roadmapBacklogHealth(backlog) {
 
   const agingSprints = CONFIG.alerts?.backlogAgingSprints ?? 3;
   const sprintDays = CONFIG.sprint.durationDays || 14;
-  const agingMs = agingSprints * sprintDays * 86400000;
+  const agingMs = agingSprints * sprintDays * MS_PER_DAY;
   const now = Date.now();
 
   // Orphan stories: no epic, no points, or no priority
@@ -2136,7 +2136,7 @@ function _showBacklogHealthDetail(filter) {
       // Extra info depending on filter
       let extra = '';
       if (filter === 'aging' && t.updatedAt) {
-        const days = Math.floor((Date.now() - new Date(t.updatedAt).getTime()) / 86400000);
+        const days = Math.floor((Date.now() - new Date(t.updatedAt).getTime()) / MS_PER_DAY);
         extra = `<span style="font-size:10px;color:#64748B;white-space:nowrap;flex-shrink:0;">${days}j inactif</span>`;
       }
       return `<div class="rm-ticket-row" style="${highlight}border-radius:4px;" onclick="closeModalDirect();openModal('${t.id}')">

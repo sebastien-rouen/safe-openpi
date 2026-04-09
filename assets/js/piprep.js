@@ -502,8 +502,8 @@ function _ppCapAutoAdvance(input) {
 // ----------- Fist of Five (stored in team-mood.json) ---------
 // Sprint-scoped key: "teamId__sprintLabel" (same pattern as _moodKey)
 function _fistKey(teamId) {
-  const tc = CONFIG.teams[teamId];
-  const label = tc?.sprintName || CONFIG.sprint.label || 'sprint';
+  const teamConfig = CONFIG.teams[teamId];
+  const label = teamConfig?.sprintName || CONFIG.sprint.label || 'sprint';
   return `${teamId}__${label}`;
 }
 
@@ -573,17 +573,17 @@ function _ppFistNoteSetFor(val, sprintKey) {
 function _fistPISprints(tid, piNum) {
   if (!piNum) return [];
   const piRe = new RegExp(`(^|\\D)${piNum}\\.\\d+`);
-  const tc = CONFIG.teams[tid];
+  const teamConfig = CONFIG.teams[tid];
   const sprintSet = new Map(); // label → order
   // From velocity history (closed sprints)
-  (tc?.velocityHistory || []).forEach(vh => {
+  (teamConfig?.velocityHistory || []).forEach(vh => {
     if (piRe.test(vh.name || '')) {
       const m = (vh.name || '').match(new RegExp(`${piNum}\\.(\\d+)`));
       sprintSet.set(vh.name, m ? parseInt(m[1], 10) : 0);
     }
   });
   // Active sprint
-  const activeSprint = tc?.sprintName || CONFIG.sprint.label || '';
+  const activeSprint = teamConfig?.sprintName || CONFIG.sprint.label || '';
   if (piRe.test(activeSprint)) {
     const m = activeSprint.match(new RegExp(`${piNum}\\.(\\d+)`));
     sprintSet.set(activeSprint, m ? parseInt(m[1], 10) : 99);
@@ -1309,7 +1309,7 @@ function _ppDepsSection(_activeTeams) {
 
   const _depRow = d => {
     const fc = _teamColor(d.fromTeam);
-    const tc = _teamColor(d.toTeam);
+    const teamColor = _teamColor(d.toTeam);
     const st = DEP_ST.find(s => s.v === (d.status || 'todo')) || DEP_ST[0];
     return `
       <tr class="pp-tr">
@@ -1326,7 +1326,7 @@ function _ppDepsSection(_activeTeams) {
         <td class="pp-dep-arrow">→</td>
         <td class="pp-td-nw">
           <select onchange="_ppDepField('${d.id}','toTeam',this.value);_ppRefreshDeps();"
-            class="pp-select-sm pp-select-team" style="background:${tc}22;color:${tc};">
+            class="pp-select-sm pp-select-team" style="background:${teamColor}22;color:${teamColor};">
             ${teamSel(d.id,'toTeam',d.toTeam)}
           </select>
         </td>
@@ -1374,7 +1374,7 @@ function _ppDepsSection(_activeTeams) {
   </div>`;
 
   const _intraRow = d => {
-    const tc = _teamColor(d.fromTeam);
+    const teamColor = _teamColor(d.fromTeam);
     const st = DEP_ST.find(s => s.v === (d.status || 'todo')) || DEP_ST[0];
     return `
       <tr class="pp-tr">
@@ -1384,7 +1384,7 @@ function _ppDepsSection(_activeTeams) {
         </td>
         <td class="pp-td-nw">
           <select onchange="_ppDepField('${d.id}','fromTeam',this.value);_ppDepField('${d.id}','toTeam',this.value);_ppRefreshDeps();"
-            class="pp-select-sm pp-select-team" style="background:${tc}22;color:${tc};">
+            class="pp-select-sm pp-select-team" style="background:${teamColor}22;color:${teamColor};">
             ${teamSel(d.id,'fromTeam',d.fromTeam)}
           </select>
         </td>
@@ -1538,7 +1538,7 @@ function _ppDepsTimeline(deps) {
 
   const _depCard = d => {
     const fc = _teamColor(d.fromTeam);
-    const tc = _teamColor(d.toTeam);
+    const teamColor = _teamColor(d.toTeam);
     const fn = CONFIG.teams[d.fromTeam]?.name || d.fromTeam || '?';
     const tn = CONFIG.teams[d.toTeam]?.name || d.toTeam || '?';
     const st = DEP_ST.find(s => s.v === (d.status || 'todo')) || DEP_ST[0];
@@ -1550,7 +1550,7 @@ function _ppDepsTimeline(deps) {
         <span style="font-size:12px;">${st.icon}</span>
         <span style="font-size:11px;font-weight:700;color:${fc};">${fn}</span>
         <span style="font-size:10px;color:var(--text-muted);">→</span>
-        <span style="font-size:11px;font-weight:700;color:${tc};">${tn}</span>
+        <span style="font-size:11px;font-weight:700;color:${teamColor};">${tn}</span>
       </div>
       <div style="font-size:11px;color:var(--text);margin-bottom:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${d.fromTitle || '<em style="color:var(--text-muted)">livrable</em>'}</div>
       ${d.toTitle ? `<div style="font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">↳ ${d.toTitle}</div>` : ''}
@@ -1596,7 +1596,7 @@ function _ppDepDetailPopin(depId) {
   const DEP_ST = PP_STATUS_OPTS_DEP;
   const st = DEP_ST.find(s => s.v === (d.status || 'todo')) || DEP_ST[0];
   const fc = _teamColor(d.fromTeam);
-  const tc = _teamColor(d.toTeam);
+  const teamColor = _teamColor(d.toTeam);
   const fn = CONFIG.teams[d.fromTeam]?.name || d.fromTeam || '?';
   const tn = CONFIG.teams[d.toTeam]?.name || d.toTeam || '?';
 
@@ -1609,7 +1609,7 @@ function _ppDepDetailPopin(depId) {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
         <span style="padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;background:${fc}22;color:${fc};">${fn}</span>
         <span style="font-size:16px;color:var(--text-muted);">→</span>
-        <span style="padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;background:${tc}22;color:${tc};">${tn}</span>
+        <span style="padding:5px 12px;border-radius:6px;font-size:13px;font-weight:700;background:${teamColor}22;color:${teamColor};">${tn}</span>
       </div>
       <div style="margin-bottom:12px;">
         <div style="font-size:11px;font-weight:600;color:var(--text-muted);margin-bottom:3px;">Livrable</div>
@@ -1856,9 +1856,9 @@ function _ppPipSection(activeTeams, piNum) {
   if (!teams.length) return '<div style="padding:16px;color:var(--text-muted);font-size:12px;">Aucune équipe sélectionnée</div>';
 
   const cards = teams.map(tid => {
-    const tc = CONFIG.teams[tid] || {};
-    const color = tc.color || 'var(--primary)';
-    const teamName = tc.name || tid;
+    const teamConfig = CONFIG.teams[tid] || {};
+    const color = teamConfig.color || 'var(--primary)';
+    const teamName = teamConfig.name || tid;
     const items = _ppPipItems(tid);
 
     const doneCount = items.filter(i => i.done).length;
@@ -2223,9 +2223,9 @@ function _ppObjSummarySection(activeTeams) {
   objs.forEach(o => { (byTeam[o.team] = byTeam[o.team] || []).push(o); });
 
   const teamCards = Object.entries(byTeam).map(([tid, items]) => {
-    const tc = CONFIG.teams[tid] || {};
-    const color = tc.color || '#94A3B8';
-    const name = tc.name || tid;
+    const teamConfig = CONFIG.teams[tid] || {};
+    const color = teamConfig.color || '#94A3B8';
+    const name = teamConfig.name || tid;
     const teamBV = items.reduce((s, o) => s + (parseInt(o.bv, 10) || 0), 0);
     const teamDoneBV = items.filter(o => o.status === 'done').reduce((s, o) => s + (parseInt(o.bv, 10) || 0), 0);
     const rows = items
@@ -2287,9 +2287,9 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
 
   // Build team data
   const teamData = activeTeams.map(tid => {
-    const tc = CONFIG.teams[tid] || {};
-    const vel = tc.velocity || 0;
-    const vh = tc.velocityHistory || [];
+    const teamConfig = CONFIG.teams[tid] || {};
+    const vel = teamConfig.velocity || 0;
+    const vh = teamConfig.velocityHistory || [];
     const nonZero = vh.map(v => v.velocity || 0).filter(v => v > 0);
     const avgVel = nonZero.length ? Math.round(nonZero.reduce((a, b) => a + b, 0) / nonZero.length) : vel;
 
@@ -2298,7 +2298,7 @@ function _ppMultiPICapacity(activeTeams, sprintsPerPI) {
     const teamSize = members.length || Math.round(avgVel / 15); // fallback: ~15 pts/dev
 
     return {
-      tid, name: tc.name || tid, color: tc.color || CLR.dark,
+      tid, name: teamConfig.name || tid, color: teamConfig.color || CLR.dark,
       velocity: avgVel, teamSize,
       velPerDev: teamSize > 0 ? Math.round(avgVel / teamSize) : 0,
     };

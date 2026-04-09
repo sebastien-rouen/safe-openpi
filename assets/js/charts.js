@@ -90,6 +90,12 @@ window._chartFullscreen = function(canvasId, title) {
     _installEventsTooltipHandler(_fsChart);
   }
 
+  // Grille de tickets sous le chart (tous types)
+  const columns = _fsGridColumns(canvasId, srcChart);
+  if (columns) {
+    _fsRenderTicketGrid(overlay.querySelector('.chart-fs-modal'), columns);
+  }
+
   // Echap pour fermer
   document.addEventListener('keydown', _fsKeyHandler);
 };
@@ -106,6 +112,191 @@ window._closeChartFullscreen = function() {
   document.removeEventListener('keydown', _fsKeyHandler);
 };
 
+// ---- Grille de tickets plein ecran (tous les charts) ----
+
+// Rendu générique : columns = [{ title, subtitle?, tickets[], dimmed?, future? }]
+function _fsRenderTicketGrid(modal, columns) {
+  if (!columns || !columns.length) return;
+  if (!columns.some(c => c.tickets && c.tickets.length)) return;
+
+  const body = modal.querySelector('.chart-fs-body');
+  const canvas = document.getElementById('_fsCanvas');
+  if (!body || !canvas) return;
+
+  // Restructurer le body en flex column
+  body.style.display = 'flex';
+  body.style.flexDirection = 'column';
+  const canvasWrap = document.createElement('div');
+  canvasWrap.className = 'chart-fs-canvas-wrap';
+  body.insertBefore(canvasWrap, canvas);
+  canvasWrap.appendChild(canvas);
+
+  // Construire la grille
+  let html = '<div class="chart-fs-tgrid-inner">';
+  columns.forEach(col => {
+    const cls = 'chart-fs-tgrid-col'
+      + (col.dimmed ? ' is-off' : '')
+      + (col.future ? ' is-future' : '');
+    const cnt = col.tickets.length;
+    const badge = cnt ? ` <span class="chart-fs-tgrid-cnt">${cnt}</span>` : '';
+    html += `<div class="${cls}">`;
+    html += `<div class="chart-fs-tgrid-hd">${col.title}${col.subtitle ? '<br><span class="chart-fs-tgrid-date">' + col.subtitle + '</span>' : ''}${badge}</div>`;
+    col.tickets.forEach(t => {
+      const shortTitle = (t.title || '').length > 28 ? (t.title || '').slice(0, 26) + '…' : (t.title || '');
+      const pts = t.points ? `${t.points}p` : '';
+      html += `<div class="chart-fs-tgrid-item" title="${(t.title || '').replace(/"/g, '&quot;')}${pts ? ' · ' + t.points + ' pts' : ''}" onclick="openModal('${t.id}')">`;
+      html += `<span class="chart-fs-tgrid-key">${t.id}</span>`;
+      if (pts) html += `<span class="chart-fs-tgrid-pts">${pts}</span>`;
+      html += `<span class="chart-fs-tgrid-txt">${shortTitle}</span>`;
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+  html += '</div>';
+
+  const grid = document.createElement('div');
+  grid.className = 'chart-fs-tgrid';
+  grid.innerHTML = html;
+  body.appendChild(grid);
+}
+
+// ---- Builders de colonnes par type de chart ----
+
+// Burndown / Burnup : tickets résolus par jour du sprint
+function _fsColsBurn(dayInfo) {
+  const tickets = getTickets();
+  const byDay = new Map();
+  for (let i = 0; i < dayInfo.length; i++) byDay.set(i, []);
+  tickets.forEach(t => {
+    if (!isDone(t.status) || !t.resolvedDate) return;
+    const idx = dayInfo.findIndex(d => d.date && d.date.toISOString().slice(0, 10) === t.resolvedDate);
+    if (idx >= 0) byDay.get(idx).push(t);
+  });
+  const currentDay = _sprintCurrentDay(dayInfo.length, _activeSprintCtx());
+  return dayInfo.map((d, i) => ({
+    title: d.label,
+    subtitle: d.date ? `${String(d.date.getDate()).padStart(2, '0')}/${String(d.date.getMonth() + 1).padStart(2, '0')}` : '',
+    tickets: byDay.get(i) || [],
+    dimmed: d.isOff,
+    future: i > currentDay,
+  }));
+}
+
+// Vélocité : tickets du sprint courant — À faire → WIP → Bloqué → Terminé
+function _fsColsVelocity() {
+  const tickets = getTickets();
+  if (!tickets.length) return null;
+  const todo    = tickets.filter(t => t.status === 'todo' || t.status === 'backlog');
+  const wip     = tickets.filter(t => !isDone(t.status) && t.status !== 'todo' && t.status !== 'backlog' && t.status !== 'blocked');
+  const blocked = tickets.filter(t => t.status === 'blocked');
+  const done    = tickets.filter(t => isDone(t.status));
+  const sumPts  = arr => arr.reduce((a, t) => a + t.points, 0);
+  const cols = [];
+  if (todo.length)    cols.push({ title: '📋 À faire', subtitle: `${sumPts(todo)} pts`,    tickets: todo });
+  if (wip.length)     cols.push({ title: '🔄 En cours', subtitle: `${sumPts(wip)} pts`,     tickets: wip });
+  if (blocked.length) cols.push({ title: '🚫 Bloqué',  subtitle: `${sumPts(blocked)} pts`, tickets: blocked });
+  if (done.length)    cols.push({ title: '✅ Terminés', subtitle: `${sumPts(done)} pts`,    tickets: done });
+  return cols.length ? cols : null;
+}
+
+// CFD : tickets groupés par statut — À faire → WIP (inprog/review/test) → Bloqué → Terminé
+function _fsColsCFD() {
+  const tickets = getTickets();
+  if (!tickets.length) return null;
+  const statuses = [
+    { key: 'todo',    label: boardColLabel('todo', 'À faire'),    icon: '📋' },
+    { key: 'inprog',  label: boardColLabel('inprog', 'En cours'), icon: '🔄' },
+    { key: 'review',  label: boardColLabel('review', 'Review'),   icon: '👁️' },
+    { key: 'test',    label: boardColLabel('test', 'En test'),    icon: '🧪' },
+    { key: 'blocked', label: 'Bloqué',                  icon: '🚫' },
+    { key: 'done',    label: boardColLabel('done', 'Terminé'),    icon: '✅' },
+  ];
+  const cols = statuses
+    .map(s => ({ title: `${s.icon} ${s.label}`, tickets: tickets.filter(t => t.status === s.key) }))
+    .filter(c => c.tickets.length);
+  return cols.length ? cols : null;
+}
+
+// Donut types : tickets groupés par type
+function _fsColsType() {
+  const tickets = getTickets();
+  if (!tickets.length) return null;
+  const byType = {};
+  tickets.forEach(t => { (byType[t.type] = byType[t.type] || []).push(t); });
+  const cols = Object.entries(byType)
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([type, tix]) => ({ title: typeName(type), subtitle: `${tix.length} ticket${tix.length > 1 ? 's' : ''}`, tickets: tix }));
+  return cols.length ? cols : null;
+}
+
+// Throughput : tickets résolus par jour du sprint
+function _fsColsThroughput() {
+  const days    = CONFIG.sprint.durationDays || 14;
+  const dayInfo = _sprintDayInfo(days, _activeSprintCtx());
+  const tickets = getTickets();
+  const currentDay = _sprintCurrentDay(days, _activeSprintCtx());
+  const byDay = new Map();
+  for (let i = 0; i < days; i++) byDay.set(i, []);
+  tickets.forEach(t => {
+    if (!isDone(t.status) || !t.resolvedDate) return;
+    const idx = dayInfo.findIndex(d => d.date && d.date.toISOString().slice(0, 10) === t.resolvedDate);
+    if (idx >= 0) byDay.get(idx).push(t);
+  });
+  return dayInfo.map((d, i) => ({
+    title: d.label,
+    subtitle: d.date ? `${String(d.date.getDate()).padStart(2, '0')}/${String(d.date.getMonth() + 1).padStart(2, '0')}` : '',
+    tickets: byDay.get(i) || [],
+    dimmed: d.isOff,
+    future: i > currentDay,
+  }));
+}
+
+// Cycle Time Scatter : tickets done avec cycle time, triés par CT décroissant
+function _fsColsCTScatter() {
+  const tickets = getTickets().filter(t => isDone(t.status) && t.cycleTimeDays != null);
+  if (!tickets.length) return null;
+  const sorted = [...tickets].sort((a, b) => b.cycleTimeDays - a.cycleTimeDays);
+  const p85Idx = Math.ceil(sorted.length * 0.85) - 1;
+  const p85 = sorted.map(t => t.cycleTimeDays).sort((a, b) => a - b)[Math.max(0, p85Idx)];
+  const slow = sorted.filter(t => t.cycleTimeDays > p85);
+  const normal = sorted.filter(t => t.cycleTimeDays <= p85);
+  const cols = [];
+  if (slow.length)   cols.push({ title: `🔴 > P85 (${p85}j)`, subtitle: `${slow.length} tickets`, tickets: slow });
+  if (normal.length) cols.push({ title: `🟢 ≤ P85`,           subtitle: `${normal.length} tickets`, tickets: normal });
+  return cols.length ? cols : null;
+}
+
+// WIP Age : tickets en cours, classés par âge
+function _fsColsWIPAge() {
+  const tickets = getTickets();
+  const wipStatuses = ['inprog', 'review', 'test'];
+  const wip = tickets.filter(t => wipStatuses.includes(t.status));
+  if (!wip.length) return null;
+  const cols = [
+    { key: 'inprog', label: boardColLabel('inprog', 'En cours'), icon: '🔄' },
+    { key: 'review', label: boardColLabel('review', 'Review'),   icon: '👁️' },
+    { key: 'test',   label: boardColLabel('test', 'En test'),    icon: '🧪' },
+  ].map(s => ({ title: `${s.icon} ${s.label}`, tickets: wip.filter(t => t.status === s.key) }))
+   .filter(c => c.tickets.length);
+  return cols.length ? cols : null;
+}
+
+// Dispatcher : retourne les colonnes pour un chart donné
+function _fsGridColumns(canvasId, srcChart) {
+  if (canvasId === 'burndownChart' || canvasId === 'burnupChart') {
+    if (_metricsSprintIdx !== null) return null;
+    const dayInfo = srcChart.config.options?.plugins?.offDays?.info;
+    return (dayInfo && dayInfo.length) ? _fsColsBurn(dayInfo) : null;
+  }
+  if (canvasId === 'velocityChart')  return _fsColsVelocity();
+  if (canvasId === 'cmdChart')       return _fsColsCFD();
+  if (canvasId === 'typeChart')      return _fsColsType();
+  if (canvasId === 'throughputChart') return _fsColsThroughput();
+  if (canvasId === 'ctScatterChart') return _fsColsCTScatter();
+  if (canvasId === 'wipAgeChart')    return _fsColsWIPAge();
+  return null;
+}
+
 // ---- Jours ouvrables : labels "J1 (L)" + plugin fond grisé ----
 const _DAY_SHORT_FR = ['D', 'L', 'M', 'M', 'J', 'V', 'S'];
 
@@ -120,7 +311,7 @@ function _sprintDayInfo(days, sprint) {
   // Charger les fériés sur la plage
   const hols = [];
   if (typeof _frenchHolidays === 'function') {
-    const endYear = new Date(start.getTime() + days * 86400000).getFullYear();
+    const endYear = new Date(start.getTime() + days * MS_PER_DAY).getFullYear();
     hols.push(..._frenchHolidays(start.getFullYear()));
     if (endYear !== start.getFullYear()) hols.push(..._frenchHolidays(endYear));
   }
@@ -359,14 +550,33 @@ function initCharts() {
   _buildTypeDonut();
   _buildBurnup();
   _buildCFDScrum();
+
+  // Flow Metrics : masquer la section entière pour les sprints historiques
+  const flowSection = document.getElementById('flow-metrics-section');
+  const flowHint    = document.getElementById('flow-metrics-hint');
+  if (_metricsSprintIdx !== null) {
+    if (flowSection) flowSection.style.opacity = '.35';
+    if (flowSection) flowSection.style.pointerEvents = 'none';
+    if (flowHint) { flowHint.style.display = ''; flowHint.textContent = 'Données journalières non disponibles pour les sprints passés'; }
+  } else {
+    if (flowSection) flowSection.style.opacity = '';
+    if (flowSection) flowSection.style.pointerEvents = '';
+    if (flowHint) flowHint.style.display = 'none';
+    _buildThroughput();
+    _buildCTScatter();
+    _buildWIPAge();
+  }
 }
 
 function refreshCharts() {
-  if (_burndownChart) { _burndownChart.destroy(); _burndownChart = null; }
-  if (_velocityChart) { _velocityChart.destroy(); _velocityChart = null; }
-  if (_typeChart)     { _typeChart.destroy();     _typeChart     = null; }
-  if (_burnupChart)   { _burnupChart.destroy();   _burnupChart   = null; }
-  if (_cmdChart)      { _cmdChart.destroy();      _cmdChart      = null; }
+  if (_burndownChart)  { _burndownChart.destroy();  _burndownChart  = null; }
+  if (_velocityChart)  { _velocityChart.destroy();  _velocityChart  = null; }
+  if (_typeChart)      { _typeChart.destroy();      _typeChart      = null; }
+  if (_burnupChart)    { _burnupChart.destroy();    _burnupChart    = null; }
+  if (_cmdChart)       { _cmdChart.destroy();       _cmdChart       = null; }
+  if (_throughputChart){ _throughputChart.destroy(); _throughputChart = null; }
+  if (_ctScatterChart) { _ctScatterChart.destroy(); _ctScatterChart  = null; }
+  if (_wipAgeChart)    { _wipAgeChart.destroy();    _wipAgeChart     = null; }
   chartsInitialized = false;
   initCharts();
   chartsInitialized = true;
@@ -380,9 +590,9 @@ function refreshCharts() {
 function _getSprintHistory() {
   // Équipe unique sélectionnée → historique direct avec vrais noms
   if (currentTeam && currentTeam !== 'all' && !currentGroup) {
-    const tc = CONFIG.teams[currentTeam];
-    if (!tc?.velocityHistory?.length) return [];
-    return tc.velocityHistory.slice(0, CONFIG.sync.velocityHistoryCount).map(e => ({
+    const teamConfig = CONFIG.teams[currentTeam];
+    if (!teamConfig?.velocityHistory?.length) return [];
+    return teamConfig.velocityHistory.slice(0, CONFIG.sync.velocityHistoryCount).map(e => ({
       name: e.name || '',
       vel:  e.velocity || 0,
     }));
@@ -392,17 +602,17 @@ function _getSprintHistory() {
   const activeTeams = getActiveTeams();
   const teamEntries = activeTeams
     .map(tid => CONFIG.teams[tid])
-    .filter(tc => tc && Array.isArray(tc.velocityHistory) && tc.velocityHistory.length);
+    .filter(teamConfig => teamConfig && Array.isArray(teamConfig.velocityHistory) && teamConfig.velocityHistory.length);
 
   if (!teamEntries.length) return [];
 
-  const maxLen = Math.max(...teamEntries.map(tc => tc.velocityHistory.length));
+  const maxLen = Math.max(...teamEntries.map(teamConfig => teamConfig.velocityHistory.length));
   const count  = Math.min(maxLen, 6);
 
   return Array.from({ length: count }, (_, i) => {
     let vel = 0;
-    teamEntries.forEach(tc => {
-      const e = tc.velocityHistory[i];
+    teamEntries.forEach(teamConfig => {
+      const e = teamConfig.velocityHistory[i];
       if (e) vel += e.velocity || 0;
     });
     return { name: `S-${count - i}`, vel };
@@ -432,8 +642,8 @@ function _renderSprintSelector() {
   // Valider la sélection courante
   if (_metricsSprintIdx !== null && _metricsSprintIdx >= history.length) _metricsSprintIdx = null;
 
-  const s            = _activeSprintCtx();
-  const currentLabel = s.label || 'Sprint actuel';
+  const sprintContext            = _activeSprintCtx();
+  const currentLabel = sprintContext.label || 'Sprint actuel';
 
   let html = `<div class="sprint-selector-row">
     <span class="sprint-sel-label">Comparer :</span>
@@ -490,9 +700,9 @@ function _buildBurndown() {
     ticketsDone  = 0;
     chartTitle   = `📉 Burndown Chart · ${ptsDone} pts réalisés`;
   } else {
-    const s       = _activeSprintCtx();
+    const sprintContext       = _activeSprintCtx();
     const tickets = getTickets();
-    ptsTotal     = tickets.reduce((a, t) => a + t.points, 0) || s.velocityTarget || 80;
+    ptsTotal     = tickets.reduce((a, t) => a + t.points, 0) || sprintContext.velocityTarget || 80;
     ptsDone      = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
     ticketsTotal = tickets.length;
     ticketsDone  = tickets.filter(t => isDone(t.status)).length;
@@ -517,8 +727,8 @@ function _buildBurndown() {
     );
     ticketData = null;
   } else {
-    const s          = _activeSprintCtx();
-    const currentDay = _sprintCurrentDay(days, s);
+    const sprintContext          = _activeSprintCtx();
+    const currentDay = _sprintCurrentDay(days, sprintContext);
     realData = Array.from({ length: days }, (_, i) => {
       if (i > currentDay) return null;
       if (currentDay === 0) return ptsTotal;
@@ -637,8 +847,8 @@ function _buildVelocity() {
   const tickets   = getTickets();
   const ptsTotal  = tickets.reduce((a, t) => a + t.points, 0) || CONFIG.sprint.velocityTarget || 80;
   const ptsDone   = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
-  const s         = _activeSprintCtx();
-  const sprintLbl = (s.label || `S${CONFIG.sprint.current}`).replace(/sprint\s*/i, 'S');
+  const sprintContext         = _activeSprintCtx();
+  const sprintLbl = (sprintContext.label || `S${CONFIG.sprint.current}`).replace(/sprint\s*/i, 'S');
 
   // Toujours 5 slots historiques + 1 actuel = 6 colonnes
   const HIST_SLOTS = 5;
@@ -763,9 +973,9 @@ function _buildBurnup() {
     ptsScope   = ptsDone;
     chartTitle = `📈 Burnup Chart · ${ptsDone} pts réalisés`;
   } else {
-    const s      = _activeSprintCtx();
+    const sprintContext      = _activeSprintCtx();
     const tickets = getTickets();
-    ptsScope   = tickets.reduce((a, t) => a + t.points, 0) || s.velocityTarget || 80;
+    ptsScope   = tickets.reduce((a, t) => a + t.points, 0) || sprintContext.velocityTarget || 80;
     ptsDone    = tickets.filter(t => isDone(t.status)).reduce((a, t) => a + t.points, 0);
     chartTitle = '📈 Burnup Chart';
   }
@@ -871,8 +1081,8 @@ function _buildCFDScrum() {
     return;
   }
 
-  const s          = _activeSprintCtx();
-  const currentDay = _sprintCurrentDay(days, s);
+  const sprintContext          = _activeSprintCtx();
+  const currentDay = _sprintCurrentDay(days, sprintContext);
 
   // Distribution actuelle
   const now = { todo: 0, inprog: 0, review: 0, test: 0, done: 0, blocked: 0 };
@@ -890,15 +1100,13 @@ function _buildCFDScrum() {
   };
 
   // Layers de bas en haut (stacked area) — use JIRA column names
-  const _bc = typeof getBoardColumns === 'function' ? getBoardColumns() : [];
-  const _cl = (k, fb) => { const c = _bc.find(x => x.key === k); return c ? c.label : fb; };
   const layers = [
-    { key: 'done',    label: _cl('done','Terminé'),     color: '#10B981' },
-    { key: 'test',    label: _cl('test','En test'),     color: '#06B6D4' },
-    { key: 'review',  label: _cl('review','Review'),    color: '#3B82F6' },
-    { key: 'inprog',  label: _cl('inprog','En cours'),  color: '#F59E0B' },
+    { key: 'done',    label: boardColLabel('done','Terminé'),     color: '#10B981' },
+    { key: 'test',    label: boardColLabel('test','En test'),     color: '#06B6D4' },
+    { key: 'review',  label: boardColLabel('review','Review'),    color: '#3B82F6' },
+    { key: 'inprog',  label: boardColLabel('inprog','En cours'),  color: '#F59E0B' },
     { key: 'blocked', label: 'Bloqué',                  color: '#EF4444' },
-    { key: 'todo',    label: _cl('todo','À faire'),     color: '#94A3B8' },
+    { key: 'todo',    label: boardColLabel('todo','À faire'),     color: '#94A3B8' },
   ];
 
   const datasets = layers.map(l => ({
@@ -954,6 +1162,371 @@ function _buildCFDScrum() {
   });
 }
 
+// ================================================================
+// FLOW METRICS — Throughput, Cycle Time Scatter, WIP Age
+// ================================================================
+
+let _throughputChart = null;
+let _ctScatterChart  = null;
+let _wipAgeChart     = null;
+
+// ---- Throughput (tickets terminés par jour du sprint) -----------
+
+function _buildThroughput() {
+  const canvas = document.getElementById('throughputChart');
+  if (!canvas) return;
+
+  const days    = CONFIG.sprint.durationDays || 14;
+  const dayInfo = _sprintDayInfo(days, _activeSprintCtx());
+  const tickets = getTickets();
+  const currentDay = _sprintCurrentDay(days, _activeSprintCtx());
+
+  // Compter les tickets terminés par jour de résolution
+  const countByDay = new Array(days).fill(0);
+  tickets.forEach(t => {
+    if (!isDone(t.status) || !t.resolvedDate) return;
+    const idx = dayInfo.findIndex(d => d.date && d.date.toISOString().slice(0, 10) === t.resolvedDate);
+    if (idx >= 0) countByDay[idx]++;
+  });
+
+  // Données : null pour les jours futurs
+  const data = countByDay.map((c, i) => i > currentDay ? null : c);
+
+  // Moyenne glissante (3 jours) pour la trendline
+  const trend = data.map((_, i) => {
+    if (i > currentDay) return null;
+    let sum = 0, cnt = 0;
+    for (let j = Math.max(0, i - 2); j <= i; j++) {
+      if (data[j] != null) { sum += data[j]; cnt++; }
+    }
+    return cnt ? Math.round(sum / cnt * 10) / 10 : null;
+  });
+
+  // Moyenne quotidienne globale (jours passés non-off seulement)
+  let totalDone = 0, workDays = 0;
+  for (let i = 0; i <= currentDay; i++) {
+    if (!dayInfo[i]?.isOff) { totalDone += countByDay[i]; workDays++; }
+  }
+  const avgPerDay = workDays ? Math.round(totalDone / workDays * 10) / 10 : 0;
+
+  const labels = dayInfo.map(d => d.label);
+
+  _throughputChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Tickets terminés',
+          data,
+          backgroundColor: dayInfo.map((d, i) => d.isOff ? 'rgba(148,163,184,.25)' : 'rgba(16,185,129,.7)'),
+          borderColor: 'rgba(16,185,129,.9)',
+          borderWidth: 1,
+          borderRadius: 3,
+        },
+        {
+          label: `Tendance (moy. 3j)`,
+          data: trend,
+          type: 'line',
+          borderColor: '#0284C7',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: .4,
+          fill: false,
+          spanGaps: true,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        offDays: { info: dayInfo },
+        legend: { labels: { font: { size: 10 } } },
+        tooltip: {
+          ..._TOOLTIP,
+          callbacks: {
+            title: items => {
+              const idx = items?.[0]?.dataIndex;
+              const d = idx != null ? dayInfo[idx] : null;
+              if (!d) return items?.[0]?.label || '';
+              const datePart = d.date ? ` · ${String(d.date.getDate()).padStart(2, '0')}/${String(d.date.getMonth() + 1).padStart(2, '0')}` : '';
+              const offLabel = d.holiday ? ` · 🎉 ${d.holiday}` : (d.isOff ? ' · weekend' : '');
+              return `${d.label}${datePart}${offLabel}`;
+            },
+            label: item => {
+              if (item.raw == null) return null;
+              if (item.dataset.type === 'line') return ` Tendance : ${item.raw}`;
+              return ` ${item.raw} ticket${item.raw > 1 ? 's' : ''} terminé${item.raw > 1 ? 's' : ''}`;
+            },
+            footer: () => avgPerDay ? [`Moyenne : ${avgPerDay} tickets/jour ouvré`] : [],
+          },
+          footerColor: '#0284C7',
+          footerFont: { size: 10, weight: '600' },
+        },
+      },
+      scales: {
+        y: { beginAtZero: true, ticks: { stepSize: 1, font: { size: 10 } }, title: { display: true, text: 'Tickets', font: { size: 10 } } },
+        x: { ticks: { font: { size: 9 } }, grid: { display: false } },
+      },
+    },
+  });
+}
+
+// ---- Cycle Time Scatter Plot -----------------------------------
+
+function _buildCTScatter() {
+  const canvas = document.getElementById('ctScatterChart');
+  if (!canvas) return;
+
+  const tickets = getTickets();
+  const doneTickets = tickets.filter(t => isDone(t.status) && t.cycleTimeDays != null && t.resolvedDate);
+
+  if (!doneTickets.length) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#94A3B8'; ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Pas de données cycle time', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // Points : x = resolvedDate, y = cycleTimeDays
+  const points = doneTickets.map(t => ({
+    x: t.resolvedDate,
+    y: t.cycleTimeDays,
+    id: t.id,
+    title: t.title,
+    points: t.points,
+  }));
+
+  // Percentile 85
+  const sorted = doneTickets.map(t => t.cycleTimeDays).sort((a, b) => a - b);
+  const p85Idx = Math.ceil(sorted.length * 0.85) - 1;
+  const p85 = sorted[Math.max(0, p85Idx)];
+  const p50Idx = Math.ceil(sorted.length * 0.5) - 1;
+  const p50 = sorted[Math.max(0, p50Idx)];
+  const avg = Math.round(sorted.reduce((a, b) => a + b, 0) / sorted.length * 10) / 10;
+
+  // Date range
+  const dates = points.map(p => p.x).sort();
+  const minDate = dates[0];
+  const maxDate = dates[dates.length - 1];
+
+  // Couleur par ticket : rouge si > p85, orange si > p50, vert sinon
+  const pointColors = points.map(p =>
+    p.y > p85 ? '#EF4444' : p.y > p50 ? '#F59E0B' : '#10B981'
+  );
+
+  _ctScatterChart = new Chart(canvas.getContext('2d'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {
+          label: 'Cycle Time',
+          data: points,
+          backgroundColor: pointColors,
+          borderColor: pointColors.map(c => c + 'CC'),
+          borderWidth: 1,
+          pointRadius: 5,
+          pointHoverRadius: 7,
+        },
+        {
+          label: `P85 (${p85}j)`,
+          data: [{ x: minDate, y: p85 }, { x: maxDate, y: p85 }],
+          type: 'line',
+          borderColor: '#EF4444',
+          borderWidth: 2,
+          borderDash: [6, 3],
+          pointRadius: 0,
+          fill: false,
+        },
+        {
+          label: `Médiane (${p50}j)`,
+          data: [{ x: minDate, y: p50 }, { x: maxDate, y: p50 }],
+          type: 'line',
+          borderColor: '#F59E0B',
+          borderWidth: 1.5,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { font: { size: 10 }, boxWidth: 10 } },
+        tooltip: {
+          ..._TOOLTIP,
+          callbacks: {
+            title: items => {
+              const p = items?.[0]?.raw;
+              return p?.id ? `${p.id} · ${p.x}` : '';
+            },
+            label: item => {
+              const p = item.raw;
+              if (!p?.id) return ` ${item.dataset.label}`;
+              const title = (p.title || '').length > 40 ? (p.title || '').slice(0, 38) + '…' : (p.title || '');
+              return [
+                ` ${title}`,
+                ` Cycle time : ${p.y} jour${p.y > 1 ? 's' : ''}${p.points ? ' · ' + p.points + ' pts' : ''}`,
+              ];
+            },
+            footer: () => [`Moy: ${avg}j · Médiane: ${p50}j · P85: ${p85}j`],
+          },
+          footerColor: '#94A3B8',
+          footerFont: { size: 10 },
+        },
+      },
+      scales: {
+        x: {
+          type: 'category',
+          labels: [...new Set(dates)],
+          title: { display: true, text: 'Date de résolution', font: { size: 10 } },
+          ticks: { font: { size: 9 }, maxRotation: 45 },
+          grid: { display: false },
+        },
+        y: {
+          beginAtZero: true,
+          title: { display: true, text: 'Cycle Time (jours)', font: { size: 10 } },
+          ticks: { font: { size: 10 } },
+        },
+      },
+    },
+  });
+}
+
+// ---- WIP Age (horizontal bar : âge des tickets en cours) --------
+
+function _buildWIPAge() {
+  const canvas = document.getElementById('wipAgeChart');
+  if (!canvas) return;
+
+  const tickets = getTickets();
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  // Tickets WIP = en cours (inprog, review, test) avec startedDate
+  const wipStatuses = ['inprog', 'review', 'test'];
+  let wip = tickets
+    .filter(t => wipStatuses.includes(t.status) && t.startedDate)
+    .map(t => {
+      const started = new Date(t.startedDate + 'T00:00:00');
+      const age = Math.max(1, Math.round((today - started) / MS_PER_DAY));
+      return { ...t, age };
+    })
+    .sort((a, b) => b.age - a.age);
+
+  // Fallback si pas de startedDate : utiliser todayChanges ou estimer
+  if (!wip.length) {
+    wip = tickets
+      .filter(t => wipStatuses.includes(t.status))
+      .map(t => ({ ...t, age: 0 }));
+  }
+
+  if (!wip.length) {
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#94A3B8'; ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Aucun ticket en cours', canvas.width / 2, canvas.height / 2);
+    return;
+  }
+
+  // P85 cycle time des tickets terminés (référence)
+  const doneTickets = tickets.filter(t => isDone(t.status) && t.cycleTimeDays != null);
+  let p85 = null;
+  if (doneTickets.length >= 3) {
+    const sorted = doneTickets.map(t => t.cycleTimeDays).sort((a, b) => a - b);
+    p85 = sorted[Math.ceil(sorted.length * 0.85) - 1];
+  }
+
+  // Limiter à 15 tickets max pour la lisibilité
+  const displayed = wip.slice(0, 15);
+
+  const labels = displayed.map(t => {
+    const short = (t.title || '').length > 25 ? (t.title || '').slice(0, 23) + '…' : (t.title || '');
+    return `${t.id} · ${short}`;
+  });
+
+  const barColors = displayed.map(t => {
+    if (p85 && t.age > p85) return '#EF4444';
+    if (p85 && t.age > p85 * 0.7) return '#F59E0B';
+    return '#0284C7';
+  });
+
+  const datasets = [
+    {
+      label: 'Âge (jours)',
+      data: displayed.map(t => t.age),
+      backgroundColor: barColors,
+      borderColor: barColors.map(c => c + 'CC'),
+      borderWidth: 1,
+      borderRadius: 3,
+    },
+  ];
+
+  // Ligne verticale P85 comme annotation via un dataset fictif
+  if (p85) {
+    datasets.push({
+      label: `P85 cycle time (${p85}j)`,
+      data: displayed.map(() => p85),
+      type: 'line',
+      borderColor: '#EF444488',
+      borderWidth: 2,
+      borderDash: [6, 3],
+      pointRadius: 0,
+      fill: false,
+      indexAxis: 'y',
+    });
+  }
+
+  _wipAgeChart = new Chart(canvas.getContext('2d'), {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: !!p85, labels: { font: { size: 10 }, boxWidth: 10 } },
+        tooltip: {
+          ..._TOOLTIP,
+          callbacks: {
+            title: items => {
+              const idx = items?.[0]?.dataIndex;
+              const t = idx != null ? displayed[idx] : null;
+              return t ? t.id : '';
+            },
+            label: item => {
+              const idx = item.dataIndex;
+              const t = displayed[idx];
+              if (!t) return ` ${item.dataset.label}`;
+              const status = { inprog: 'En cours', review: 'Review', test: 'Test' }[t.status] || t.status;
+              const warn = p85 && t.age > p85 ? ' ⚠️ > P85' : '';
+              return [
+                ` ${(t.title || '').slice(0, 50)}`,
+                ` ${t.age} jour${t.age > 1 ? 's' : ''} · ${status}${t.points ? ' · ' + t.points + ' pts' : ''}${warn}`,
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          title: { display: true, text: 'Jours', font: { size: 10 } },
+          ticks: { stepSize: 1, font: { size: 10 } },
+        },
+        y: {
+          ticks: { font: { size: 9 }, crossAlign: 'far' },
+          grid: { display: false },
+        },
+      },
+    },
+  });
+}
+
 // ---- Helpers ---------------------------------------------------
 
 // Jour courant dans le sprint (0 = premier jour, days-1 = dernier)
@@ -961,7 +1534,7 @@ function _sprintCurrentDay(days, sprintCtx) {
   const rawDate = (sprintCtx || CONFIG.sprint).startDate || '';
   const parsed  = _parseDate(rawDate);
   if (!parsed) return Math.floor(days / 2); // fallback : milieu du sprint
-  const diffDays = Math.floor((new Date() - parsed) / 86400000);
+  const diffDays = Math.floor((new Date() - parsed) / MS_PER_DAY);
   return Math.min(Math.max(0, diffDays), days - 1);
 }
 

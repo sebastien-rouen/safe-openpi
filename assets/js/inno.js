@@ -237,10 +237,10 @@ function renderInno() {
     // Teams impliquées
     const teamIds = [...new Set(all.map(t => t.team).filter(Boolean))];
     const teamBadges = teamIds.map(tid => {
-      const tc = CONFIG.teams[tid];
-      if (!tc) return '';
-      return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:${tc.color || 'var(--text-muted)'};font-weight:600;">
-        <span style="width:7px;height:7px;border-radius:50%;background:${tc.color || '#94A3B8'}"></span>${tc.name || tid}
+      const teamConfig = CONFIG.teams[tid];
+      if (!teamConfig) return '';
+      return `<span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:${teamConfig.color || 'var(--text-muted)'};font-weight:600;">
+        <span style="width:7px;height:7px;border-radius:50%;background:${teamConfig.color || '#94A3B8'}"></span>${teamConfig.name || tid}
       </span>`;
     }).filter(Boolean).join(' ');
 

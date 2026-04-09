@@ -1,7 +1,7 @@
 // ============================================================
 // SYNC - Bouton "Synchroniser" → chargement des données JIRA
 //        Sync diff - changelog visuel après synchronisation
-//        Incremental sync - seuil 6h, checkbox full/partial
+//        Sync diff - changelog visuel
 // ============================================================
 
 // --- Snapshot before sync for diff computation ---
@@ -108,18 +108,6 @@ function _showSyncDiff(changes, apiCalls) {
   document.body.appendChild(panel);
 }
 
-// --- Incremental sync ---
-function _isIncrementalSync() {
-  const cb = document.getElementById('sync-incremental');
-  return cb && cb.checked;
-}
-
-function _lastSyncAge() {
-  const ts = parseInt(localStorage.getItem('lastSync'), 10);
-  if (!ts || isNaN(ts)) return Infinity;
-  return Date.now() - ts;
-}
-
 function doSync() {
   const btn = document.getElementById('syncBtn');
   _setBtnLoading(btn);
@@ -127,12 +115,7 @@ function doSync() {
   // Snapshot before sync
   _syncSnapshot = _takeSnapshot();
 
-  // Determine if incremental (only if data < 6h old)
-  const incremental = _isIncrementalSync() && _lastSyncAge() < 6 * 3600 * 1000;
-
-  const syncPromise = incremental
-    ? loadJiraData({ incremental: true })
-    : loadJiraData();
+  const syncPromise = loadJiraData();
 
   syncPromise
     .then(() => {

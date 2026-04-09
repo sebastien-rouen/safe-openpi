@@ -59,7 +59,7 @@ Chaque guide est autonome et adapte a votre role. Il explique quelles vues utili
 
 | Touche | Vue | Description |
 |--------|-----|-------------|
-| `1` | 🏃 Scrum | Board sprint (colonnes / swimlanes / liste triable), alertes sprint, activite du jour, burndown, burnup, velocity, CFD |
+| `1` | 🏃 Scrum | Board sprint (colonnes / swimlanes / liste triable), alertes sprint, activite du jour, burndown, burnup, velocity, CFD, flow metrics (throughput, cycle time scatter, WIP age) |
 | `2` | 📋 Kanban | Colonnes WIP, CFD, cycle time, lead time |
 | `3` | 🗺️ Roadmap | Velocite 80/20, chronologie, simulation backlog, sante backlog, features cross-equipes, PI prep (ROAM, dependances, objectifs, capacite, fist of five) |
 | `4` | 🗓️ PI Planning | Objectifs PI, buffer, velocite, mood meter, fist of five, metriques |
@@ -101,7 +101,7 @@ JIRA-Dashboard/
         ├── jira.js             # Fetch JIRA, transformation, cache
         ├── sync.js             # Synchronisation manuelle
         ├── modal.js            # Modale ticket detaillee
-        ├── charts.js           # Burndown, burnup, velocity, donut, CFD
+        ├── charts.js           # Burndown, burnup, velocity, donut, CFD, flow metrics (throughput, cycle time scatter, WIP age)
         ├── sidebar.js          # Panels : progression, buffer, objectifs, risques
         ├── scrum.js            # Vue Scrum (board, alertes, activite)
         ├── kanban.js           # Vue Kanban (WIP, cycle time)
@@ -116,6 +116,8 @@ JIRA-Dashboard/
         ├── inno.js             # Vue Innovations
         ├── amelioration.js     # Vue Amelioration continue
         ├── releases.js         # Vue Releases (Gantt, projections)
+        ├── standup.js          # Standup assistant
+        ├── export.js           # Export PNG via html2canvas
         └── navigation.js       # Routing, raccourcis, recherche, sidebar resize
 ```
 
@@ -186,18 +188,19 @@ Les librairies JS sont embarquees dans `assets/js/vendor/` pour eviter les bloca
 
 ### Court terme
 - Filtres avances dans le board (par label, assignation, epic)
-- Alertes Slack automatiques pour les tickets bloques
 - SLA tracking pour les tickets support
+- Sprint forecast Monte Carlo (cone de prediction sur le burndown)
+- Scope creep tracker (evolution du scope en overlay burnup)
 
 ### Moyen terme
 - Dashboard executif : synthese en une page
 - Metriques DORA (deployment frequency, lead time, change failure rate, MTTR)
-- Previsions Monte Carlo pour les projections de livraison
-- Rapport PI automatise en un clic
+- Dependency heatmap inter-equipes (matrice N x N)
+- Capacity vs charge en temps reel
 
 ### Long terme
 - Graphe de dependances interactif entre equipes et features
-- Synchronisation Slack bidirectionnelle
+- Synchronisation Slack bidirectionnelle (notifications push)
 - Export PowerPoint pour les comites de pilotage
 - Personal dashboard par developpeur
 
